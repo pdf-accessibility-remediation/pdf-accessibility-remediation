@@ -34,6 +34,7 @@ from lib import glance as G0
 from lib import dates as DT
 from lib import readorder
 from lib import origin
+from lib import costs
 from lib.lowres import LOW_PPI
 
 COUNT_WORDS = {'accepted_unreviewed': 'accepted without review'}   # the stored key stays; these are review.html's and the review page's words
@@ -55,6 +56,10 @@ log = load(PDF + '.log.json', default={}); ver = load(PDF + '.verify.json', defa
 lang_log = log.get('language_parts') or {}; ver_lang = ver.get('language') or {}            # #118: the language step's tags
 lang_refused = sum((lang_log.get('refused') or {}).values())
 LANG_REFUSED_SHOWN = 20                       # refused language-tag places listed in review.md under each reason; the rest are in the record
+NO_ANSWER_WORDS = {'echo': 'the reply could not be matched to the word', 'tag': 'the AI gave a language that cannot be written into the PDF',   # #137
+                   'invalid': 'the answer was not in the expected form', 'not_answered': 'the reply skipped the word',
+                   'cut_off': "the AI's reply stopped before the word", 'failed': 'the request did not finish',
+                   'unreadable': 'the reply could not be read'}                                   # #151 (review 22 M3)
 digest = load('digest.json', base=A, default={})
 fulltext = load('fulltext.json', base=A, default={}) or {}   # the whole texts the digest shortens (local only, never sent)
 vera_before = load('verapdf.json', base=A, default=None)   # veraPDF on the original, from the audit
@@ -87,6 +92,17 @@ pr_listed = (load('page_reads.json', base=A) or {}).get('pages') or []
 # the language step (name_languages.py, #118): its own paid step; a saved reply from elsewhere costs nothing here
 lr_run = load('language_run.json') or ((prev or {}).get('language_run') if prev is not None else None)
 cost_lang = 0 if not lr_run or (lr_run.get('response_from') and not lr_run.get('own_reply')) else round(lr_run.get('cost_usd') or 0, 6)
+cost_lang = round(cost_lang + ((lr_run or {}).get('earlier_cost_usd') or 0), 6)     # paid by an earlier attempt here (#135)
+# charges not known (#135 (parallel requests)): requests in flight when a step was interrupted, or with no reply in time;
+# kept apart from the money above, at their worst case (review 02 M2)
+cost_unknown = round(costs.not_known(lr_run) + costs.not_known(pr_run, 'pages'), 6)
+n_unknown = sum(1 for r_ in (lr_run, pr_run) if isinstance(r_, dict) for x in list(r_.get('in_flight') or []) + list(r_.get('stopped_in_flight') or [])
+                + list(r_.get('requests' if r_ is lr_run else 'pages') or []) if isinstance(x, dict) and x.get('worst_usd'))
+# #151 (App: hold the review when AI requests did not finish): how each AI step ended (ai_outcome.json, lib/aistatus.py)
+# and a person's choice to review without what was missing (ai_override.json); a re-apply keeps the earlier record's
+from lib import aistatus as _aistatus
+ai_out = _aistatus.outcomes(R) or ((prev or {}).get('ai_outcome') if prev is not None else None) or {}
+ai_override = load(_aistatus.OVERRIDE) or ((prev or {}).get('ai_override') if prev is not None else None)
 def language_status():
     """What became of the language step (#118, round 18), for the Language Tags line (lib/glance.py language_line):
     {candidates: the word forms the audit found for it, state: decided | off | left_out_book | left_out_cap | failed |
@@ -113,13 +129,26 @@ def language_status():
         except Exception: n = None
     est = load('language_estimate.json') or {}
     ref = (est.get('refused') or {}).get('why') if isinstance(est.get('refused'), dict) else None
+    if ref is None and (ai_out.get('language') or {}).get('why') in ('book', 'cap'):    # #151: kept after run_api.sh removed the estimate
+        ref = ai_out['language']['why']
     if (wo.get('language_parts') or {}).get('forms') or (wo.get('language_parts') or {}).get('parts'): state = 'decided'
     elif opt('lang-tags') == 'off' and not lr_run: state = 'off'
     elif ref == 'book': state = 'left_out_book'
     elif ref == 'cap': state = 'left_out_cap'
+    elif lr_run and lr_run.get('held_back_count') and not lr_run.get('requests'): state = 'held_back'   # #159: every form held back, none sent
     elif lr_run: state = 'failed'                       # it started (its run file exists) and decided nothing
     else: state = 'not_run'
-    return {'candidates': n, 'state': state}
+    out = {'candidates': n, 'state': state}
+    hb = held_back_of(lr_run)
+    if hb: out['held_back'] = hb                       # #159: only when forms were held back (records below the limit stay as they were)
+    return out
+
+def held_back_of(lr):
+    """#159: what the language step held back, from its record (the first report; a re-report keeps the earlier record's
+    language_status): {count, by_kind, forms (the first 200), sha, why, limit}, or None."""
+    if not isinstance(lr, dict) or not lr.get('held_back_count'): return None
+    return {'count': lr['held_back_count'], 'by_kind': lr.get('held_back_by_kind') or {}, 'forms': list(lr.get('held_back') or [])[:200],
+            'sha': lr.get('held_back_sha'), 'why': lr.get('held_back_why') or 'forms', **({'limit': lr['held_back_limit']} if lr.get('held_back_limit') else {})}
 for need, name in ((wo, 'workorder.json'), (log, PDF + '.log.json'), (ver, PDF + '.verify.json')):
     if not need: sys.exit(f'{name} missing in {R}: run the whole pipeline first (nothing was deleted)')
 
@@ -171,12 +200,14 @@ record = {
     **({'raw_reply_passes': passes} if passes else {}), 'environment': log.get('environment'),
     'earlier_attempts': attempts, 'cost_total_usd': round(cost_this + cost_earlier + cost_pages + cost_lang + cost_check, 6),
     **({'language_run': {k: v for k, v in lr_run.items() if k not in ('requests', 'language_parts', 'contexts')}       # the parts are in workorder.language_parts
-                        | {'requests': [{k: v for k, v in x.items() if k not in ('text', 'keys', 'ids')} for x in lr_run.get('requests') or []]}} if lr_run else {}),
+                        | {'requests': [{k: v for k, v in x.items() if k not in ('text', 'keys', 'ids', 'id_marks')} for x in lr_run.get('requests') or []]}} if lr_run else {}),
     **({'page_reads': {k: v for k, v in pr_run.items() if k != 'pages'} | {'pages': [{k: v for k, v in x.items() if k != 'text'} for x in pr_run.get('pages') or []]}}
        if pr_run else {}),
     **({'review': {'workorder': rv, **(rv_session or {})}} if rv else {}),
     **({'language_review': rv['language']} if rv and rv.get('language') else {}),     # #118: the Languages section's decisions (lib/glance.py)
     'language_status': language_status(),                                              # round 18: Not Applicable only without candidates
+    **({'ai_outcome': ai_out} if ai_out else {}),                                       # #151: how the AI steps ended
+    **({'ai_override': ai_override} if isinstance(ai_override, dict) and ai_override.get('by') else {}),   # #151: reviewed without what was missing
     **({'workorder_ai': wo_ai} if rv and wo_ai is not None else {}),
 }
 # the AI call behind the work order (sponsor checklist 11.5): a reused reply carries the original call's cost, model, prompt
@@ -545,7 +576,10 @@ L = [f'# Remediation Review: {src.get("file") or "file name not recorded"}', '',
         else 'tokens: saved reply reused, not counted' if run.get('response_from') else 'tokens: AI request did not finish')
      + (f' · plus ${sum(a.get("cost_usd") or 0 for a in a_bad):.3f} for {len(a_bad)} previous AI request(s) whose reply was cut off or unusable' if a_bad else '')
      + (f' · plus ${sum(a.get("cost_usd") or 0 for a in a_stop):.3f} for {len([a for a in a_stop if a.get("cost_usd") is not None])} AI request(s) from a run '
-        'that was stopped before it finished' + (' (one more was in flight: any charge is not known)' if any(a.get('cost_usd') is None for a in a_stop) else '') if a_stop else '')
+        'that was stopped before it finished' + ((lambda k: f' ({k} more {"was" if k == 1 else "were"} in flight: any charge is not known)')(sum(1 for a in a_stop if a.get('cost_usd') is None))
+                                                 if any(a.get('cost_usd') is None for a in a_stop) else '') if a_stop else '')
+     + (f' · up to ${cost_unknown:.3f} more for {n_unknown} AI request(s) of the language step or the page readings whose charge is not known '
+        '(in flight when the step was interrupted, or no reply in time)' if cost_unknown else '')
      + (f' (total ${cost_this + cost_earlier:.3f})' if attempts else ''), '',
      *(fig_block() if fpr else []),
      *([f'Intake: {intake.get("summary")}' + (f' · tagged by OpenDataLoader {intake["tools"].get("opendataloader_pdf")}' if intake.get('status') == 'done' else '')
@@ -1181,7 +1215,8 @@ if bad:
     L.append('')
 lp_ = (wo or {}).get('language_parts') or {}
 haw_el_ = (log.get('haw_elements') or {}).get('elements') or []     # review 08, H2: whole lines tagged Hawaiian on pages read by the AI
-if lp_.get('version') == 2 or lang_log or haw_el_:        # #118: what the language step tagged, left untagged and could not place
+_hb = (record.get('language_status') or {}).get('held_back') if isinstance(record.get('language_status'), dict) else None   # #159
+if lp_.get('version') == 2 or lang_log or haw_el_ or (isinstance(ai_override, dict) and ai_override.get('by')) or _hb:   # #118 (#151: an override, #159: forms not sent)
     sys.path.insert(0, os.path.dirname(os.path.abspath(__file__))); from lib import langtag as LT
     forms_ = lp_.get('forms') or []
     pages_of_ = collections.defaultdict(set)
@@ -1193,12 +1228,29 @@ if lp_.get('version') == 2 or lang_log or haw_el_:        # #118: what the langu
     n += 1; L += [f'### {n}. Language Tags', '',
                   'Words and passages in another language get a language tag, so a screen reader switches to that language\'s voice (WCAG 3.1.2). '
                   'Tags from the language step are decided by a person; kana and Hangul are tagged by a fixed rule.', '']
+    if _hb:                                                               # #159: word forms the limits held back, never sent and never tagged
+        from lib import langreq as _LQ, glance as _G
+        _acc = ((record.get('language_review') or {}).get('held_back_accepted')) or {}
+        L += [line(f'**Word forms not sent ({_hb["count"]:,}):** {_G.held_back_reason(_hb)}; they are not tagged. '
+                   + ' · '.join(f'{_LQ.KIND_WORDS.get(k, k)} {n:,}' for k, n in (_hb.get('by_kind') or {}).items())
+                   + (f'. Accepted by {_acc["by"]} on {DT.day(_acc.get("date"))}.' if _acc.get('by') and _acc.get('count') == _hb['count'] and _acc.get('sha') == _hb.get('sha') else '.'), entry=False)]
+        if _hb.get('forms'):
+            L += [line(('The first 200: ' if _hb['count'] > len(_hb['forms']) else '') + ' · '.join(f'"{f}"' for f in _hb['forms']), entry=False)]
+        L.append('')
+    if isinstance(ai_override, dict) and ai_override.get('by'):          # #151: the person chose to review without what was missing
+        L += [line(f'**Reviewed without missing AI suggestions:** {ai_override["by"]} on {DT.day(ai_override.get("date"))}'
+                   + (f' ({"; ".join(ai_override["missing"])})' if ai_override.get('missing') else ''), entry=False), '']
     by_lang = collections.Counter()
     for i, f in tagged_: by_lang[f['lang']] += f.get('places') or 0
     if by_lang: L += ['| Language | Word forms | Places |', '|---|---:|---:|'] + [line(f'| {LT.name(k) or k} | {sum(1 for _, f in tagged_ if f["lang"] == k)} | {v} |', entry=False)
                                                                               for k, v in by_lang.most_common()] + ['']
     if exempt_: L += [line('Left untagged by the AI: ' + ' · '.join(f'{c} {({"name": "names", "english": "part of English", "indeterminate": "not words of a known language", "unsure": "not sure", "varies": "mixed"}).get(w, w or "no answer")}'
                                                             for w, c in exempt_.most_common()) + ' (Latin script: no decision needed).', entry=False), '']
+    noans_ = collections.Counter(f.get('no_answer') for f in forms_ if f.get('no_answer') in NO_ANSWER_WORDS)   # #137: no AI answer, by reason
+    if noans_:
+        L += [line(f'**No AI answer ({sum(noans_.values())} word form{"" if sum(noans_.values()) == 1 else "s"}):** '
+                   + ' · '.join(f'{NO_ANSWER_WORDS[k]} {c}' for k, c in noans_.most_common())
+                   + '. A person decides each of these with no suggestion from the AI.', entry=False), '']
     if person_:
         L += [f'**Not tagged, for a person to decide ({len(person_)}):**', '']
         L += [line(f'- "{excerpt(f.get("form"))}"' + (f' (the PDF tags it "{f["current"]}")' if f.get('current') else '')
@@ -1249,9 +1301,9 @@ if lp_.get('version') == 2 or lang_log or haw_el_:        # #118: what the langu
     if grp_:
         by_btn = collections.Counter(f['group_approval'].get('button') for _, f in grp_)
         L += [f'**Approved in a group approval ({len(grp_)} word forms):** '
-              + ' · '.join(f'{ {"all_shown": "Approve All Shown", "readings": "Approve Characters with Matching Readings"}.get(b, b)}: {c}' for b, c in by_btn.most_common()), '']
+              + ' · '.join(f'{ {"all_shown": "Approve All Shown", "readings": "Approve Characters with Matching Readings", "printed_reading": "Approve Forms Decided by Their Printed Reading"}.get(b, b)}: {c}' for b, c in by_btn.most_common()), '']
         L += [line(f'- "{excerpt(f.get("form"))}": {LT.name(f["group_approval"].get("lang") or f["lang"]) or f["lang"]}'
-                   f' · {({"all_shown": "Approve All Shown", "readings": "Matching Readings"}).get(f["group_approval"].get("button"), "group approval")}'
+                   f' · {({"all_shown": "Approve All Shown", "readings": "Matching Readings", "printed_reading": "Printed Reading"}).get(f["group_approval"].get("button"), "group approval")}'
                    f' · {excerpt(f["group_approval"].get("evidence") or "")}'
                    + f' · {", ".join(pg(p) for p in sorted(pages_of_.get(i) or [])[:4])}',
                    key=f'lang:group:{f.get("key")}', pages=sorted(pages_of_.get(i) or [])[:4]) for i, f in grp_]
@@ -1338,7 +1390,7 @@ if not KEEP:
     for name in ('request.json', 'response.json', 'reply.txt', 'run.json', 'validation.json', 'workorder.json', 'passes.json',
                  PDF + '.log.json', PDF + '.verify.json', 'verify.txt', 'error.txt', 'timing.json', 'attempts.json',
                  'workorder.ai.json', 'review.json', 'review_items.json', 'review_decisions.json', 'review_stop.json', 'page_reads_run.json',
-                 'language_run.json', 'language_estimate.json'):
+                 'language_run.json', 'language_estimate.json', _aistatus.NAME, 'language_retry_estimate.json', 'page_reads_retry_estimate.json'):
         p = os.path.join(R, name)
         if os.path.exists(p): os.remove(p)
     if os.path.isdir(A) and os.path.exists(os.path.join(A, 'digest.json')): shutil.rmtree(A)

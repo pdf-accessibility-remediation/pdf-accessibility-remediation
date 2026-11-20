@@ -19,3 +19,14 @@ This part of the docs has one page for each task:
 - [Reviewing again](review-again.md): review a finished run again, or edit the work order without the page.
 - [Reading order on the review page](review-reading-order.md): the reading-order group, section moves, and fixing the order by hand.
 - [The OCR text](review-ocr.md): approve the text that OCR added, or not.
+
+## Missing AI suggestions
+
+A run can stop for review with some of its AI suggestions missing (#151): a page reading or a language request that failed or was cut short, a step left out because it could cost more than its limit, a refusal for the credit left, or a step that stopped partway. Each step records how it ended in the run folder's `ai_outcome.json`. While anything is missing, the review is held: the app shows why on the run page, and `review_workorder.py <run> --serve` (or `--reviewer`) refuses with the same reasons.
+
+There are two ways on:
+
+- **Ask the AI again** (the app's "Ask the AI Again", or `AI_RETRY=1 bash run_api.sh <original.pdf> <name> <label>`): sends only what did not finish, at the cost shown before anything is sent, then stops for review again. Unfinished page readings go first. New readings change some of the words the language step reads, so the language suggestions are estimated again afterward and sent by the next request. A step left out for its cost can't be asked again this way.
+- **Review without them** (the app's "Review Without the Missing Suggestions", or `review_workorder.py <run> --override "Your Name" --serve`): the review opens; the name, the date and what was missing are recorded in `ai_override.json`, kept in every later review session and listed in review.md under "Language Tags".
+
+A run that stopped for review before this check existed has no `ai_outcome.json`: it is held only when its own request records show a request that did not finish.

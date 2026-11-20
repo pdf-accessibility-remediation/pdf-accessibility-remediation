@@ -10,6 +10,31 @@ approved.
    use (kahakō, macrons, ʻokina), runs in another script (Chinese characters, kana, hangul, Greek, Cyrillic, …) and
    words outside the English word list (SCOWL 2020.12.07). Each printed form is one candidate, with every place it
    occurs. A publisher's own `/Lang` tags are listed too ("existing").
+   - **A word that ends in a hyphen is joined with the next word** only when the hyphen is at a real line end (the
+     line-end test below), or when the joined word is English (a real break the test misjudges, beside a drop cap or a
+     narrow gutter: "prac-" + "tices"). A hyphen inside its line ("homes-abroad", whose second part some PDFs draw
+     after the next line's first word) is no join: each part is a word of its own, as an unbroken word is.
+   - **A word broken by a hyphen at a line end** is checked joined, both without its hyphen ("infor-" + "mation") and
+     with it ("long-" + "standing"); English either way, it is no candidate. The form with the hyphen counts only when
+     each half has three or more plain letters and the joined word does not have the shape of romanized Japanese or
+     Chinese, so a romanized word split into English-looking syllables ("keg-" + "are" for *kegare*) stays a candidate.
+     And a broken word the book also prints whole somewhere stays a candidate ("bum-" + "bye" where *bumbye* is printed
+     whole; `langcands.book` reads the book twice, the second time only on the pages concerned). Any whole spelling
+     counts, including those inside URLs and bibliography entries.
+   - **Both halves of a broken candidate are tagged** when the break is a real line end: the hyphen is the last visible
+     character on its line (nothing visible to its right within about one em, its font size) and the second half
+     starts its own line (nothing visible to its left within one em). Then, in one run, one place covers both halves;
+     in two runs, the second half is a place of its own with the same word form, so one decision tags both lines.
+     Otherwise the hyphen is inside a line ("homes-abroad", "non- Western", whose second part some PDFs draw after the
+     next line's first word): the word that follows in the text keeps no tag of the first part's, as before.
+   - **Known misses of the hyphen check:** a non-English word broken at a line end whose two halves are both English
+     words, that has no romanized Japanese or Chinese shape, and that the book never prints whole, is taken for
+     English, so that place goes untagged. It happens in any language (Javanese, Indonesian, Hawaiʻi Pidgin, Dutch, …).
+     Javanese *madjoe* broken as "mad-" + "joe" was one; it is found now, since its book prints *madjoe* whole elsewhere.
+     The Dutch suspended hyphen in "taal-, land- en volkenkunde" stays one: *taal* is itself in the English word list.
+     A second pattern: a word hyphenated inside its line whose real continuation the PDF draws elsewhere in the text,
+     and whose first part alone is short (under four letters), capitalized without marks, or English, is no candidate.
+     Examples: the Anindilyakwa morphemes on an interlinear page ("ki-", "ku-", "na-"), and Hawaiian "uka-".
 2. **The language step asks the AI** (`name_languages.py`, prompt `prompts/language_v3.md`): each word form with its
    context, each snippet once per request, through OpenRouter with `data_collection: deny`. The context
    (`lib/langreq.py` `CTX`) is 10 words on each side of up to two places per form (a word is a piece with a letter or
@@ -24,7 +49,36 @@ approved.
    place exactly as it is sent; rows of runs made before this keep the context stored when their language step ran. The AI names
    a language and a confidence, or says it is a name or English. Nothing else of the book is sent for this step. A book
    flagged for personal information (1.1) is never sent. Requests and replies are kept in `language_run.json`.
-   Each decision echoes its word form; one whose form doesn't match its item is not used. Phrases English dictionaries
+   A decision's tag must be one the pipeline can name (`lib/langtag.py` `NAMES`): every tag the prompt asks for is
+   there (a test checks it), as are romanized Ancient Greek (`grc-Latn`) and Tok Pisin (`tpi`), added after the AI gave
+   them with good reason (#137), and Javanese (`jv`) and Anindilyakwa (`aoi`), whose words the finder's line-end join
+   gives back (#140); a tag outside the table is not used, and its word goes to a person. As with every language in the
+   table, a publisher's `/Lang` that names Javanese or Anindilyakwa ("Javanese") is now written by the executor as `jv`
+   or `aoi` when its words fit, and the three-letter `jav` is shortened to `jv`.
+   The languages the AI named in the 27 reference books' answers (round 11 of #137, three or more word forms each) are
+   in the table too, each checked in the IANA language subtag registry: Central Bikol (`bcl`), Balinese (`ban`),
+   Sundanese (`su`), Minangkabau (`min`), Alyawarr (`aly`), Batak Toba (`bbc`), Makasar (`mak`), Rarotongan (`rar`),
+   Kashmiri (`ks`), Kazakh (`kk`), and the romanizations `ryu-Latn`, `bo-Latn`, `hi-Latn`, `ar-Latn`, `ks-Latn`,
+   `kk-Latn`. A specific language is written as itself, never as its macrolanguage: Central Bikol is `bcl`, not `bik`.
+   A collection code (`btk`, "Batak languages") is no language and stays refused. A `-Latn` the registry calls
+   redundant for that language (its Suppress-Script is Latn: `ms-Latn`, `vi-Latn`, `tl-Latn`) is left out, so
+   `ms-Latn` is written `ms`. A romanization keeps it (`ja-Latn`), and so does a language with no Suppress-Script:
+   Javanese is also written in its own script, so `jv-Latn` stays as written ("Javanese (Latin script)"). As with
+   Javanese and Anindilyakwa, a publisher's `/Lang` that names one of these languages ("Central Bikol", "Balinese",
+   "Kazakh", …) is now written by the executor as its code when its words fit. A book may show both "Bikol" and
+   "Central Bikol": a specific language is never mapped to its macrolanguage, so the AI's `bik` and `bcl` stay apart.
+   Each decision echoes its word form, as a guard against an answer landing on the wrong word. A request shows a form
+   twice: cleaned in its item ("Tenpyō hōji ninen Naishōsen") and as printed where it is marked in the text
+   ("Tenpyō hōji ninen: Naishōsen", or one line's half of a word broken at a line end), and the AI sometimes copies the
+   printed one. So an echo is used when it matches the item's form with spacing and case ignored, or when its letters
+   and digits alone match the item's form or one of its marked texts and no other item's in the same request (#137);
+   otherwise it is not used. Each request's marked texts are kept in `language_run.json` (`id_marks`, not in the
+   record), so a replay compares them as sent. An answer the check throws away is kept in the record
+   (`language_run.dropped`: the word form, what the answer echoed, its tag and confidence, and a `code`: `echo`, `tag`,
+   `invalid`, …; up to 2,000, with `dropped_count`). Each word form with no AI decision carries why in its
+   `language_parts` entry (`no_answer`: `echo`, `tag`, `invalid`, `not_answered`, `cut_off` or `failed`), which the
+   review page words as "No AI answer (…)" and review.md counts in its Language Tags section ("No AI answer (N word
+   forms): …", in plain words). Phrases English dictionaries
    list (*a priori*, *ad hoc*) count as English. (language_v3 is language_v1 with these two lines from language_v2,
    adopted after a paid check on the test items, 2026-11-13: 248 and 249 right against 246 and 232, the same one wrong
    medium-confidence answer, no reply cut off.)
@@ -115,17 +169,81 @@ mid-title), and `LANG_GROUP=on` makes adjacent single Chinese characters one wor
 screen-reader check of a title tagged in pieces (see [Options](options.md#language-tags)).
 
 The step is on by default (`LANG_TAGS=on`, see [Options](options.md#language-tags)). It has its own model
-(`LANGUAGE_MODEL`, default Sonnet 5.5, whatever model the work order uses), limit (`LANGUAGE_MAX_USD`, default $6) and form limit
-(`LANGUAGE_MAX_FORMS`, default 5000). The PDF's limit (`BOOK_MAX_USD`, default $8) is shared by the work order, the
-page readings and this step. The step never stops the work order: when it doesn't fit the PDF's limit with the work order,
-or passes its own limit, it alone is left out and the PDF goes on without language tags (see
+(`LANGUAGE_MODEL`, default Sonnet 5.5, whatever model the work order uses) and limit (`LANGUAGE_MAX_USD`). The PDF's limit
+(`BOOK_MAX_USD`) is shared by the work order, the page readings and this step (see
 [The limit per PDF](options.md#the-limit-per-pdf)).
+
+### Word forms not sent
+
+#159 (Language step: words over the 5,000-form limit are never tagged or shown): the dollar limits alone decide what is
+sent. There is no limit on the number of word forms unless `LANGUAGE_MAX_FORMS` is set (an override).
+
+- **The fill.** Word forms go in their usual order (by kind, then by page: words not in the English word list come last),
+  in requests of up to 150. Whole requests are sent while the step's worst case fits the smaller of its own limit and the
+  room left in the PDF's limit. The work order and the page readings are priced first, so the room is known. Then the
+  part of the next request that fits is sent. A request answered before costs nothing and doesn't count.
+- **What doesn't fit is held back, never refused.** The step is never refused or left out whole for its own cost. The
+  word forms held back are not sent and not tagged.
+- **Said before anything is spent.** The terminal prints the count and the reason after the first estimate (before "Send
+  to OpenRouter now?"), again just before "Name the languages of these words and passages with the AI now?" (and before
+  the `AUTO=1` line), and in a retry before "Ask the AI again for the unfinished language suggestions now?". The app's run
+  page says it beside the cost and on the "Ask the AI Again" card, and a batch's estimate lists each PDF that holds word
+  forms back with its count and the limit that held them back. This is a warning, not a refusal.
+- **The title is priced in advance.** The estimate is made before the work order names the PDF's title and language,
+  which every request carries. It prices them at a reserve instead: 300 characters at the rate of Chinese characters (the
+  costliest), or the PDF's own metadata title when that is longer, and 35 characters for the language. The real run then
+  fits the amount shown, and may send a few more word forms than the estimate held back, since a real title is shorter.
+  A title longer than the reserve could still hold back the last few forms; the record and the review page then say so.
+- **More word forms after the estimate hold the review.** The estimate is made before the work order, from the words the
+  audit found under the PDF's own language setting. After the work order the step finds its words again, and the set can
+  change: the work order names a different language and one of the two is Chinese, Japanese or Korean (in such a document
+  every Latin-script word is a candidate, and its own script is not); OCR word readings or page readings change the text
+  of a scanned book; a title longer than the reserve; a run bound to $0.00 (a single run whose estimate showed no
+  language cost, or a batch PDF whose language estimate is missing or sends nothing). When more word forms would be held
+  back than the estimate showed and nobody is at the keyboard (`AUTO=1`, every app job), nothing is sent: the outcome is
+  `forms_changed` ("More word forms were found after the estimate."), the review holds, and "Ask the AI Again" shows the
+  new estimate with its warning. An interactive terminal asks its question as before, after the warning (review 33, F1).
+  The count shown comes from the caller: the app's Spend passes the run page's count and a batch the count of that PDF's
+  own estimate (0 when it had none), as `LANG_HELD_SHOWN`; a terminal run compares with its own first estimate.
+- **Shown after the run.** The record keeps them (`language_status.held_back`: the count, the kinds, the first 200 forms,
+  a short hash of their keys). The review page's "Languages" section shows a line and the fold "Word Forms Not Sent", and
+  review.md lists them under "Language Tags".
+- **Ready.** "Language Tags" is not Approved while word forms are held back. "Accept Without the Word Forms Not Sent" on
+  the review page records the reviewer's name with the count and the hash. A later "Review Again" keeps the acceptance
+  while the same forms are held back; a different set needs a new one.
+- **To send more,** raise the limit for that PDF: `LANGUAGE_MAX_USD=…` (or `BOOK_MAX_USD=…` when the PDF's limit is what
+  held them back) for the run, or the limits in the app's settings, then a new estimate.
+
+### Sending, retries and interruptions
+
+#135 (parallel requests):
+- **Several requests at once:** up to `AI_PARALLEL` (default 16, per PDF; see [Options](options.md#model-and-cost)).
+  `AI_PARALLEL=1` sends them one after another, in order. The replies are kept in request order, whatever order they
+  come back in. The log prints one line per request as it finishes ("request 3 of 15: …, done in 41 s (5 of 15 done)").
+- **One retry:** a request that fails (an error from OpenRouter, no connection, no reply in time, a reply that reports an
+  error (`finish_reason` "error", or an error object beside its answer), or a reply with no decisions that can be read) is sent once more, 60 s after "too many requests" (429) and 20 s after anything else. It is
+  sent only when its worst case still fits both the step's limit (`LANGUAGE_MAX_USD`) and the PDF's (`BOOK_MAX_USD`, with
+  what the PDF has spent); otherwise the record says which limit had no room. A request that still fails leaves its word
+  forms to a person ("No AI answer", `failed`).
+- **A reply cut off, or read only in pieces** (not valid JSON as a whole, its decisions read one by one), keeps every
+  decision it finished. The word forms it never reached (no decision, and no refused answer of their own) are sent once
+  more, as one smaller request
+  (`language_requests/NNNr.request.json`; its entry in `language_run.json` has `resend_of`). That resend is never resent
+  itself. Answers the check refused (`echo`, `tag`, `invalid`) are never sent again: the same answer would most likely
+  come back, and it would be paid for twice. A rerun with the same model and prompt reuses the pair, with no new request.
+- **An interruption** (Ctrl+C in a terminal run of `run_api.sh`, `batch_api.sh` or `name_languages.py`, or an error
+  while requests are out) sends nothing more: no waiting request starts, and the step does not wait for the requests
+  already sent. Those may still be charged. Each is kept in `language_run.json` under `stopped_in_flight` at its worst
+  case, since its charge isn't known, and counts toward the PDF's limit (never as money spent). So an interruption can
+  cost what the requests already sent cost, at most their worst cases. A rerun keeps these, and what an earlier attempt
+  paid (`earlier_cost_usd`), even with another model or prompt. review.md's run line names any such worst case apart
+  from the cost ("up to $X more for N AI request(s) … whose charge is not known").
 
 | File | What it holds |
 |---|---|
 | `audit/lang_candidates.json` | every candidate form and its places |
 | `language_estimate.json` | the expected and worst-case cost, before any request |
-| `language_run.json` | model, prompt, each request's reply, usage, cost, the AI's decisions by form, the reading rule's (`local`, `reading_rule`) |
+| `language_run.json` | model, prompt, each request's reply, usage, cost, when it was sent and finished (`sent_at`, `finished_at`, clock seconds, comparable across PDFs run side by side), the AI's decisions by form, the reading rule's (`local`, `reading_rule`); while requests are out, `in_flight` (each one's worst case); after an interruption, `stopped_in_flight` |
 | `reviews/_audit/language_contexts.json` | the context lines the review page shows |
 
 ## The Ready rule
@@ -170,7 +288,7 @@ title, and showed how much the title matters (Cantonese answers on the book on C
 Each request's answer may run to 800 tokens plus 200 for each of its first 20 word forms and 130 for each further one
 (`lib/costs.py allowance`; raised 2026-11-14 after 58 of 1,040 test replies reached the earlier 300 + 100 per form).
 Output is billed as used, so this raises only the worst case the estimate shows, not what a book costs. On cadaverous (2,722 forms, 19 requests, 10 words of context) the worst case is about $4.84 (expected about $2.90),
-within the language step's default limit of $6; with the work order it is about $5.46, within the default $8 per PDF.
+within the language step's default limit ($6 then, $25 since #155); with the work order it is about $5.46, within the default per PDF ($8 then, $50 since #155).
 
 Sonnet 5.5 stays the language step's model (2026-11-14): Opus 5.5 was no more accurate on the 473 test items and costs
 about 2.2 times as much. Sonnet 5.5, measured on the test books (2026-11-13): about $0.09 per 100 forms. A book with 2,800 forms (cadaverous)

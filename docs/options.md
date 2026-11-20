@@ -16,6 +16,7 @@ These settings change what one run or batch does. Put them before the command, f
 | `ESTIMATE=1` | Audit and cost estimate only. A later run with the same label reuses the audit |
 | `REPLY=path/to/reply.txt` | Reuses a saved AI reply instead of making an AI request (no cost). A relative path is taken from the folder you run the command in |
 | `REVIEW=1` | Stops after the AI's decisions so a reviewer can approve, change or reject each one before anything is applied. One PDF at a time, not in batches (see [Reviewing the work order](review-step.md)) |
+| `AI_RETRY=1` | A run held at its review stop because AI requests did not finish: asks the AI again for what is missing, then stops for review again (no new work order). The unfinished page readings go first; the language suggestions are estimated again afterward and sent by the next `AI_RETRY=1`. Use the same command as the run, without `REVIEW=1` (see [Missing AI suggestions](review-step.md#missing-ai-suggestions)) |
 | `REVIEW_DRYRUN=off` | With `REVIEW=1`: skips the trial run of the apply step at the review stop (see [The trial run at the review stop](#the-trial-run-at-the-review-stop)) |
 | `DECIDE=none` | No AI request at all: the work order starts empty and a reviewer fills it in, $0 (see [No AI request](#no-ai-request)) |
 | `KEEP=1` | Keeps the working files (digest, figure crops, raw reply, logs) |
@@ -32,19 +33,21 @@ To apply a reviewed work order, rerun the same label without `REVIEW=1`.
 |---|---|
 | `MODEL=openai/gpt-5` | Any OpenRouter model id for this run or batch (default: `DEFAULT_MODEL` in `decide.py`, `anthropic/claude-sonnet-5.5`; see [Models](models.md)) |
 | `MAX_USD=3` | The limit on what one AI request could cost, in dollars (default 2). Claude models only |
-| `BOOK_MAX_USD=6` | The limit on what all of a PDF's requests could cost together (default 8). Claude models only (see [The limit per PDF](#the-limit-per-pdf)) |
-| `BATCH_MAX_USD=20` | Batches only: the limit on what the batch has already spent plus what it could still cost (default 10) |
+| `BOOK_MAX_USD=60` | The limit on what all of a PDF's requests could cost together (default 50). Claude models only (see [The limit per PDF](#the-limit-per-pdf)) |
+| `BATCH_MAX_USD=300` | Batches only: the limit on what the batch has already spent plus what it could still cost (default 250) |
 | `PAGE_READS=off` | No page readings: scanned Hawaiian pages are not read whole by the AI (see [Page readings](#page-readings)) |
 | `PAGE_READS=all` | Page readings for every scanned page with text, not only mostly Hawaiian ones |
-| `PAGE_READS_MAX_USD=5` | The limit on what the page readings together could cost, in dollars (default 3) |
+| `PAGE_READS_MAX_USD=30` | The limit on what the page readings together could cost, in dollars (default 25) |
 | `LANG_TAGS=off` | No language step: words and passages in other languages are not sent to the AI (see [Language tags](#language-tags)) |
 | `LANGUAGE_MODEL=…` | The model the language step uses (default: Sonnet 5.5, whatever the work order uses) |
-| `LANGUAGE_MAX_USD=6` | The limit on what the language step could cost, in dollars (default 6) |
-| `LANGUAGE_MAX_FORMS=2000` | Send at most this many word forms to the language step (default 5000); the rest are listed, not sent |
+| `LANGUAGE_MAX_USD=30` | The limit on what the language step could cost, in dollars (default 25) |
+| `LANG_HELD_SHOWN=12` | Set by the app's Spend and by `batch_api.sh`, not by hand: how many word forms the estimate shown held back. With `AUTO=1`, more held back after the work order holds the review instead of sending (see [Word forms not sent](languages.md#word-forms-not-sent)). Unset in a terminal run, which compares with its own first estimate |
+| `LANGUAGE_MAX_FORMS=2000` | An override: send at most this many word forms to the language step. Off by default: the dollar limits alone decide (see [Word forms not sent](languages.md#word-forms-not-sent)) |
 | `LANG_GROW=on` | The language step tags a title's whole extent (romanized words around a candidate, inside quotes or italics, or before a Chinese-character gloss), so the voice switches once. Off by default, until the Windows screen-reader check of a title tagged in pieces (see [Language tags](#language-tags)) |
 | `LANG_GROUP=on` | Adjacent single Chinese characters become one word form for the language step and the review page (fewer rows). Off by default |
 | `LANG_READING_RULE=off` | Every word form in Chinese characters goes to the AI, even one with a reading printed beside every place (by default those are decided locally, #123; see [Language tags](#language-tags)) |
 | `LANG_REPLY=…` | A saved language reply (a `language_run.json`) to apply instead of a request; `FROM=` sets it per book. A relative path is taken from the folder you run the command in |
+| `AI_PARALLEL=2` | How many AI requests one PDF sends at once, for its figure requests, its page readings and its language step (default 16). `AI_PARALLEL=1` sends them one at a time, in order. In a batch it applies to each PDF (see [Batches](#batches)) |
 | `FIGURE_PASSES=off` | No figure requests: figures past the first request's 100 images go to a reviewer (see [Files](files.md)) |
 
 ## Untagged PDFs (intake)
@@ -61,6 +64,8 @@ To apply a reviewed work order, rerun the same label without `REVIEW=1`.
 | Before the command | Effect |
 |---|---|
 | `JOBS=1` | PDFs run at the same time (default 3). Use 1 after a rate limit (see [When the AI request fails](troubleshooting.md#when-the-ai-request-fails)) |
+
+`AI_PARALLEL` counts per PDF, so a batch can have `AI_PARALLEL` × `JOBS` requests out at once: 48 with the defaults (16 × 3). The default 16 was measured (#135 (parallel requests)): one PDF's 15 language requests took 70 s at 15 (118 s at 8, 852 s one at a time), and almost every PDF has 15 requests or fewer, so at 16 it sends them in one wave. **Up to 6 PDFs at once at 16 was measured clean:** six PDFs side by side with no cap put 97 requests out at once (and 17 PDFs 79), with no rate limit and no request slower than at 24 in flight; a probe took 200 tiny requests at once. So `JOBS=6` is the most measured at the default. A request refused with "too many requests" (429) waits 60 s and is sent once more. If a batch still meets rate limits, rerun it with `JOBS=1` (the batch summary prints the command), or lower `AI_PARALLEL`.
 
 `BATCH_MAX_USD` and the other batch settings are explained in [Batch runs](batch-runs.md).
 
@@ -183,7 +188,7 @@ The cost of a cut-off reply is listed in `record.json` under `earlier_attempts`,
 
 ## What a run may cost
 
-**The dollar limits are the only limits you set:** $2 per AI request, $8 per PDF and $10 per batch. The app and the terminal use the same defaults. They apply to Claude models only.
+**The dollar limits are the only limits you set:** $2 per AI request, $25 for the language step, $25 for the page readings, $50 per PDF and $250 per batch. The app and the terminal use the same defaults. They apply to Claude models only.
 
 Before each AI request, the pipeline shows two figures:
 
@@ -251,7 +256,7 @@ Money spent by previous attempts in the folder is shown the same way.
 
 ### Where the limits live
 
-`lib/costs.py` holds the limit defaults in one place (`DEFAULT_LIMITS`). The app and the terminal read them from there; the app's `webapp/settings.json` no longer lists them (see [Settings](app-setup.md#settings)).
+`lib/costs.py` holds the limit defaults in one place (`DEFAULT_LIMITS`), and beside them the most the app's settings accept for each (`LIMIT_CEILINGS`, ten times the default). The app and the terminal read them from there; the app's `webapp/settings.json` no longer lists them (see [Settings](app-setup.md#the-limits)).
 
 ### Page readings in the app
 

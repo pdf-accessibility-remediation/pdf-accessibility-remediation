@@ -68,7 +68,9 @@ def forms(places, skip=LOCAL, unknown_italic_only=False, group=False):
     one-character Han places become one form first (group_han)."""
     by = collections.OrderedDict()
     if group: places = group_han(places)
-    for p in places:
+    # a second half's place (#140, `half`) may come before its first half's (a lower MCID on the page): forms are met, and
+    # so numbered, by their other places first, as before second halves were places
+    for p in sorted(places, key=lambda p: bool(p.get('half'))):
         if any(c in skip for c in p['class']) and len(p['class']) == 1: continue
         g = group_of([c for c in p['class'] if c != 'passage'] or p['class'])
         if 'passage' in p['class']: g = 'passage'
@@ -264,10 +266,43 @@ def body(req, model, prompt, max_tokens, supported=None):
 def _same_form(a, b):
     return unicodedata.normalize('NFC', ' '.join(str(a or '').split())).casefold() == unicodedata.normalize('NFC', ' '.join(str(b or '').split())).casefold()
 
-def parse(text, ids, forms=None):
+def _loose(s):
+    """An echo's loose key (#137, review 02 H1): letters and digits only, NFC, case folded."""
+    return ''.join(ch for ch in unicodedata.normalize('NFC', str(s or '')).casefold() if ch.isalnum())
+
+def marks_of(req):
+    """{item id: the texts marked [[id|…]] with it in this request's snippets}, sorted: what the reply may echo besides
+    the item's form. Read from the request as sent, so nothing new is sent (#137)."""
+    out = collections.defaultdict(set)
+    for sn in (req or {}).get('snippets') or []:
+        for m in _MARK.finditer(sn.get('text') or ''): out[m.group(1)].add(m.group(2))
+    return {i: sorted(v) for i, v in out.items()}
+
+def echo_owners(forms, marks):
+    """{loose key: the ids of this request whose form or a mark has it}: rule U's ownership test."""
+    own = collections.defaultdict(set)
+    for i, f in (forms or {}).items():
+        for t in [f, *((marks or {}).get(i) or [])]:
+            k = _loose(t)
+            if k: own[k].add(i)
+    return own
+
+def echo_ok(e, i, forms, owners):
+    """Rule U (#137, review 02 H1): the echo matches the item's form with spacing and case ignored (the rule before), or
+    its loose key is the loose key of the item's form or of a text marked with its id, and of no other item's in the same
+    request. A reply that copied the printed spelling ("Tenpyō hōji ninen:", a line's half of a broken word) is kept; an
+    answer that landed on another item (two items differing only by an ʻokina or punctuation, a mark that is another
+    item's whole form) is not."""
+    if _same_form(e, forms.get(i)): return True
+    k = _loose(e)
+    return bool(k) and owners.get(k) == {i}
+
+def parse(text, ids, forms=None, marks=None):
     """The model's reply text → ({id: decision}, dropped). A decision: {lang (or None), confidence, why, note?}. A
-    decision is dropped when its id is unknown or repeated, its tag is not one the step may write (langtag.valid_part),
-    or its confidence or reason is not one of the listed words."""
+    decision is dropped when its id is unknown or repeated, its form echo fits no item or another (echo_ok; marks: the
+    request's marks_of, None to compare forms only), its tag is not one the step may write (langtag.valid_part), or its
+    confidence or reason is not one of the listed words. Each dropped entry (#137) carries a `code` (DROP_CODES) beside
+    its `why`, and an answer's own `echo`, `lang` and `confidence`, so the record keeps what was thrown away."""
     m = re.search(r'\{.*\}', text or '', re.S)
     try: data = json.loads(m.group(0)) if m else None
     except ValueError: data = None
@@ -278,25 +313,58 @@ def parse(text, ids, forms=None):
         for x in re.finditer(r'\{[^{}]*"id"[^{}]*\}', text or ''):
             try: found.append(json.loads(x.group(0)))
             except ValueError: pass
-        if not found: return {}, [{'id': None, 'why': 'reply is not a decisions object'}]
-        dropped.append({'id': None, 'why': f'reply not valid JSON: {len(found)} decisions read one by one'})
+        if not found: return {}, [{'id': None, 'code': 'unreadable', 'why': 'reply is not a decisions object'}]
+        dropped.append({'id': None, 'code': 'partial', 'why': f'reply not valid JSON: {len(found)} decisions read one by one'})
         data = {'decisions': found}
+    owners = echo_owners(forms, marks) if forms else {}
+    def drop(i, code, why, d=None):
+        e = {'id': i, 'code': code, 'why': why}
+        if isinstance(d, dict):
+            if 'form' in d: e['echo'] = str(d['form'])[:200]
+            e['lang'] = d.get('lang'); e['confidence'] = d.get('confidence')
+        dropped.append(e)
     for d in data['decisions']:
-        if not isinstance(d, dict): dropped.append({'id': None, 'why': 'not an object'}); continue
+        if not isinstance(d, dict): drop(None, 'invalid', 'not an object'); continue
         i = str(d.get('id'))
-        lang = d.get('lang'); conf = d.get('confidence'); why = d.get('why')
-        if i not in ids: dropped.append({'id': i, 'why': 'unknown id'}); continue
-        if i in out: dropped.append({'id': i, 'why': 'answered twice'}); continue
-        if forms and 'form' in d and not _same_form(d['form'], forms.get(i)):        # the form echo (review 06, L1): an id off by one
-            dropped.append({'id': i, 'why': 'its form does not match the item'}); continue
-        if lang is not None and not langtag.valid_part(lang): dropped.append({'id': i, 'why': f'tag not allowed: {lang!r}'}); continue
-        if conf not in CONF: dropped.append({'id': i, 'why': f'confidence not allowed: {conf!r}'}); continue
-        if why not in WHY: dropped.append({'id': i, 'why': f'reason not allowed: {why!r}'}); continue
+        lang = langtag.without_suppressed_script(d.get('lang')); conf = d.get('confidence'); why = d.get('why')   # 'ms-Latn' → 'ms' (#137)
+        if i not in ids: drop(i, 'unknown_id', 'unknown id', d); continue
+        if i in out: drop(i, 'twice', 'answered twice', d); continue
+        if forms and 'form' in d and not echo_ok(d['form'], i, forms, owners):     # the form echo (review 06, L1): an id off by one
+            drop(i, 'echo', 'its form does not match the item', d); continue
+        if lang is not None and not langtag.valid_part(lang): drop(i, 'tag', f'tag not allowed: {lang!r}', d); continue
+        if conf not in CONF: drop(i, 'invalid', f'confidence not allowed: {conf!r}', d); continue
+        if why not in WHY: drop(i, 'invalid', f'reason not allowed: {why!r}', d); continue
         out[i] = {'lang': lang, 'confidence': conf, 'why': why, **({'evidence': str(d['evidence'])[:160]} if d.get('evidence') else {}),
                   **({'note': str(d['note'])[:120]} if d.get('note') else {})}
     for i in ids:
-        if i not in out and not any(x['id'] == i for x in dropped): dropped.append({'id': i, 'why': 'not answered'})
+        if i not in out and not any(x['id'] == i for x in dropped): drop(i, 'not_answered', 'not answered')
     return out, dropped
+
+DROP_CODES = ('echo', 'tag', 'invalid', 'unknown_id', 'twice', 'not_answered', 'unreadable', 'partial')
+# Why a word form has no AI decision (#137), as language_parts version-2 forms carry it (`no_answer`) and the review page
+# words it. One per form: its own answer's reason when it had one; else what became of its request.
+NO_ANSWER = ('echo', 'tag', 'invalid', 'not_answered', 'cut_off', 'failed', 'unreadable')   # unreadable: #151 (review 22 M3)
+
+KIND_WORDS = {'existing': 'language tags already in the PDF', 'cjk': 'words in Chinese, Japanese or Korean characters',   # #159: plain names
+              'marks': 'words with macrons or other marks', 'hawaiian': 'Hawaiian-looking words', 'script': 'words in other scripts',
+              'passage': 'passages', 'accented': 'words with accents', 'latin': 'other Latin-script words',
+              'unknown': 'words not in the English word list'}
+
+def no_answer(ids, dropped, finish=None):
+    """{id: NO_ANSWER code} for one request's ids with no decision: echo, tag or invalid from the id's own dropped answer;
+    else, for a reply cut off (finish 'length'), cut_off; for a reply that couldn't be read at all, unreadable (#151); for a
+    reply read only in pieces, invalid; otherwise
+    not_answered (a complete reply skipped it). `failed` (a request with no reply) is the caller's."""
+    whole = {d['code'] for d in dropped if d.get('id') is None}
+    out = {}
+    for i in ids:
+        own = next((d['code'] for d in dropped if d.get('id') == i and d.get('code') in ('echo', 'tag', 'invalid')), None)
+        if own: out[i] = own
+        elif finish == 'length': out[i] = 'cut_off'
+        elif 'unreadable' in whole and 'partial' not in whole: out[i] = 'unreadable'   # #151: the whole reply couldn't be read
+        elif whole & {'unreadable', 'partial'}: out[i] = 'invalid'
+        else: out[i] = 'not_answered'
+    return out
 
 def to_parts(fs, decisions, tag_conf=('high', 'medium')):
     """Decisions → language_parts: every place of a form tagged with high or medium confidence. Low, null and unsure
@@ -319,13 +387,14 @@ def needs_person(f, d):
     non_latin = any(c.startswith(NON_LATIN) for c in f['class'])
     return f['group'] == 'existing' or not d or (non_latin and (not d.get('lang') or d.get('confidence') == 'low'))
 
-def to_rows(fs, decisions, tag_conf=('high', 'medium'), readings=None):
+def to_rows(fs, decisions, tag_conf=('high', 'medium'), readings=None, reasons=None):
     """Decisions → language_parts, version 2 (review 06, record size): one entry per form, with the AI's answer and whether
     it is tagged (`tag`: high or medium confidence with a language), and the places as rows [page, mcid, first, last,
     form index]. Every form with places is kept, tagged or not, so a person can tag what the AI left untagged; apply.py
     tags only forms with `tag` true. Existing tags carry `current` (the PDF's value), never `tag`: a person decides them.
     A decision made by the reading rule (lib/hanreading.py, #123) carries `rule`; readings ({form id: the reading printed
-    beside a Han-only form, hanreading.compact}) go into each form's `reading` (#124's group approval)."""
+    beside a Han-only form, hanreading.compact}) go into each form's `reading` (#124's group approval). reasons ({form id:
+    NO_ANSWER code}): why a form has no decision at all, kept as its `no_answer` (#137)."""
     forms, rows = [], []
     for f in fs:
         d = decisions.get(f['id']) or {}
@@ -334,6 +403,7 @@ def to_rows(fs, decisions, tag_conf=('high', 'medium'), readings=None):
              **({'evidence': d['evidence']} if d.get('evidence') else {}), **({'current': f['current']} if f.get('current') else {}),
              **({'rule': d['rule']} if d.get('rule') else {}), **({'reading': (readings or {})[f['id']]} if f['id'] in (readings or {}) else {}),
              **({'carried': f['carried']} if f.get('carried') else {}),
+             **({'no_answer': (reasons or {})[f['id']]} if not d and (reasons or {}).get(f['id']) in NO_ANSWER else {}),
              'tag': bool(f['group'] != 'existing' and d.get('lang') and d.get('confidence') in tag_conf),
              **({'person': True} if needs_person(f, d) else {}), 'places': len(f['places'])}
         i = len(forms); forms.append(e)

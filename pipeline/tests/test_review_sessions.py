@@ -166,6 +166,24 @@ def test_finish_session_records_who_set_each_choice(tmp_path):
     row = S.summary_row(s)
     assert row['carried'] == 4 and row['since_start'] == 1
 
+def test_finish_session_keeps_a_group_approval_mark(tmp_path):
+    """Review 33 F3: the session record keeps a choice's group-approval button (`bulk`) beside its status; an unchanged
+    choice stays carried from the session that set it."""
+    R, rec, ai, dg = run_folder(tmp_path)
+    S.check_basis(R, rec)
+    p = S.P(R); items = core.build_items(ai, dg)
+    S.save(p['items'], {'items': items})
+    marked = dict(ALL, **{'alt:20 0 R': {'status': 'approved', 'bulk': 'all_shown'}})
+    start = {k: dict(v, ai=next(it['ai'] for it in items if it['id'] == k), set_in='001') for k, v in marked.items()}
+    s = {'id': '002', 'from': '001', 'status': 'open', 'start': start, 'start_additions': []}
+    S.save(p['draft'], {'reviewer': 'Kim', 'decisions': S.page_decisions(start), 'additions': []})
+    wo = core.apply_decisions(ai, items, marked); S.save(os.path.join(p['dir'], 'workorder.json'), wo)
+    S.save(os.path.join(p['dir'], 'review.json'), {'reviewer': 'Kim', 'date': '2026-11-19', 'method': 'page', 'changes': core.diff(ai, wo)})
+    os.makedirs(p['sessions'], exist_ok=True)
+    s = S.finish_session(R, s, rec)
+    assert s['decisions']['alt:20 0 R']['bulk'] == 'all_shown' and s['decisions']['alt:20 0 R']['set_in'] == '001'
+    assert 'bulk' not in s['decisions']['retype:10 0 R'] and s['since_start'] == []
+
 def test_reading_order_cards_carry_and_reach_the_record(tmp_path):
     """A reading-order finding is a card like any other: its choice (seen, with a note) carries to the next session, is
     listed in record.json review.decisions, and its note goes to review.json's notes, as review/core.py finish writes them."""
@@ -475,6 +493,34 @@ def test_ctrl_c_during_an_auto_save_waits_for_it(tmp_path):
         assert S.load(p['draft'])['session_notes'] == 'the last edit'
     finally:
         if pr.poll() is None: pr.kill()
+
+def test_the_draft_keeps_the_acceptance_of_held_back_forms(tmp_path):
+    """review 31 L3: "Accept Without the Word Forms Not Sent" is kept in the draft with the count and hash of the forms
+    it was given for (a reload keeps it); a value of another shape is dropped. The page restores it only for the same forms."""
+    R, rec, ai, dg = run_folder(tmp_path)
+    S.check_basis(R, rec)
+    p = S.P(R); items = core.build_items(ai, dg)
+    S.save(p['items'], {'book': 'book.pdf', 'run': 'run', 'pages': 5, 'pdf': '', 'groups': core.GROUPS, 'levels': core.LEVELS,
+                        'add_kinds': core.ADD_KINDS, 'items': items, 'addable': core.addable(ai, dg),
+                        'session': {'key': 'abc:002', 'id': '002', 'reopened': True, 'name_default': 'Session 2'}})
+    port = free_port()
+    t = threading.Thread(target=lambda: __import__('review.server', fromlist=['serve']).serve(p['dir'], '2026-10-31', port, open_browser=False), daemon=True)
+    t.start(); up(port)
+    def call(path, body):
+        req = urllib.request.Request(f'http://127.0.0.1:{port}{path}', data=json.dumps(body).encode(),
+                                     headers={'Content-Type': 'application/json', 'Host': f'127.0.0.1:{port}'})
+        with urllib.request.urlopen(req, timeout=20) as r: return r.status, json.loads(r.read())
+    base = {'reviewer': 'Kim', 'decisions': ALL, 'additions': []}
+    call('/keep', dict(base, held_back_draft={'count': 2400, 'sha': 'abcd1234'}, saved_at='2026-10-31T12:00:01.000Z'))
+    assert S.load(p['draft'])['held_back_draft'] == {'count': 2400, 'sha': 'abcd1234'}
+    call('/keep', dict(base, held_back_draft={'count': True, 'sha': 'x'}, saved_at='2026-10-31T12:00:02.000Z'))
+    assert 'held_back_draft' not in S.load(p['draft'])
+    call('/keep', dict(base, held_back_draft=None, saved_at='2026-10-31T12:00:03.000Z'))
+    assert 'held_back_draft' not in S.load(p['draft'])
+    call('/finish', dict(base, saved_at='2026-10-31T12:00:04.000Z', gaps_ack={'figures_without_alt': 'later'})); t.join(5)
+    page = open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'review', 'page.html'), encoding='utf-8').read()
+    assert 'function heldDraftOk(h) { const x = state.held_back_draft; return !!(h && x && x.count === h.count && x.sha === h.sha); }' in page
+    assert 'let HELD_ACCEPT = heldDraftOk((DATA.languages || {}).held_back);' in page and "'Undo the Acceptance'" in page
 
 def test_an_older_draft_never_overwrites_a_newer_one(tmp_path):
     """Review 14 L5: /keep and the Finish dialog's /save skip a draft whose saved_at is older than the one on disk (a

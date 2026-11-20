@@ -73,7 +73,7 @@ def show(font, text):
     if font == 'F3': return f'{f3_hex(text)} Tj'
     return f'{lit(text)} Tj'
 
-def build(path, runs, doc_lang='en'):
+def build(path, runs, doc_lang='en', step=40):
     pdf = pikepdf.new()
     lines, y = [], 740
     for n, r in enumerate(runs):
@@ -85,7 +85,7 @@ def build(path, runs, doc_lang='en'):
             lines += [f'/{tag} {props} BDC', 'BT', f'/{font} 11 Tf 13 TL 72 {y} Td', *body, 'ET', 'EMC']
         else:
             lines += ['BT', f'/{font} 11 Tf 13 TL 72 {y} Td', f'/{tag} {props} BDC', *body, 'EMC', 'ET']
-        y -= 40
+        y -= step                                       # step: the line spacing (smaller fits more runs on the one page)
     page = pdf.add_blank_page(page_size=(612, 792))
     page.obj.Resources = pikepdf.Dictionary(Font=fonts(pdf))
     page.obj.Contents = pdf.make_stream('\n'.join(lines).encode('latin-1'))

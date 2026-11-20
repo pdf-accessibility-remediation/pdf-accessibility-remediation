@@ -39,6 +39,16 @@ def js_runner():
     if n and subprocess.run([n, '-e', '1'], capture_output=True, timeout=30).returncode == 0: return [n, '-e']
     return [JSC, '-e'] if os.access(JSC, os.X_OK) else None
 
+def js_file_cmd(code, folder):
+    """The engine's command for a program written to a file in `folder` (pytest's tmp_path), for programs that carry
+    data: Linux limits one argument to 128 KB, so `-e <program>` fails there on a large one (#159, CI on PR #164).
+    node and jsc both take a file path. None when no engine runs here."""
+    run = js_runner()
+    if run is None: return None
+    p = os.path.join(str(folder), 'program.js')
+    with open(p, 'w', encoding='utf-8') as f: f.write(code)
+    return run[:1] + [p]
+
 @pytest.mark.skipif(js_runner() is None, reason='no JavaScript engine (node or jsc) runs here')
 @pytest.mark.parametrize('f', ['webapp/panel.js', 'review/page.html'])
 def test_the_javascript_gives_the_same_words_in_honolulu(f):

@@ -13,8 +13,8 @@ is applied without that review.
     RUN_DIR/_handedit/ai_check_estimate.json   the estimate (what the app's Spend shows, lib/costs.py)
 
 --dry-run prints and saves the estimate and stops (ESTIMATE=1 does the same). The step refuses before any request when its worst
-case passes --max-usd (default MAX_USD, else $2), when the PDF's spending so far plus it passes --book-max-usd (default
-BOOK_MAX_USD, else $8), or when the credit is lower. It asks y/N unless AUTO=1 or --yes (the app's Spend sets AUTO=1).
+case passes --max-usd (default MAX_USD, else the per-request limit of lib/costs.py DEFAULT_LIMITS), when the PDF's spending so
+far plus it passes --book-max-usd (default BOOK_MAX_USD, else the per-PDF limit there), or when the credit is lower. It asks y/N unless AUTO=1 or --yes (the app's Spend sets AUTO=1).
 --reply FILE uses a saved answer instead of a request (no cost, no network; the tests and tools/handedit_case.py). Relative paths
 are taken from the folder the command runs in. The API key comes from OPENROUTER_API_KEY or the nearest .env, as for decide.py.
 Exit 1: refused or failed, with the reason.

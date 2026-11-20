@@ -190,7 +190,10 @@ def authorize_handedit_check(s, run, R, fingerprint):
     return {'argv': argv, 'env_set': env, 'extra': extra}
 
 def authorize(s, kind, run, R, fingerprint):
-    """A single run's Spend (kind 'workorder', or 'handedit_check'). Returns {argv, env_set, extra} for jobs.create(kind='spend', paid=True)."""
+    """A single run's Spend (kind 'workorder'), "Ask the AI Again" for a run held at its review stop (kind 'retry', #151), or
+    the AI's check of a hand edit (kind 'handedit_check', #100). Returns {argv, env_set, extra} for jobs.create(kind='spend' or
+    'ai-retry', paid=True)."""
+    if kind == 'retry': return authorize_retry(s, run, R, fingerprint)
     if kind == 'handedit_check': return authorize_handedit_check(s, run, R, fingerprint)
     if kind != 'workorder': raise Refused('This kind of AI step can\'t be sent from here yet.')
     test = bool(s.get('test_reply_dir'))
@@ -220,12 +223,123 @@ def authorize(s, kind, run, R, fingerprint):
         if est['bounds'].get('PAGE_READS_MAX_USD') is not None:   # #49: the pages read whole, as the estimate showed them
             env.update(PAGE_READS='1', PAGE_READS_MAX_USD=f'{est["bounds"]["PAGE_READS_MAX_USD"]:.2f}')
         env.update(language_env(est))                       # #118: the language step only as the estimate showed it
+        if env.get('LANG_TAGS') == 'on':                    # review 33 F1: the word forms the run page said were held back
+            from lib import aistatus
+            try:
+                with open(os.path.join(R, 'language_estimate.json'), encoding='utf-8') as f: shown = json.load(f)
+            except (OSError, ValueError): shown = None
+            env['LANG_HELD_SHOWN'] = str(aistatus.held_count(shown))
     extra = {'fingerprint': fingerprint, 'started_by_click': datetime.datetime.now().isoformat(timespec='seconds'),
              'shown': {'ceiling_usd': est['ceiling_usd'], 'per_call_ceiling_usd': est['per_call_ceiling_usd'], 'expected_usd': (est['expected'] or {}).get('usd'),
                        'bounds': est['bounds'], 'model': est['model']},
              'test': test,
              **{k: ej.get(k) for k in ('book_sha', 'book_name', 'book_file', 'run_name')}}
     return {'argv': argv, 'env_set': env, 'extra': extra}
+
+# ------------------------------------------------------------------ "Ask the AI Again" (#151: a run held at its review stop)
+# run_api.sh's AI_RETRY=1 sends the next unfinished part (lib/aistatus.py retry_parts: the page readings first, else the
+# language step); its stop wrote that part's estimate (or the app's "Get a New Estimate" did). The click is checked
+# against that estimate as it was shown (retry_fingerprint), the limits, the credit and, for a batch's PDF, what is left
+# of the batch's limit; the job is then bound to the "Max Estimated Cost" shown.
+RETRY_FILES = {'pages': 'page_reads_retry_estimate.json', 'language': 'language_retry_estimate.json'}
+TEST_MODE = 'This isn\'t available in test mode.'
+NO_RETRY_ESTIMATE = 'There is no estimate for asking the AI again yet. Select "Get a New Estimate".'
+RETRY_CHANGED = 'The estimate changed since it was shown. Select "Get a New Estimate" and look at the new cost.'
+NOTHING_TO_RETRY = 'Nothing that the AI can be asked again is missing in this run.'
+
+def _load(p):
+    try: return json.load(open(p, encoding='utf-8'))
+    except (OSError, ValueError): return None
+
+def retry_fingerprint(R, part):
+    """sha256 over the part's retry estimate file, language_run.json and page_reads_run.json (a missing file counts as
+    missing): what the card showed, so the job sends only that."""
+    import hashlib
+    h = hashlib.sha256(f'{part}\0'.encode())
+    for f in (RETRY_FILES.get(part) or '-', 'language_run.json', 'page_reads_run.json'):
+        try: b = open(os.path.join(R, f), 'rb').read()
+        except OSError: b = b'\0missing'
+        h.update(f.encode() + b'\0' + b + b'\0')
+    return h.hexdigest()
+
+def retry_estimate(R, part):
+    """The part's retry estimate (a dict), or None."""
+    d = _load(os.path.join(R, RETRY_FILES[part])) if part in RETRY_FILES else None
+    return d if isinstance(d, dict) else None
+
+def retry_refusal(R):
+    """Why this run can't be asked again, as run_api.sh refuses it (in plain words), or None."""
+    if not os.path.isfile(os.path.join(R, 'workorder.ai.json')) or os.path.isfile(os.path.join(R, 'record.json')):
+        return 'This run isn\'t waiting for its review, so there is nothing to ask the AI again.'
+    if os.path.isfile(os.path.join(R, 'review.json')): return 'The review is finished: its decisions are being applied.'
+    if os.path.isfile(os.path.join(R, 'review_decisions.json')): return 'A review of this run was started, so the AI can\'t be asked again.'
+    if os.path.isfile(os.path.join(R, 'ai_override.json')): return 'The review was opened without the missing suggestions, so the AI can\'t be asked again.'
+    return None
+
+def retry_check(s, run, R, worst, per_call):
+    """The limits, the batch's limit and the credit for a retry costing up to `worst` (one request up to `per_call`);
+    raises Refused."""
+    L = costs.limits_of(s)
+    if per_call > L['per_call_usd']:
+        raise Refused(costs.over_limit_words('per_call', per_call, L['per_call_usd']))
+    spent = costs.book_spent(R)
+    if spent + worst > L['per_book_usd']:
+        raise Refused(costs.over_limit_words('per_book', worst, L['per_book_usd'], spent))
+    p_ = run.split('/')
+    if p_[0] == 'batches' and len(p_) == 3:                  # a batch's PDF: what is left of the batch's limit
+        left = L['per_batch_usd'] - costs.batch_spent(os.path.dirname(R))['usd']
+        if worst > left:
+            raise Refused(f'Asking the AI again could cost up to ${costs.up(worst):.2f}, more than the ${max(0.0, int(left * 100) / 100):.2f} left '
+                          f'within this batch\'s limit of ${L["per_batch_usd"]:.2f}.')
+    credit = credit_read(s)                                  # a fresh "Check Credit Again" read, else one now (free: nothing of the book is sent)
+    if credit is None: credit = check_credit(s).get('usd')
+    if credit is None: raise Refused(credit_words(s))
+    if worst > credit: raise Refused(f'Asking the AI again could cost up to ${costs.up(worst):.2f}, more than the ${credit:.2f} of credit left.')
+    return L
+
+def authorize_retry(s, run, R, fingerprint):
+    """"Ask the AI Again" (#151): AI_RETRY=1 AUTO=1 bash run_api.sh, in the run's folder (RUN_DIR) with the settings it
+    stopped with (review_stop.json), its part's limit bound to the estimate shown and BOOK_MAX_USD to the per-PDF limit."""
+    if s.get('test_reply_dir') or s.get('test_batch_from'): raise Refused(TEST_MODE)
+    why = retry_refusal(R)
+    if why: raise Refused(why)
+    from lib import aistatus
+    st = aistatus.status(R); part = aistatus.retry_parts(st)
+    if not st['held'] or not part: raise Refused(NOTHING_TO_RETRY)
+    est = retry_estimate(R, part)
+    if est is None: raise Refused(NO_RETRY_ESTIMATE)
+    if fingerprint != retry_fingerprint(R, part): raise Refused(RETRY_CHANGED)
+    if isinstance(est.get('refused'), dict): raise Refused(est['refused'].get('words') or 'Asking the AI again was left out for its cost.')
+    if not int(est.get('to_read' if part == 'pages' else 'to_send') or 0): raise Refused(NO_RETRY_ESTIMATE)
+    model = str(est.get('model') or '')
+    if not model.startswith('anthropic/'):
+        raise Refused('The AI model set for the app isn\'t one whose cost the app can check, so it can\'t be sent from here.')
+    if part == 'language' and est.get('prompt_sha256') != current_language_prompt(): raise Refused(OUT_OF_DATE)
+    worst = float(est.get('worst_case_usd') or 0)
+    per_call = float(est.get('per_page_worst_usd' if part == 'pages' else 'per_call_worst_usd') or 0)
+    L = retry_check(s, run, R, worst, per_call)
+    from . import runs as RN
+    src, why = RN.first_original(s, R)
+    if why: raise Refused(why.replace('Applying the reviewed decisions requires', 'Asking the AI again requires'))
+    stop = _load(os.path.join(R, 'review_stop.json')) or {}
+    se = stop.get('env') if isinstance(stop.get('env'), dict) else {}
+    cap = f'{costs.round_up(worst):.2f}'
+    env = {'RUN_DIR': R, **{k: str(v) for k, v in se.items() if k in ('OCR_LANG', 'INTAKE_REUSE', 'INTAKE', 'OUT') and v},
+           'AI_RETRY': '1', 'AUTO': '1', 'BOOK_MAX_USD': f'{L["per_book_usd"]:.2f}'}
+    other = se.get('LANGUAGE_MODEL' if part == 'pages' else 'MODEL')   # the other step's model, as the run had it (Claude only)
+    if part == 'pages':
+        env.update(MODEL=model, PAGE_READS_MAX_USD=cap)
+        if str(other or '').startswith('anthropic/'): env['LANGUAGE_MODEL'] = other
+    else:
+        env.update(LANGUAGE_MODEL=model, LANGUAGE_MAX_USD=cap)
+        if str(other or '').startswith('anthropic/'): env['MODEL'] = other
+    name_, label_ = stop.get('name') or os.path.basename(os.path.dirname(R)), os.path.basename(R)
+    p_ = run.split('/')
+    if p_[0] == 'batches' and len(p_) == 3: name_, label_ = p_[2], p_[1]          # a batch's PDF: runs/batches/<label>/<name>
+    x = est.get('expected') if isinstance(est.get('expected'), dict) else {}
+    extra = {'fingerprint': fingerprint, 'started_by_click': datetime.datetime.now().isoformat(timespec='seconds'), 'part': part,
+             'shown': {'part': part, 'ceiling_usd': worst, 'max_usd': costs.round_up(worst), 'expected_usd': x.get('usd'), 'model': model}, 'test': False}
+    return {'argv': ['bash', 'run_api.sh', src, name_, label_], 'env_set': env, 'extra': extra}
 
 def authorize_batch(s, label, books_list, total, fingerprint):
     """A batch's Spend: books_list is the app's book list file, total the costs.batch() shown (its fingerprint checked by

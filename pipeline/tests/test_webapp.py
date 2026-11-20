@@ -90,7 +90,9 @@ def test_child_env_is_clean(setup):
              'REPLY': 'r.txt', 'FROM': 'v8-g1', 'KEEP': '1', 'RUNS_DIR': '/x', 'RUN_DIR': '/y', 'INTAKE': 'off', 'OCR': 'off', 'FORCE_OCR': '1',
              'MAX_TOKENS': '9', 'VERAPDF': 'off', 'OPENROUTER_API_KEY': 'sk-secret', 'AUTO': '1', 'PYTHONPATH': '/p'}
     env = config.child_env(s, {'REVIEW': '1'}, environ=dirty)
-    assert set(env) == {'PATH', 'HOME', 'LANG', 'LC_ALL', 'TMPDIR', 'VERAPDF', 'PYTHONUNBUFFERED', 'RUNS_DIR', 'PAGE_READS', 'LANG_TAGS', 'REVIEW'}
+    assert set(env) == {'PATH', 'HOME', 'LANG', 'LC_ALL', 'TMPDIR', 'VERAPDF', 'PYTHONUNBUFFERED', 'RUNS_DIR', 'PAGE_READS', 'LANG_TAGS', 'REVIEW',
+                        'APP_LANGUAGE_MAX_USD', 'APP_PAGE_READS_MAX_USD', 'APP_BOOK_MAX_USD'}   # review 31 L1: the app's limits, never spent under
+    assert 'BOOK_MAX_USD' not in env and 'LANGUAGE_MAX_USD' not in env                       # a review job gets no bound
     assert env['PAGE_READS'] == 'off' and env['LANG_TAGS'] == 'off'      # #118: the language step only when a Spend showed it
     assert env['VERAPDF'] == s['tools']['VERAPDF'] and env['PATH'].split(os.pathsep)[0] == os.path.dirname(sys.executable)
     with pytest.raises(ValueError): config.child_env(s, {'MODEL': 'x'}, environ=dirty)

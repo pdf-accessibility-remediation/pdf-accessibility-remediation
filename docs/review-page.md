@@ -214,6 +214,10 @@ It opens with one paragraph, the same on every PDF:
 - **A form the AI left untagged** says why in plain words: "a name", "part of English", "not a word of a known
   language", "not sure", "it varies", or, for a low-confidence answer (never tagged), "low confidence; its guess:
   Japanese · ja". A reason with no such wording is not shown, and no reason shows no parentheses.
+- **A form with no AI answer at all** (#137) says "No AI answer", never that the AI left it untagged, with the reason
+  the run recorded: "its reply could not be matched to this word", "the AI gave a language that cannot be written into the PDF",
+  "its answer was not in the expected form", "the reply skipped this word", "the AI’s reply stopped before this word"
+  or "its request did not finish". A run made before these reasons were recorded shows "No AI answer" alone.
 - **A form decided by the reading rule** (#123: Chinese characters alone with a reading printed beside every place)
   says "The reading printed beside it tags it as Japanese (a fixed rule, not the AI: every place has the reading)". A
   person approves it like the AI's.
@@ -232,30 +236,64 @@ It opens with one paragraph, the same on every PDF:
   sits in the page's marked content alone. A name's fit is checked on the word form's text; apply.py checks the whole
   tag's text, so the two could differ for a tag that holds more than one run. The OCR language choice, the "Finish
   Review" dialog and the run page show names only.
-- Rows load 100 at a time ("Show More").
+- **Pages.** A language with more than 100 word forms is shown one page of 100 at a time (review 31, Patrick's design).
+  Above and below the rows, numbered page buttons come in fixed blocks of ten (1–10, 11–20, …; the last block may be
+  shorter). "<" and ">" open the first page of the previous or next block and show only where there is one; a language of
+  ten pages or fewer shows its numbers alone. The page shown is blue, bold and bordered, and `aria-current="page"`. "..."
+  opens a "Go to Page" field with "Go" (Enter works too); a number outside 1 to the last page gets a message under the field
+  ("Enter a page number from 1 to 48."), never a jump. "Page 45 of 48" stays as a heading above the rows. Every control is
+  a button of at least 44 by 44 px, named "Page 12", "Previous Pages", "Next Pages" and "Go to Page" (the arrows and "..."
+  have the same words as tooltips). After a page change, focus goes to the "Page N of M" heading, and a polite live region
+  says which word forms are shown ("Word forms 4,401 to 4,500 of 4,722 in Pali are shown."). A page is a fixed slice of the
+  server's order: decided rows stay where they were. Pages are not kept: every session, a "Review Again" included, opens
+  each language on page 1, with every decision kept.
+- The fold's bar counts the whole language ("4,542 of 4,722 not reviewed"; `language_summary` sends each fold's row ids),
+  not only the page shown.
 - "Language Tags" on "Ready to Ship?" reads "Approved" once every form is decided.
+
+### Word forms not sent
+
+When the language step held word forms back (they didn't fit the dollar limits, #159), the section opens with a line
+saying how many and why, and the fold "Word Forms Not Sent" lists them by kind (the first 200). They can't be decided
+here: they were never sent, so they have no suggestion. "Accept Without the Word Forms Not Sent" lets the PDF be Ready
+without them: the choice is recorded at "Finish Review" with the reviewer's name, and a later "Review Again" keeps it
+while the same word forms are held back. Until then it is kept in the draft with the count and hash of the forms, so a
+reload keeps it; "Undo the Acceptance" takes it back. The line is in the past tense here ("… were not sent to the AI …
+They are not tagged"), since the run is over. When every word form was held back, the heading reads "Languages" with no
+count. See [Word forms not sent](languages.md#word-forms-not-sent).
 
 ### Group approval
 
-Each language fold has up to two buttons (#124). Neither touches a low-confidence row, a row whose answer varies from
+Each language fold has up to three buttons (#124, #132). None touches a low-confidence row, a row whose answer varies from
 place to place, or a publisher's tag, and a single decision is the same as before.
 
-- **"Approve All Shown (N)"** approves the rows shown so far that the AI tagged with high confidence, never words in
-  Chinese characters alone.
+- **"Approve All on This Page (N)"** approves the rows on the page shown that the AI tagged with high confidence, never
+  words in Chinese characters alone, and nothing on other pages (it was "Approve All Shown" before pages; a decision keeps
+  the stored value `all_shown`, so older drafts still read "(in a group approval)"). Where a language has more than one
+  page, a line under the bar says that it covers this page only, and that the other two buttons cover every page. A button
+  for a whole language waits for #162 (Language step: decide dictionaries' languages by their entries, and leave catalogs'
+  scientific names untagged).
 - **"Approve Characters with Matching Readings (N)"** approves every undecided row of the fold, shown or not, that is
   written in Chinese characters alone and whose reading printed beside the characters names the row's language: kana
   or a Hepburn word (Japanese), real pinyin syllables (Chinese), hangul or a Korean romanization (Korean), or kana in
   the same phrase as the characters (大福もち). The tag must
   be high or medium confidence; a row with no reading, readings of two languages, or a reading of another language is
   never included. A reading in a bibliography is not counted (there it often belongs to the next entry); one in a
-  glossary or index is, since the AI's language must match it too. Rows the reading rule decided (#123) qualify when a
-  reading outside a bibliography names their language; one decided only from bibliography entries is approved on its own.
+  glossary or index is, since the AI's language must match it too. Only rows the AI decided are included: the reading
+  stands as a second check on the AI's language.
+- **"Approve Forms Decided by Their Printed Reading (N)"** (#132) approves every undecided row of the fold, shown or not,
+  that the reading rule decided (#123): Chinese characters alone with the same reading printed beside every place, and
+  no AI answer behind them. Its name says what stands behind it: only the printed reading. A rule decision can be wrong
+  (a Korean name whose romanization looks like pinyin was decided Chinese on a test book), and it stays one click
+  away here, so a reviewer who doubts a row decides it on its own first.
 
-Each row approved this way says "Approved: Japanese · ja (in a group approval: matching reading)" (or "(in a group
-approval)"). The server counts a group approval only when the row qualifies for that button, so a draft saved under
-other rules, or an edited page, can't approve a row the rules leave out: such a row stays to decide. The work order
+Each row approved this way says "Approved: Japanese · ja (in a group approval: matching reading)", "(in a group
+approval: printed reading)" or "(in a group approval)". The server counts a group approval only when the row qualifies for that button, so a draft saved under
+other rules, or an edited page, can't approve a row the rules leave out: such a row stays to decide. An earlier "Matching Readings" approval of a row
+the reading rule decided no longer counts (it reads "Not reviewed" on "Review Again"), and a button the server doesn't
+know approves nothing. The work order
 records each one on its form (`group_approval`: the button, the language and the evidence), the review record counts
-them by button (`language_review.bulk_by`), and review.md lists them under "Language Tags". Both buttons are turned
+them by button (`language_review.bulk_by`), and review.md lists them under "Language Tags". The group buttons are turned
 off with one line in `review/page.html`: `const LANG_BULK = false;`.
 
 ## Checks as you go

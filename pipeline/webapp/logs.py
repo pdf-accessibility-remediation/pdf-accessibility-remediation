@@ -49,12 +49,18 @@ PLAIN = {'apply': 'applying the decisions',   # also a run with no review (revie
          'every AI request of the previous attempt finished (a later step failed)': 'reusing the finished AI answers',
          "the previous attempt's reply was complete (a later step failed)": 'reusing the finished AI answer',
          'the previous attempt was stopped while its figure requests were being sent': 'resuming the figure requests',
-         'previous attempt logged': 'starting a new AI request after the previous one'}
+         'previous attempt logged': 'starting a new AI request after the previous one',
+         # #151: run_api.sh's AI_RETRY=1 line ("… (the work order is not decided again)": the note is left out)
+         'asking the AI again for the unfinished page readings': 'asking the AI again for the unfinished page readings',
+         'asking the AI again for the unfinished language suggestions': 'asking the AI again for the unfinished language suggestions'}
 SAVED_LANG = re.compile(r'^language tags: (?:saved decisions|this run\'s own decisions)')       # a replay: no request
-FIGURES = re.compile(r'^figure request (\d+)(?: of (\d+))?$')                                 # pass 2 is figure request 1
+FIGURES = re.compile(r'^figure request (\d+)(?: of (\d+))?$')         # older logs, one line per send: pass 2 is figure request 1
+FIGURES_DONE = re.compile(r'^figure requests: (\d+) of (\d+) done$')    # #135 (parallel requests): one line as sending starts and
+                                                                         # one as each request finishes, counting requests (not passes)
 NUMBERED = re.compile(r'^(\d+)[a-z]?/(\d+) ')               # 3/5, and 3b/5 or 3c/5 (the optional steps)
 
 AI_STEP = re.compile(r'^(\S+) via OpenRouter$')
+RETRY = 'retry: '                                         # run_api.sh's AI_RETRY=1 stage labels: "${RETRY:+retry: }…" (#151)
 
 def plain(label):
     """A step's label in plain words: "apply (no model)" → "applying the decisions"; others without their notes
@@ -62,7 +68,10 @@ def plain(label):
     (run_api.sh writes it in the label) by its display name: "3/5 anthropic/claude-sonnet-5.5 via OpenRouter" →
     "sending to the AI (Claude Sonnet 5.5)" (V2, Patrick 2026-11-07)."""
     bare = re.sub(r'\s*\((?:no model|local, no model|no cost)\)', '', NUMBERED.sub('', label)).strip()
+    if bare.startswith(RETRY): return plain(bare[len(RETRY):])   # #151: "Ask the AI Again"'s stages ("retry: page readings via OpenRouter")
     if SAVED_LANG.match(bare): return 'using the saved language tags (no AI request)'   # review 25, Low 1
+    d = FIGURES_DONE.match(bare)                       # read on the whole label: its count is after the colon (review 02 M4)
+    if d: return f'sending to the AI: figures, {d.group(1)} of {d.group(2)} done'
     core = bare.split(':')[0].strip()
     f = FIGURES.match(core)
     if f:                                              # "figure request 3 of 4" (passes) → "request 2 of 3" (figure requests)
@@ -75,6 +84,10 @@ def plain(label):
     if core in PLAIN: return PLAIN[core]
     return PLAIN.get(re.sub(r'\s*\(.*\)\s*$', '', core), core)       # P13: a reused step reads as the step itself; a note in parentheses left out
 
+def _figure_line(label):
+    """Is this ▶ line a figure request's progress ("figure requests: 2 of 4 done", or an older log's "figure request 3 of 4")?"""
+    return bool(FIGURES_DONE.match(label.strip()) or FIGURES.match(label.split(':')[0].strip()))
+
 STEPS_OF = {'apply': 3, 'review': 3}                    # a re-apply's steps: apply, verify, report (review/sessions.py reapply)
 
 def now_step(kind, steps):
@@ -83,6 +96,8 @@ def now_step(kind, steps):
     if kind == 'pin' and not steps: return {'words': 're-auditing the run to pin it (free)', 'n': 1, 'total': 1}
     if not run: return None
     i = run[-1]; m = NUMBERED.match(steps[i]['label'])
+    if not m and _figure_line(steps[i]['label']):     # a figure request line (review 13 L1): the count of the numbered step it
+        m = next((m_ for m_ in (NUMBERED.match(s['label']) for s in reversed(steps[:i])) if m_), None)   # belongs to
     if m: return {'words': plain(steps[i]['label']), 'n': int(m.group(1)) + 1, 'total': int(m.group(2)) + 1}
     return {'words': plain(steps[i]['label']), 'n': i + 1, 'total': max(STEPS_OF.get(kind, len(steps)), len(steps))}
 

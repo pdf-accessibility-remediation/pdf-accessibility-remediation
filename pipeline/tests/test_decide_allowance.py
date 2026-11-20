@@ -135,7 +135,22 @@ def test_a_stop_during_the_retry_counts_the_cut_off_and_the_retry(book, tmp_path
         if n == 3: seen.update(load(R / 'run.json')['figure_passes'])
         return cut_second(b, n)
     live(book[1], R, monkeypatch, reply=r)
-    assert seen['in_flight'] == '2' and seen['in_flight_paid_usd'] == 0.3 and seen['in_flight_cut_off'] is True and 0.64 < seen['in_flight_worst_usd'] < 0.75   # known and unknown apart
+    e, = seen['in_flight']                                                   # #135 (parallel requests): a list of the requests being sent
+    assert e['pass'] == '2' and e['paid_usd'] == 0.3 and e['cut_off'] is True and 0.64 < e['worst_usd'] < 0.75   # known and unknown apart
+
+def test_an_interruption_during_a_figure_request_keeps_it_at_its_worst_case(book, tmp_path, monkeypatch):
+    """#135 (parallel requests), review 02 H3: Ctrl+C while a figure request is out. Nothing more is sent, the interruption
+    is raised again, and run.json (still "calling", for run_api.sh's log_attempt) keeps the request in stopped_in_flight
+    with its worst case, and no in_flight list."""
+    R = tmp_path / 'r'
+    def r(b, n):
+        if n == 2: raise KeyboardInterrupt
+        return stop(b)
+    with pytest.raises(KeyboardInterrupt):
+        live(book[1], R, monkeypatch, reply=r)
+    fp = load(R / 'run.json')['figure_passes']
+    st, = fp['stopped_in_flight']
+    assert fp['state'] == 'calling' and 'in_flight' not in fp and st['pass'] == '2' and st['stopped'] is True and 0.3 < st['worst_usd'] < 0.5
 
 def test_the_in_flight_fields_are_gone_once_a_request_is_done(book, tmp_path, monkeypatch):
     R = tmp_path / 'r'; live(book[1], R, monkeypatch, reply=cut_second)
@@ -328,7 +343,7 @@ def small_with_expected(book, tmp_path, *extra, **kw):
 def test_the_estimate_stores_the_expected_figure_and_the_terminal_prints_both(book, tmp_path):
     A = small_audit(book, tmp_path, 3); R = tmp_path / 'r'; r = decide(A, R, '--dry-run')
     x = load(R / 'run.json')['estimate']['expected']; assert x['usd'] > 0 and x['low'] <= x['usd'] <= x['high'] and x['basis']['calls'] == 80
-    assert 'Expected Cost: $' in r.stdout and '(usually $' in r.stdout and 'Max Estimated Cost: $' in r.stdout and 'Limits: $2.00 per AI request, $8.00 per PDF' in r.stdout
+    assert 'Expected Cost: $' in r.stdout and '(usually $' in r.stdout and 'Max Estimated Cost: $' in r.stdout and 'Limits: $2.00 per AI request, $50.00 per PDF' in r.stdout
 
 def stored(R, value, **changes):
     run = load(R / 'run.json'); run['estimate']['expected'] = value; run.update(changes); (R / 'run.json').write_text(json.dumps(run))

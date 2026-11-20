@@ -9,9 +9,12 @@ VERAPDF, the Java path) < --config FILE < an exported VERAPDF. Relative paths ar
     batch_jobs         books of a batch in progress at once (batch_api.sh's JOBS, 10)
     max_books_per_batch   the most books New Batch accepts (the app only: batch_api.sh in a terminal has no cap)
     upload_max_mb      "Add a Book": the largest PDF accepted, in MB (default 1024)
-    limits             dollars: per_call_usd (one AI call), per_book_usd (a PDF, #63), per_batch_usd (a batch); what the
-                       pages compare estimates with, and the most a Spend may bind. Not set in settings.json: the defaults are
-                       DEFAULT_LIMITS in lib/costs.py, the one place; set here only to override them on this computer
+    limits             dollars: per_call_usd (one AI call), language_usd (the language step), page_reads_usd (the page
+                       readings, #49), per_book_usd (a PDF, #63), per_batch_usd (a batch); what the pages compare estimates
+                       with, and the most a Spend may bind. An estimate job's dry runs get language_usd and page_reads_usd as
+                       LANGUAGE_MAX_USD and PAGE_READS_MAX_USD (#155). Not set in settings.json: the defaults are
+                       DEFAULT_LIMITS in lib/costs.py, the one place, and each value here is at most LIMIT_CEILINGS there
+                       (ten times the default); set here only to override them on this computer
     tools              VERAPDF (path to the launcher) and path_prepend (folders put first on the children's PATH: Java)
     test_reply_dir     tests only, and only from --config: never from a committed or local settings file. Spend then runs
                        REPLY=<test_reply_dir>/<name>.txt instead of a paid call, and every page says "Test"
@@ -21,6 +24,7 @@ VERAPDF, the Java path) < --config FILE < an exported VERAPDF. Relative paths ar
 The app never runs with veraPDF off: VERAPDF=off is refused from any source.
 """
 import os, sys, json, hashlib
+from lib import costs
 
 HERE = os.path.dirname(os.path.abspath(__file__))           # pipeline/webapp/
 PIPELINE = os.path.dirname(HERE)                             # pipeline/
@@ -29,15 +33,18 @@ FOLDERS = ('runs', 'samples', 'uploads', 'jobs')
 # what a child inherits from the app's own environment (RUNS_DIR is always the app's runs folder); everything else (MODEL, REPLY, FROM, KEEP, RUN_DIR,
 # INTAKE, OCR, FORCE_OCR, MAX_TOKENS, VERAPDF=off, …) is dropped, and a job adds only its own whitelisted variables
 BASE_ENV = ('PATH', 'HOME', 'LANG', 'TMPDIR', 'USER', 'LOGNAME', 'SHELL',
-            'APPLY_TREE_CHECK', 'APPLY_TREE_STALE_LOG')   # the last two: apply.py's check mode, set only by the tests (#93 C2)
+            'APPLY_TREE_CHECK', 'APPLY_TREE_STALE_LOG',   # apply.py's check mode, set only by the tests (#93 C2)
+            'AI_PARALLEL')                                # #135 (parallel requests): requests at once per PDF, as the app was started
 JOB_ENV = ('REVIEW', 'AUTO', 'ESTIMATE', 'OCR_LANG', 'RUN_DIR', 'INTAKE_REUSE', 'REPLY', 'MAX_USD', 'INTAKE', 'OUT',
            'JOBS', 'BATCH_MAX_USD', 'BOOK_MAX_USD', 'RETRY', 'MODEL', 'FROM',    # #45: batches, the caps, the estimate's model
            'SUMMARY_ONLY', 'ASK_LANG',                                         # round 4: the batch summary rebuild (D3, D8), the language question (D4)
            'FIGURE_RETRY_MAX_USD', 'FIGURE_RETRY_BOOK_MAX_USD',                # #65: the person's real limits, for a figure request's doubled retry only
            'PAGE_READS', 'PAGE_READS_MAX_USD',                                 # #49: page readings, set by Spend from the estimate shown
            'LANG_TAGS', 'LANGUAGE_MAX_USD', 'LANGUAGE_MODEL',                  # #118: the language step, the same way
+           'LANG_HELD_SHOWN',                                                  # review 33 F1: word forms the estimate shown held back
            'REOCR',                                                            # #121: read the existing OCR text again (keeps the page images)
-           'KEEP_CJK_PAGES')                                                   # review 06 H1: pages kept at intake's CJK stop
+           'KEEP_CJK_PAGES',                                                   # review 06 H1: pages kept at intake's CJK stop
+           'AI_RETRY')                                                         # #151: "Ask the AI Again" (spend.py authorize_retry only)
 # MODEL only as an anthropic/ id (the one the estimate used: 03 §5); FROM only in test mode (test_batch_from, --config);
 # never FORCE_OCR (Q7: no "OCR Every Page Instead" in the app)
 
@@ -92,11 +99,7 @@ def load(config=None, base=HERE, environ=None):
     for k, dflt in (('batch_jobs', 10), ('upload_max_mb', 1024), ('max_books_per_batch', 50)):
         s.setdefault(k, dflt)
         if not isinstance(s[k], int) or isinstance(s[k], bool) or s[k] < 1: raise Bad(f'{k} must be a whole number above 0: {s[k]!r}')
-    lim = s.setdefault('limits', {})
-    if not isinstance(lim, dict): raise Bad('limits must be an object: {"per_call_usd": 2, "per_book_usd": 8, "per_batch_usd": 10}')
-    for k, v in lim.items():
-        if k not in ('per_call_usd', 'per_book_usd', 'per_batch_usd'): raise Bad(f'limits: unknown key {k!r}')
-        if not isinstance(v, (int, float)) or isinstance(v, bool) or not 0 < v <= 100: raise Bad(f'limits.{k} must be a number of dollars above 0 and at most 100: {v!r}')
+    check_limits(s.setdefault('limits', {}))
     for k in FOLDERS:
         if not isinstance(s.get(k), str) or not s[k]: raise Bad(f'{k} must name a folder')
         s[k] = os.path.normpath(os.path.join(PIPELINE, os.path.expanduser(s[k])))
@@ -111,6 +114,15 @@ def load(config=None, base=HERE, environ=None):
     return s
 
 CODE = ('app.py', 'webapp', 'review', 'lib/titles.py', 'lib/glance.py')   # what the running app is made of (its pages included)
+
+def check_limits(lim):
+    """The `limits` setting: the keys of lib/costs.py's DEFAULT_LIMITS, each above 0 and at most its LIMIT_CEILINGS (ten
+    times the default: a typo's extra zero is caught, every figure the collection's survey produced fits; review 26, M3)."""
+    if not isinstance(lim, dict): raise Bad('limits must be an object: ' + json.dumps({k: int(v) for k, v in costs.DEFAULT_LIMITS.items()}))
+    for k, v in lim.items():
+        if k not in costs.LIMIT_CEILINGS: raise Bad(f'limits: unknown key {k!r} (known: {", ".join(costs.LIMIT_CEILINGS)})')
+        top = costs.LIMIT_CEILINGS[k]
+        if not isinstance(v, (int, float)) or isinstance(v, bool) or not 0 < v <= top: raise Bad(f'limits.{k} must be a number of dollars above 0 and at most {top:g}: {v!r}')
 
 def code_fingerprint():
     """The app's code on disk now: sha256 over app.py, every .py/.js/.css/.html file in webapp/ and review/, and the lib/
@@ -143,6 +155,17 @@ def child_env(s, job_env=None, environ=None):
     # showed them sends them (PAGE_READS=1 and PAGE_READS_MAX_USD from spend.py); every other job reads no pages
     env['PAGE_READS'] = '1' if 'ESTIMATE' in (job_env or {}) else 'off'
     env['LANG_TAGS'] = 'on' if 'ESTIMATE' in (job_env or {}) else 'off'      # #118: the language step, the same rule
+    L = costs.limits_of(s)
+    if 'ESTIMATE' in (job_env or {}):                        # #155: an estimate's dry runs judge the two optional steps by the app's limits,
+        #   so a raised limit counts at the next "Get a New Estimate" (a job's own value wins); review 31 M1: the per-PDF
+        #   limit too, since the language step fills to the room left in it (#159)
+        env['LANGUAGE_MAX_USD'], env['PAGE_READS_MAX_USD'] = f'{L["language_usd"]:.2f}', f'{L["page_reads_usd"]:.2f}'
+        env['BOOK_MAX_USD'] = f'{L["per_book_usd"]:.2f}'
+    # review 31 L1: the app's limits under their own names, for the estimates run_api.sh makes at a review stop ("Ask the
+    # AI Again"'s amount). A paid job's LANGUAGE_MAX_USD, PAGE_READS_MAX_USD and BOOK_MAX_USD are bounds (the amount a
+    # Spend showed), never the limits; these are never a job's to set (not in JOB_ENV) and nothing spends under them
+    env['APP_LANGUAGE_MAX_USD'], env['APP_PAGE_READS_MAX_USD'] = f'{L["language_usd"]:.2f}', f'{L["page_reads_usd"]:.2f}'
+    env['APP_BOOK_MAX_USD'] = f'{L["per_book_usd"]:.2f}'
     for k, v in (job_env or {}).items():
         if k not in JOB_ENV: raise ValueError(f'{k} is not a variable a job may set')
         if k in ('MODEL', 'LANGUAGE_MODEL') and not str(v).startswith('anthropic/'): raise ValueError(f'{k} {v!r}: the app sends only to a Claude model whose cost it can check')

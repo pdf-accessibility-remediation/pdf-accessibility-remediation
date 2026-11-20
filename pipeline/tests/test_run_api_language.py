@@ -49,6 +49,26 @@ def test_saved_language_decisions_are_applied_at_no_cost(tmp_path):
     g = rec['glance']; lang_line = next(x for x in g['ship'] if x['what'] == 'Language tags')
     assert lang_line['ok'] is False and lang_line['text'].startswith('Not Reviewed (')          # not reviewed: never Ready
 
+def test_an_answer_the_reply_check_drops_is_kept_and_counted(tmp_path):
+    """#137 (dropped language answers): a saved reply whose answer for Onjōji gives a tag the pipeline cannot write. The
+    replay keeps the dropped answer with its code and form in the record, the form carries its reason, and review.md
+    counts it in plain words (review 02, L1: no codes)."""
+    reply = {'decisions': [{'id': '1', 'form': 'Onjōji', 'lang': 'xx-Zzzz', 'confidence': 'high', 'why': 'language'},
+                           {'id': '2', 'form': 'mappō', 'lang': 'ja-Latn', 'confidence': 'high', 'why': 'language'}]}
+    saved = {'schema': 'language-run/1', 'model': 'anthropic/claude-sonnet-5.5', 'cost_usd': 0.05, 'decisions': {},
+             'requests': [{'n': 1, 'sha256': 'x', 'ids': ['1', '2'], 'id_keys': {'1': 'marks|Onjōji', '2': 'hawaiian|mappō'},
+                           'text': json.dumps(reply), 'finish': 'stop'}]}
+    (tmp_path / 'book.language.json').write_text(json.dumps(saved))
+    r, R = run_api(tmp_path, LANG_REPLY=str(tmp_path / 'book.language.json'), LANG_TAGS='off')
+    assert r.returncode == 0, r.stdout[-3000:] + r.stderr[-2000:]
+    rec = json.load(open(R / 'record.json'))
+    d = [x for x in rec['language_run']['dropped'] if x.get('code') == 'tag']
+    assert d and d[0]['key'] == 'marks|Onjōji' and d[0]['form'] == 'Onjōji' and d[0]['lang'] == 'xx-Zzzz' and d[0]['echo'] == 'Onjōji'
+    forms = {f['form']: f for f in rec['workorder']['language_parts']['forms']}
+    assert forms['Onjōji'].get('no_answer') == 'tag' and 'no_answer' not in forms['mappō']
+    md = open(R / 'review.md', encoding='utf-8').read()
+    assert '**No AI answer (1 word form):** the AI gave a language that cannot be written into the PDF 1.' in md and 'xx-Zzzz' not in md
+
 def test_hawaiian_lines_are_listed_for_the_hawaiian_reader(tmp_path):
     """review 08, H2: a line tagged Hawaiian by the fixed rule on a page read by the AI is listed in review.md's Language
     Tags section, and counted by the check row. The page reading comes with the saved reply's work order here."""
@@ -94,3 +114,19 @@ def test_not_applicable_only_when_counted_and_none_and_not_checked_otherwise(tmp
     assert r2.returncode == 0, r2.stdout[-2000:] + r2.stderr[-2000:]
     assert json.load(open(R / 'record.json'))['language_status'] == {'candidates': None, 'state': 'off'}
     assert line_of(R) == '- Language Tags: Not Done (not checked)'
+
+def test_review_md_names_a_charge_not_known_apart_from_the_cost(tmp_path):
+    """#135 (parallel requests), review 02 M2: a language request an interruption left in flight counts at its worst case
+    toward the limit; review.md's run line names it apart, never as money spent."""
+    r, R = run_api(tmp_path, runs=[{'lang': 'en-US', 'text': 'Plain English text stays as it is.'}], LANG_TAGS='off', KEEP='1')
+    assert r.returncode == 0, r.stdout[-3000:] + r.stderr[-2000:]
+    (R / 'language_run.json').write_text(json.dumps({'schema': 'language-run/1', 'requests': [], 'decisions': {}, 'cost_usd': 0.25,
+                                                     'stopped_in_flight': [{'n': 2, 'worst_usd': 0.5, 'stopped': True}]}))
+    pdf = next(p for p in R.glob('*_remediated.pdf'))
+    r2 = subprocess.run([sys.executable, 'report.py', str(R), str(R / '_audit'), f'--pdf={pdf}', f'--input={tmp_path / "book.pdf"}', '--lang-tags=off', '--keep'],
+                        cwd=HERE, env=dict(os.environ, VERAPDF='off'), capture_output=True, text=True, timeout=300)
+    assert r2.returncode == 0, r2.stdout[-2000:] + r2.stderr[-2000:]
+    md = open(R / 'review.md', encoding='utf-8').read(); rec = json.load(open(R / 'record.json'))
+    assert ' · up to $0.500 more for 1 AI request(s) of the language step or the page readings whose charge is not known' in md
+    assert rec['language_run']['stopped_in_flight'][0]['worst_usd'] == 0.5
+    assert round(rec['cost_total_usd'] - ((rec['run'].get('usage') or {}).get('cost_usd') or 0), 6) == 0.25        # the known cost only

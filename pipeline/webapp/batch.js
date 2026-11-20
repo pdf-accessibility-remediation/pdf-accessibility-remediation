@@ -87,13 +87,27 @@ function body(s) {
   const exp = !x ? '' : x.usd == null ? 'Expected Cost: Not Available Yet' + (NONE_WHY[x.none] ? ' (' + NONE_WHY[x.none] + ')' : '') :
     'Expected Cost: ' + usd(x.usd) + ' for ' + (x.books === x.of ? '' : esc(x.books) + ' of ') + esc(x.of) + ' PDF' + plural(x.of) + (x.books === x.of ? '' : ' (Not Available Yet for ' + (x.of - x.books) + ' PDF' + plural(x.of - x.books) + ')');
   const before = s.phase === 'ready' || s.phase === 'missing';
+  // #159 (Patrick's decision: a warning before money is spent, never a refusal): PDFs whose estimate holds word forms back
+  function heldBackLine(hb) {
+    if (!hb || !hb.length) return '';
+    // review 31 L4: the reason the estimates give, the PDF's own limit included
+    const lim = { step: 'the limit for language suggestions', book: 'the room left in the limit per PDF' };
+    const fit = [...new Set(hb.filter(b => b.which !== 'forms').map(b => lim[b.which] || lim.step))];
+    const ws = (fit.length ? ['they don\'t fit within ' + fit.join(' or ')] : []).concat(hb.some(b => b.which === 'forms') ? ['they are more than the set number of word forms'] : []);
+    return '<p class="pp-warn-t" id="bt-held-back">' + hb.length + ' PDF' + (hb.length === 1 ? ' holds' : 's hold') +
+      ' word forms back because ' + ws.join(' or ') + ': ' +
+      hb.map(b => esc(b.name) + ' (' + Number(b.count).toLocaleString('en-US') + ')').join(', ') +
+      '. Those word forms will not be sent to the AI or tagged, and ' + (hb.length === 1 ? 'that PDF' : 'those PDFs') +
+      ' can\'t be Ready until someone accepts that.</p>';
+  }
   if (s.phase === 'estimating' || s.phase === 'language') {      // R14: never "$0.00" while the estimates come in
     if (T.estimated) h += '<p id="bt-cost"><b>Max Estimated Cost So Far: ' + usd(T.ceiling_usd) + ' for ' + esc(T.estimated) + ' of ' + esc(T.to_estimate) +
       ' PDF' + plural(T.to_estimate) + ' (estimating) · Batch Limit: ' + usd(T.limit_usd) + '</b></p>';
   } else if (before)
     h += '<p id="bt-cost">' + (exp ? exp + '<br>' : '') + 'Max Estimated Cost: ' + usd(T.ceiling_usd) + ' for ' + esc(T.books_to_send) + ' PDF' + plural(T.books_to_send) +
          (T.requests > T.books_to_send ? ' (' + esc(T.requests) + ' AI requests)' : '') + ' · Batch Limit: ' + usd(T.limit_usd) +
-         (T.spent_usd ? ' · Already Spent in This Batch: ' + usd(T.spent_usd) : '') + (T.credit_usd != null ? ' · Credit: ' + usd(T.credit_usd) : ' · Credit: Not Checked') + '</p>';
+         (T.spent_usd ? ' · Already Spent in This Batch: ' + usd(T.spent_usd) : '') + (T.credit_usd != null ? ' · Credit: ' + usd(T.credit_usd) : ' · Credit: Not Checked') + '</p>' +
+         heldBackLine(T.held_back);
   const total = !before && (T.spent_usd || s.phase === 'running' || s.phase === 'finished' || (s.trashed && s.trashed.n));
   if (total) h += '<p><b>Total Cost:</b> ' + esc(T.cost_words) + '</p>';   // one wording with the run page and the terminal (lib/costs.py)
   if (s.trashed && s.trashed.n) h += '<p>' + esc(s.trashed.n) + ' PDF' + plural(s.trashed.n) + ' moved to the Trash (AI cost ' + usd(s.trashed.cost_usd) + (T.spent_usd ? ', counted in the cost above' : '') + ')</p>';   // D8: the spend stays shown
@@ -116,7 +130,9 @@ function body(s) {
        'Each PDF\'s page says more.') + '</p>';
   }
   if (s.phase === 'review' || (s.reviewing && s.reviewing.length && s.phase !== 'running')) h += '<p>' + s.reviewing.length + ' PDF' + (s.reviewing.length === 1 ? ' is' : 's are') +
-    ' waiting for review. Open each one from the list; its "Finish Review" applies it, and this page and the dashboard follow.</p>';
+    ' waiting for review. Open each one from the list; its "Finish Review" applies it, and this page and the dashboard follow.' +
+    (s.held ? ' ' + s.held + ' of them ' + (s.held === 1 ? 'has' : 'have') + ' missing AI suggestions: open ' + (s.held === 1 ? 'it' : 'each') +
+     ' to ask the AI again or to review without them.' : '') + '</p>';      // #151 (review 29 M3)
   const asking = s.books.filter(b => b.language);                // D4: each PDF that waits for its language, on its own row
   if (asking.length) {
     h += '<h3 id="bt-lang-h">Language of the Scanned Pages</h3><p>' + asking.length + ' PDF' + (asking.length === 1 ? ' has' : 's have') +

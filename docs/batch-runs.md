@@ -58,10 +58,10 @@ A batch works in three steps: estimate, run, summary.
 
 ### 1. Estimate (no AI request)
 
-The batch runs intake for untagged PDFs (OCR and auto-tagging; free), audits every PDF and adds up what it could cost. A PDF with more than 100 images counts every one of its requests; its row says "in N requests" (see [Files](files.md)). Each PDF is also held to its own limit (`BOOK_MAX_USD`, $5) when it runs.
+The batch runs intake for untagged PDFs (OCR and auto-tagging; free), audits every PDF and adds up what it could cost. A PDF with more than 100 images counts every one of its requests; its row says "in N requests" (see [Files](files.md)). Each PDF is also held to its own limit (`BOOK_MAX_USD`, $50) when it runs.
 
 It stops before any AI request if:
-- what the batch has already spent plus the Claude total is over `BATCH_MAX_USD` (default $10, from `lib/costs.py`), or
+- what the batch has already spent plus the Claude total is over `BATCH_MAX_USD` (default $250, from `lib/costs.py`), or
 - the Claude total is over your credit.
 
 The audits are kept, so a rerun with a higher limit reuses them.
@@ -73,11 +73,11 @@ Only Claude models count against the limit and the credit check (see [Choosing t
   book1                        Expected Cost: $0.31 (usually $0.22–$0.43) · Max Estimated Cost: $0.67  (75,927 input tokens, 25 images)
   book2                        Expected Cost: $1.54 (usually $1.04–$2.22) · Max Estimated Cost: $3.13  (418,351 input tokens, 543 images in 6 requests)
   Expected Cost: $1.85 for 2 PDFs
-  Max Estimated Cost: $3.80 for 2 PDFs (7 AI requests) · Batch Limit: $10.00 · Credit: $11.46
+  Max Estimated Cost: $3.80 for 2 PDFs (7 AI requests) · Batch Limit: $250.00 · Credit: $11.46
 # non-Claude batch: one approximate line, no limit
   Max Estimated Cost: about $0.75, approximate, not counted against the limit (the OpenRouter bill is the real cost) · Credit: $11.46
 # mixed (e.g. a RETRY with another model): the Claude lines are the part counted
-  Max Estimated Cost: $0.50 for 1 PDF · Batch Limit: $10.00 · Credit: $11.46
+  Max Estimated Cost: $0.50 for 1 PDF · Batch Limit: $250.00 · Credit: $11.46
   Non-Claude Models: about $0.25, approximate, not counted against the limit (the OpenRouter bill is the real cost)
 ```
 
