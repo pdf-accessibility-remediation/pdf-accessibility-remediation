@@ -3323,6 +3323,9 @@ def fix_language_parts():
     reindex()
     owned_on = collections.defaultdict(set)         # page -> its MCIDs in the tag tree, once: owner changes only in the write loop below
     for (pg_, mm_) in owner: owned_on[pg_].add(mm_)
+    whole_at = collections.defaultdict(list)        # (page, MCID) -> the Spans tag_run wrote over that whole run (none are added below)
+    for sp_ in LANG['spans']:
+        if sp_.get('whole'): whole_at[(sp_['page'], sp_['mcid'])].append(sp_)
     def unit(job, m): return ('g', job['of'][m]) if m in job['of'] else ('r', m)
     def units(pno):
         job = jobs[pno]
@@ -3506,8 +3509,8 @@ def fix_language_parts():
                 pt_set_mcid(pno, mc, el); owner[(pno, mc)] = el
                 if el is not o: eff_pg[el.objgen] = pno
             for r in recs: LANG['spans'].append(r); LANG['split'] += 1; ok(f'language: {r["lang"]} Span (part of a run)')
-            for sp in LANG['spans']:                       # a run tagged whole and split under its Span: the Span holds every piece
-                if sp.get('whole') and sp['page'] == pno and sp['mcid'] == m: sp['mcids'] = [mc for mc, _, _ in pieces]
+            for sp in whole_at.get((pno, m), ()):          # a run tagged whole and split under its Span: the Span holds every piece
+                sp['mcids'] = [mc for mc, _, _ in pieces]
         for ph, inside in phrase_plans:                    # one Span over the phrase, at its first piece's place in the owner's /K
             o = ph['owner']; ks = kids(o)
             i0 = mc_entry_index(o, pno, inside[0]); i1 = mc_entry_index(o, pno, inside[-1])
