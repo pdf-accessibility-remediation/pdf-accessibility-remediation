@@ -130,7 +130,9 @@ GROUPING = readorder.GROUPING
 def is_container(n): return S(n) in GROUPING or mapped(S(n)) in GROUPING
 DOC = next((k for k in kids(st) if is_elem(k) and S(k) == 'Document'), None)   # fix_root() makes sure there is exactly one
 eff_pg, parent_of, owner = {}, {}, {}
-def _index_into(eff, par_of, own):
+fowner = {}            # (page, MCID) -> [(element, form XObject)]: text drawn inside a form, named by /MCR … /Stm (#165). Kept apart
+                       # from owner, which every other step reads: only the language path and its checks use it (review 09, R3)
+def _index_into(eff, par_of, own, fown=None):
     stack = [(k, st, None) for k in kids(st)]
     while stack:
         n, par, pg = stack.pop()
@@ -140,6 +142,8 @@ def _index_into(eff, par_of, own):
         for k in kids(n):
             if isinstance(k, int): own[(pg, k)] = n
             elif is_pmcr(k): own[(pidx[k.Pg.objgen] if '/Pg' in k else pg, int(k.MCID))] = n
+            elif is_mcr(k) and fown is not None and isinstance(k.get('/Stm'), pikepdf.Stream) and '/MCID' in k:
+                fown.setdefault((pidx[k.Pg.objgen] if '/Pg' in k and k.Pg.objgen in pidx else pg, int(k.MCID)), []).append((n, k.Stm))
             elif is_elem(k): stack.append((k, n, pg))
 def _elems_walk():
     out, stack = [], [(k, st) for k in reversed(kids(st))]
@@ -171,12 +175,14 @@ _kept = {'index': None, 'elems': None}; _elems = []
 def reindex():
     if _kept['index'] == TREE_V:
         if TREE_CHECK:
-            e, p, o = {}, {}, {}; _index_into(e, p, o)
+            e, p, o, f = {}, {}, {}, {}; _index_into(e, p, o, f)
+            def fo(d): return {k: sorted((_og(a), _og(b)) for a, b in v) for k, v in d.items()}
             if (e != eff_pg or {k: _og(v) for k, v in p.items()} != {k: _og(v) for k, v in parent_of.items()}
-                    or {k: _og(v) for k, v in o.items()} != {k: _og(v) for k, v in owner.items()}): _stale('the kept tag-tree index differs from a new walk')
+                    or {k: _og(v) for k, v in o.items()} != {k: _og(v) for k, v in owner.items()}
+                    or fo(f) != fo(fowner)): _stale('the kept tag-tree index differs from a new walk')
             _check_direct(_elems_walk())
         return
-    eff_pg.clear(); parent_of.clear(); owner.clear(); _index_into(eff_pg, parent_of, owner)
+    eff_pg.clear(); parent_of.clear(); owner.clear(); fowner.clear(); _index_into(eff_pg, parent_of, owner, fowner)
     _kept['index'] = TREE_V
     if TREE_CHECK: _check_direct(_elems_walk())
 def all_elems():
@@ -202,9 +208,21 @@ def kid_mcid(el, k, pg):
     if isinstance(k, int): return k if epg == pg else None
     if is_pmcr(k) and (pidx[k.Pg.objgen] if '/Pg' in k else epg) == pg: return int(k.MCID)
     return None
-def mc_entry_index(el, pg, m):
+def kid_key(el, k, pg):
+    """(stream, MCID) of /K kid k of element el when that kid is marked content on page pg, else None. stream is None for
+    the page's own content and the form XObject's objgen for /MCR … /Stm (#165, review 09 R1): a form's MCID never matches
+    a page MCID of the same number. An /Stm kid's page is its /Pg, else the element's page."""
+    if isinstance(k, int) or is_pmcr(k):
+        m = kid_mcid(el, k, pg)
+        return None if m is None else (None, m)
+    if is_mcr(k) and isinstance(k.get('/Stm'), pikepdf.Stream) and '/MCID' in k:
+        kp = pidx.get(k.Pg.objgen) if '/Pg' in k else eff_pg.get(el.objgen)
+        return (k.Stm.objgen, int(k.MCID)) if kp == pg else None
+    return None
+def mc_entry_index(el, pg, m, stream=None):
+    """The index in el's /K of the kid for run m on page pg, in the page's content (stream None) or in a form (its objgen)."""
     for i, k in enumerate(kids(el)):
-        if kid_mcid(el, k, pg) == m: return i
+        if kid_key(el, k, pg) == (stream, m): return i
     return None
 def nt_find(node, key):
     if '/Nums' in node:
@@ -222,6 +240,17 @@ def pt_arr(pg):
     return r[0].Nums[r[1]] if r else None
 def pt_set_mcid(pg, m, el):
     arr = pt_arr(pg)
+    while len(arr) <= m: arr.append(None)
+    arr[m] = el
+def pt_form_arr(form):
+    sp = form.get('/StructParents')
+    r = nt_find(st.ParentTree, int(sp)) if sp is not None else None
+    return r[0].Nums[r[1]] if r else None
+def pt_set(pg, m, el, stream=None):
+    """The tag-tree index entry for run m: in the page's array, or in the form's own array for a run drawn inside a form
+    (#165, review 09 R2). stream: None or the form XObject."""
+    if stream is None: return pt_set_mcid(pg, m, el)
+    arr = pt_form_arr(stream)
     while len(arr) <= m: arr.append(None)
     arr[m] = el
 def pt_set_key(key, el):
@@ -1125,21 +1154,27 @@ def whole_part(pno, m, lang, text=None):
     """A refused whole-run tag as review.md lists it (its words and language), like a refused part."""
     return {'text': text if text is not None else ''.join(c['text'] for c in run_chars(pno, m)), 'lang': lang}
 def tag_run(pno, m, lang, text=None):
-    o = owner.get((pno, m))
+    if (pno, m) not in _STREAM:                    # every caller resolves the run first; a direct call resolves it here (#165)
+        o, f, why = run_at(pno, m, len(run_chars(pno, m)))
+        if o is None or why: reject(f'lang {PG(pno)} m{m}', why or 'run not in tree'); return
+    o, f = elem_of(pno, m), _STREAM[(pno, m)]
     if o is None: reject(f'lang {PG(pno)} m{m}', 'run not in tree'); return
     why = unspoken_owner(o)
     if why: reject(f'lang {PG(pno)} m{m}', why); lang_refuse(pno, m, why, whole_part(pno, m, lang, text)); return
     if S(o) == 'Span' and len(kids(o)) == 1:
-        _LANG_UNDO[(pno, m)] = ('lang', o, str(o.Lang) if '/Lang' in o else None)
+        _LANG_UNDO[(pno, m)] = ('lang', o, str(o.Lang) if '/Lang' in o else None, f)
         o.Lang = pikepdf.String(lang); ok(f'language: {lang} on existing Span')
     else:
-        i = mc_entry_index(o, pno, m)
+        i = mc_entry_index(o, pno, m, stream_key(f))
         if i is None: reject(f'lang {PG(pno)} m{m}', 'entry not found'); return
         ks = kids(o)
-        _LANG_UNDO[(pno, m)] = ('wrap', o, ks[i])
-        sp = new_elem('Span', o, [m if isinstance(ks[i], int) else ks[i]], pg=pno if isinstance(ks[i], int) else None, Lang=pikepdf.String(lang))
-        if isinstance(ks[i], int) and eff_pg.get(o.objgen) != pno: tree_set(sp, '/K', pikepdf.Array([mcr(pno, m)]))
-        ks[i] = sp; set_kids(o, ks); pt_set_mcid(pno, m, sp); owner[(pno, m)] = sp; eff_pg[sp.objgen] = pno
+        _LANG_UNDO[(pno, m)] = ('wrap', o, ks[i], f)
+        if f is None:
+            sp = new_elem('Span', o, [m if isinstance(ks[i], int) else ks[i]], pg=pno if isinstance(ks[i], int) else None, Lang=pikepdf.String(lang))
+            if isinstance(ks[i], int) and eff_pg.get(o.objgen) != pno: tree_set(sp, '/K', pikepdf.Array([mcr(pno, m)]))
+        else:                                       # an /MCR … /Stm kid moves under the Span, which names the page (#165)
+            sp = new_elem('Span', o, [ks[i]], pg=pno, Lang=pikepdf.String(lang))
+        ks[i] = sp; set_kids(o, ks); pt_set(pno, m, sp, f); index_set(pno, m, sp, f); eff_pg[sp.objgen] = pno
         ok(f'language: {lang} Span')
     _LANG_WHOLE.append((pno, m)); LANG['whole'] += 1
     LANG['spans'].append({'page': pno, 'mcid': m, 'lang': lang, 'text': text if text is not None else mc_text(pno, m), 'whole': True})
@@ -1158,6 +1193,149 @@ def drawn_here(pno, m, n):
     except mcsplit.Refuse as e:                     # a count only (review 06, M1): the split's own refusals stay with the split
         return 'this text is drawn inside a form XObject, not in the page' if str(e) == 'the text is not drawn in the page content' else str(e)
     return None if got == n else 'the characters do not line up with the text'
+# ------------------------------------------------------------------ #165: text drawn inside a form XObject
+# A run keeps its name (page, MCID) everywhere (proposal 08 §2): the executor finds which stream draws it. A run is a form
+# run only when (1) the page's own content has no MCID of that number, (2a) exactly one form reached from the page, at any
+# depth, holds it, (3) that form is drawn once in the whole document, directly from this page, (4) an /MCR … /Stm names it,
+# (5) the form's Do is outside any marked content on the page, (6) no page-level reference names the same (page, MCID), and
+# (7) the form's own content shows exactly the characters pdfplumber lists for it. Anything else is refused, with its reason.
+DO_RX = re.compile(rb'/([^\s/\[\]<>(){}%]+)\s+Do\b')
+MCID_RX = re.compile(rb'/MCID\s+(\d+)')
+_FBYTES, _FINS, _PF, _FORM_OBJ, _FCOUNT, _FPROPS = {}, {}, {}, {}, {}, {}
+_FUSES = []
+_STREAM = {}            # (page, MCID) -> None (the page's content) or the form XObject: where each run the language path touches is
+                        # drawn, filled only by run_at() and by kid_key() for a phrase's blank runs; never a default (review 09)
+def _xforms(res):
+    return {str(k): v for k, v in ((res or {}).get('/XObject') or {}).items() if isinstance(v, pikepdf.Stream) and str(v.get('/Subtype')) == '/Form'}
+def _fbytes(x):
+    if x.objgen not in _FBYTES:
+        try: _FBYTES[x.objgen] = x.read_bytes()
+        except Exception: _FBYTES[x.objgen] = b''
+    return _FBYTES[x.objgen]
+def _form_ins(f):
+    """The form's original instructions, parsed once (mcsplit never changes its input: each edit works on a copy)."""
+    if f.objgen not in _FINS:
+        try: _FINS[f.objgen] = list(pikepdf.parse_content_stream(f))
+        except Exception: _FINS[f.objgen] = None
+    _FORM_OBJ[f.objgen] = f
+    return _FINS[f.objgen]
+def _form_uses_all():
+    """How many times each form XObject is drawn in the whole document, from a page or from another form (any depth).
+    Apart from _form_uses(), which counts page-level draws for _page_text_ops."""
+    if not _FUSES:
+        n = collections.Counter()
+        def walk(raw, res, depth):
+            xs = _xforms(res)
+            for nm in DO_RX.findall(raw):
+                x = xs.get('/' + nm.decode('latin-1'))
+                if x is None: continue
+                n[x.objgen] += 1
+                if depth < 4: walk(_fbytes(x), x.get('/Resources') or res, depth + 1)
+        for pg in pages:
+            c = pg.obj.get('/Contents')
+            try: raw = b'' if c is None else b'\n'.join(x.read_bytes() for x in (c if isinstance(c, pikepdf.Array) else [c]))
+            except Exception: raw = b''
+            walk(raw, _inherited(pg, '/Resources') or {}, 0)
+        _FUSES.append(n)
+    return _FUSES[0]
+def _page_forms(pno):
+    """The page's MCIDs, the forms its content draws (each with its uses here and whether a Do sits inside marked content),
+    the forms reached only through another form, and how many sources (the page, each form at any depth) hold each MCID."""
+    if pno in _PF: return _PF[pno]
+    info = {'ok': True, 'page_mcids': set(), 'direct': {}, 'nested': set(), 'sources': collections.Counter()}
+    _PF[pno] = info
+    if pno not in _CONTENT:
+        try: _CONTENT[pno] = list(pikepdf.parse_content_stream(pages[pno - 1]))
+        except Exception: _CONTENT[pno] = None
+    if _CONTENT[pno] is None: info['ok'] = False; return info
+    res = _inherited(pages[pno - 1], '/Resources') or {}
+    xs, stack = _xforms(res), []
+    for x in _CONTENT[pno]:
+        op = str(x.operator)
+        if op in ('BDC', 'BMC'):
+            props = x.operands[1] if op == 'BDC' and len(x.operands) > 1 else None
+            if isinstance(props, pikepdf.Dictionary) and '/MCID' in props: info['page_mcids'].add(int(props.MCID)); stack.append('mc')
+            else: stack.append('art' if x.operands and str(x.operands[0]) == '/Artifact' else 'x')
+        elif op == 'EMC':
+            if stack: stack.pop()
+        elif op == 'Do' and x.operands:
+            f = xs.get(str(x.operands[0]))
+            if f is None: continue
+            d = info['direct'].setdefault(f.objgen, {'form': f, 'uses': 0, 'in_mc': False})
+            d['uses'] += 1; d['in_mc'] = d['in_mc'] or any(t in ('mc', 'art') for t in stack)
+    for m in info['page_mcids']: info['sources'][m] += 1
+    seen = set(info['direct'])
+    def nested(f, res_, depth):
+        for nm in DO_RX.findall(_fbytes(f)):
+            g = _xforms(f.get('/Resources') or res_).get('/' + nm.decode('latin-1'))
+            if g is None or g.objgen in seen: continue
+            seen.add(g.objgen); info['nested'].add(g.objgen)
+            for m in set(map(int, MCID_RX.findall(_fbytes(g)))): info['sources'][m] += 1
+            if depth < 4: nested(g, g.get('/Resources') or res_, depth + 1)
+    for og, d in list(info['direct'].items()):
+        for m in set(map(int, MCID_RX.findall(_fbytes(d['form'])))): info['sources'][m] += 1
+        nested(d['form'], d['form'].get('/Resources') or res, 1)
+    return info
+def _form_check(pno, m, f, n=None):
+    """Why form f's run m can't be tagged on page pno (conditions 2a, 3, 5, 7, spoken text in its marks), or None."""
+    info = _page_forms(pno)
+    if not info['ok']: return 'page content not readable'
+    d = info['direct'].get(f.objgen)
+    if d is None: return 'the text is drawn inside a nested form' if f.objgen in info['nested'] else "the text's form is not drawn on its page"
+    if d['in_mc']: return 'the form is drawn inside marked content on the page'
+    if _form_uses_all()[f.objgen] != 1: return 'the text is drawn inside a form used in more than one place'
+    if m in info['page_mcids'] or info['sources'][m] != 1: return "the text's number is used twice on the page"
+    if pt_form_arr(f) is None: return 'the form has no tag entry'
+    ins = _form_ins(f)
+    if ins is None: return "the form's content is not readable"
+    if f.objgen not in _FPROPS:                    # each run's marks and character count, once per form (not one scan per run)
+        props = {}
+        for x in ins:
+            mm = mcsplit._mcid(x)
+            if mm is not None and mm not in props: props[mm] = mcsplit._props(x)
+        res = f.get('/Resources') or _inherited(pages[pno - 1], '/Resources') or {}
+        _FPROPS[f.objgen] = props; _FCOUNT[f.objgen] = mcsplit.count_all(ins, res.get('/Font'), res.get('/XObject') or {})
+    pr = _FPROPS[f.objgen].get(m)
+    if pr is not None and any(k in pr for k in ('/ActualText', '/Alt', '/E')): return 'the text has its own spoken text'
+    if n is None: return None
+    got = _FCOUNT[f.objgen].get(m, 'the text is not drawn in the page content')
+    if isinstance(got, str): return got
+    return None if got == n else 'the characters do not line up with the text'
+def run_at(pno, m, n=None):
+    """(element, form or None, why) for run m on page pno. A page-level reference takes the page path (drawn_here, as
+    before #165); an /MCR … /Stm the form path (_form_check); both at once are refused (condition 6, decision 5). n: the
+    characters pdfplumber lists for the run, checked against the stream's own content when given."""
+    p = owner.get((pno, m)); fs = fowner.get((pno, m)) or []
+    if p is not None and fs: return None, None, 'the tag tree names this text twice'
+    if p is not None:
+        why = drawn_here(pno, m, n) if n is not None else None
+        if why is None: _STREAM[(pno, m)] = None
+        return p, None, why
+    if not fs: return None, None, 'this text is not in the tag tree'
+    if len({f.objgen for _, f in fs}) > 1: return None, None, "the text's number is used twice on the page"
+    if len({o.objgen for o, _ in fs}) > 1: return None, None, 'the tag tree names this text twice'
+    o, f = fs[0]
+    why = _form_check(pno, m, f, n)
+    if why is None: _STREAM[(pno, m)] = f
+    return o, f, why
+def elem_of(pno, m):
+    """The element over run m, by either index (no conditions checked: for runs already resolved by run_at)."""
+    if (pno, m) in owner: return owner[(pno, m)]
+    fs = fowner.get((pno, m)) or []
+    return fs[0][0] if len(fs) == 1 else None
+def stream_key(f): return None if f is None else f.objgen
+def kid_for(pno, mc, f, tmpl):
+    """A /K kid for new marked content mc, in the form of the kid it replaces: a page MCID (int when tmpl is an int, else
+    an MCR naming the page), or an /MCR … /Stm into form f (with tmpl's /Pg when it had one)."""
+    if f is None: return mc if isinstance(tmpl, int) else mcr(pno, mc)
+    d = pikepdf.Dictionary(Type=pikepdf.Name('/MCR'), Stm=f, MCID=mc)
+    if isinstance(tmpl, pikepdf.Dictionary) and '/Pg' in tmpl: d.Pg = tmpl.Pg
+    return d
+def index_set(pno, mc, el, f):
+    """The kept index after a write: a page run in owner, a form run in fowner (never a form key in owner: review 09 R3)."""
+    if f is None: owner[(pno, mc)] = el
+    else: fowner[(pno, mc)] = [(el, f)]
+    _STREAM[(pno, mc)] = f
 def remove_existing(lp):
     """The PDF's own language tags a person decided on the review page (language_parts version 2: forms with `current`).
     Removed ('remove'): the element that carries that value over the run loses its /Lang, and the run's marks lose theirs
@@ -1170,7 +1348,10 @@ def remove_existing(lp):
         f = forms[fi]
         if not (f.get('current') and f.get('decided') in ('remove', 'kept')): continue
         for m, _a, _b in segs:                                  # an existing tag's place is one run; a row of several is read run by run
-            el, carrier = owner.get((pno, m)), None
+            el, _f, why = run_at(pno, m)                        # its stream: a form run's marks are edited in the form (#165)
+            if why == 'this text is not in the tag tree': el = None; _STREAM[(pno, m)] = None   # marks in the page, as before #165
+            elif why: lang_refuse(pno, m, why, {'text': mc_text(pno, m), 'lang': f.get('current')}); continue
+            carrier = None
             for _ in range(8):
                 if el is None or not is_elem(el): break
                 if '/Lang' in el and str(el.Lang).strip() == str(f['current']).strip(): carrier = el; break
@@ -1197,10 +1378,8 @@ def language_parts(parts):
         rest = ''.join(c['text'] for k, c in enumerate(cs) if k < f or k > l)
         text = ''.join(c['text'] for c in cs[f:l + 1])
         done.add((pno, m))
-        o = owner.get((pno, m))
-        if o is None: lang_refuse(pno, m, 'this text is not in the tag tree', p); continue
-        why = drawn_here(pno, m, len(cs))
-        if why: lang_refuse(pno, m, why, p); continue
+        o, _f, why = run_at(pno, m, len(cs))          # the page's content or a form's (#165)
+        if o is None or why: lang_refuse(pno, m, why or 'this text is not in the tag tree', p); continue
         if not re.search(r'[^\W_]', rest): tag_run(pno, m, lang, ''.join(c['text'] for c in cs)); continue
         why = unspoken_owner(o)
         if why: lang_refuse(pno, m, why, p); continue
@@ -1224,31 +1403,33 @@ def plan_phrase(p, explicit, doc_lang, spec):
         return None
     if not (1 <= pno <= len(pages)): return no('page not in the book')
     if pno in {pidx[k] for k, v in _REWRITES.items() if v and k in pidx}: return no('page text rewritten from OCR: whole pieces of text only')
-    os_, texts = [], []
+    os_, texts, fs_ = [], [], {}
     for m, a, b in segs:
         cs = run_chars(pno, m)
         if b >= len(cs): return no('the characters do not line up with the text')
         if any(c.get('upright') is False for c in cs): return no('rotated or vertical text: whole pieces of text only')
-        o = owner.get((pno, m))
-        if o is None: return no('this text is not in the tag tree')
-        why = drawn_here(pno, m, len(cs))
-        if why: return no(why)
+        o, f, why = run_at(pno, m, len(cs))         # the page's content or a form's (#165)
+        if o is None or why: return no(why or 'this text is not in the tag tree')
         t = ''.join(c['text'] for c in cs); k = scripts.kind(t)
         what = 'tag' if (pno, m) in explicit else (scripts.action(k, t, doc_lang, spec.get('kana_runs'))[0] if k else None)
         if what == 'tag': return no('text inside it is tagged by a fixed rule')
-        os_.append(o); texts.append(''.join(c['text'] for c in cs[a:b + 1]))
+        os_.append(o); texts.append(''.join(c['text'] for c in cs[a:b + 1])); fs_[stream_key(f)] = f
     if len({o.objgen for o in os_}) != 1: return no('its words sit under different tags')
+    if len(fs_) != 1: return no('its words sit in different content streams')
+    (sk, fx), = fs_.items()
     o = os_[0]
     why = unspoken_owner(o)
     if why: return no(why)
-    idx = [mc_entry_index(o, pno, m) for m, _, _ in segs]
+    idx = [mc_entry_index(o, pno, m, sk) for m, _, _ in segs]
     if None in idx or any(b_ <= a_ for a_, b_ in zip(idx, idx[1:])): return no('its pieces of text are not next to each other in the tag tree')
     ks, blank = kids(o), []
+    info = _page_forms(pno) if fx is not None else None
     for i0, i1 in zip(idx, idx[1:]):
         for k in ks[i0 + 1:i1]:
-            mm = kid_mcid(o, k, pno)
-            if mm is None or mc_text(pno, mm).strip(): return no('its pieces of text are not next to each other in the tag tree')
-            blank.append(mm)
+            kk = kid_key(o, k, pno)                 # a blank run between the pieces, in the same stream (review 09, R1)
+            if kk is None or kk[0] != sk or mc_text(pno, kk[1]).strip(): return no('its pieces of text are not next to each other in the tag tree')
+            if info is not None and (kk[1] in info['page_mcids'] or info['sources'][kk[1]] != 1): return no("the text's number is used twice on the page")
+            blank.append(kk[1]); _STREAM[(pno, kk[1])] = fx
     plan = []
     for n_, (m, a, b) in enumerate(segs):
         cs = run_chars(pno, m)
@@ -1256,7 +1437,7 @@ def plan_phrase(p, explicit, doc_lang, spec):
         if (n_ > 0 and before.strip()) or (n_ < len(segs) - 1 and after.strip()): return no('other text sits between its pieces')
         plan.append((m, a, b, not before.strip() and not after.strip()))
     ph = {'gid': len(_LANG_PHRASES), 'page': pno, 'owner': o, 'segs': plan, 'blank': blank, 'lang': lang, 'form': p.get('form'),
-          'text': ''.join(texts)}
+          'text': ''.join(texts), 'stream': sk, 'fx': fx}
     for m, a, b, whole in plan:
         if not whole: _LANG_SPLITS[(pno, m)].append({**{k: v for k, v in p.items() if k != 'segments'}, 'mcid': m, 'first': a, 'last': b,
                                                      'text': ''.join(c['text'] for c in run_chars(pno, m)[a:b + 1]), 'phrase': ph['gid']})
@@ -1305,7 +1486,8 @@ def op_language(spec):
             if what == 'defer': local_defer[(pno, m)] = (k, val, t, ps)
     for (pno, m), (k, val) in sorted(local_tag.items()):
         counts[f'{k or "explicit"}: tag'] += 1
-        why = drawn_here(pno, m, len(run_chars(pno, m)))
+        o_, _f, why = run_at(pno, m, len(run_chars(pno, m)))    # the page's content or a form's (#165)
+        if o_ is None and why == 'this text is not in the tag tree': reject(f'lang {PG(pno)} m{m}', 'run not in tree'); continue   # as before #165
         if why: reject(f'lang {PG(pno)} m{m}', why); lang_refuse(pno, m, why, whole_part(pno, m, val)); continue
         tag_run(pno, m, val)
     language_parts(keep)
@@ -1328,8 +1510,9 @@ def op_language(spec):
         by, n_chars = collections.defaultdict(str), collections.Counter()
         for c in PL.pages[pno - 1].chars:
             if c.get('mcid') is not None: by[c['mcid']] += c['text']; n_chars[c['mcid']] += 1
-        def ok_here(m, lang):                                     # never a run drawn in a form under a page run's number
-            why = drawn_here(pno, m, n_chars[m])
+        def ok_here(m, lang):                                     # never a run drawn in a form under a page run's number; a form's
+            o_, _f, why = run_at(pno, m, n_chars[m])              # own run only through its /MCR … /Stm (#165)
+            if o_ is None and why == 'this text is not in the tag tree': reject(f'lang {PG(pno)} m{m}', 'run not in tree'); return False   # as before #165
             if why: reject(f'lang {PG(pno)} m{m}', why); lang_refuse(pno, m, why, {'text': by[m], 'lang': lang})
             return why is None
         for m, t in by.items():
@@ -3267,13 +3450,28 @@ def _inherited(page, key):
         if key in n: return n[key]
         n = n.get('/Parent')
     return None
-def _render_pages(items):
-    """[RGB image at verify.py's scale] for (page, contents) items, in order, drawn from a scratch PDF holding only those
-    pages (their size, rotation, resources and the given contents)."""
+def _render_pages(items, texts=None):
+    """[RGB image at verify.py's scale] for (page, contents[, {form objgen: content bytes}]) items, in order, drawn from a
+    scratch PDF holding only those pages (their size, rotation, resources and the given contents). A form given new content
+    is replaced in the scratch page's resources only (#165): the real file is untouched. texts: a list to fill with each
+    page's text as pdfium reads it, invisible text included (review 09, R7)."""
     import io, pypdfium2 as pdfium
     scratch = pikepdf.new()
-    for page, contents in items:
-        held = {'/Type': pikepdf.Name.Page, '/Contents': contents, '/Resources': _inherited(page, '/Resources') or pikepdf.Dictionary()}
+    for it in items:
+        page, contents = it[0], it[1]
+        forms = it[2] if len(it) > 2 and it[2] else {}
+        res = _inherited(page, '/Resources') or pikepdf.Dictionary()
+        if forms:
+            res = pikepdf.Dictionary({k: v for k, v in res.items()})
+            xo = pikepdf.Dictionary({k: v for k, v in (res.get('/XObject') or {}).items()})
+            for name, x in list(xo.items()):
+                if isinstance(x, pikepdf.Stream) and x.objgen in forms:
+                    y = pdf.make_stream(forms[x.objgen])
+                    for k, v in x.items():
+                        if k not in ('/Length', '/Filter', '/DecodeParms'): y[k] = v
+                    xo[name] = y
+            res['/XObject'] = xo
+        held = {'/Type': pikepdf.Name.Page, '/Contents': contents, '/Resources': res}
         for k in ('/MediaBox', '/CropBox', '/Rotate', '/UserUnit'):
             v = _inherited(page, k)
             if v is not None: held[k] = v
@@ -3282,11 +3480,22 @@ def _render_pages(items):
         scratch.pages.append(pikepdf.Page(scratch.copy_foreign(pdf.make_indirect(pikepdf.Dictionary(held)))))
     buf = io.BytesIO(); scratch.save(buf)
     doc = pdfium.PdfDocument(buf.getvalue())
-    try: return [doc[i].render(scale=1.2).to_pil().convert('RGB') for i in range(len(items))]
+    try:
+        if texts is not None:
+            for i in range(len(items)):
+                tp = doc[i].get_textpage()
+                try: texts.append(tp.get_text_range())
+                finally: tp.close()
+        return [doc[i].render(scale=1.2).to_pil().convert('RGB') for i in range(len(items))]
     finally: doc.close()
 def _same_image(a, b):
     from PIL import ImageChops
     return ImageChops.difference(a, b).getbbox() is None
+def write_new(pno, new):
+    """An edit's content written: the page's content stream, and each form's own content (#165). None: nothing."""
+    if new is None: return
+    if new['page'] is not None: pages[pno - 1].obj.Contents = new['page']
+    for og, data in new['forms'].items(): _FORM_OBJ[og].write(data)
 def fix_language_parts():
     """The content edits of the language step, in two phases (review 02, M9.1). First, on every page with work: remove the
     /Lang inside the marks of each run tagged whole (H1), and split each run that holds a tagged place (lib/mcsplit.py).
@@ -3330,6 +3539,8 @@ def fix_language_parts():
     reindex()
     owned_on = collections.defaultdict(set)         # page -> its MCIDs in the tag tree, once: owner changes only in the write loop below
     for (pg_, mm_) in owner: owned_on[pg_].add(mm_)
+    fowned_on = collections.defaultdict(set)        # the same for runs drawn inside a form (fowner, #165)
+    for (pg_, mm_) in fowner: fowned_on[pg_].add(mm_)
     whole_at = collections.defaultdict(list)        # (page, MCID) -> the Spans tag_run wrote over that whole run (none are added below)
     for sp_ in LANG['spans']:
         if sp_.get('whole'): whole_at[(sp_['page'], sp_['mcid'])].append(sp_)
@@ -3350,32 +3561,56 @@ def fix_language_parts():
             for p in job['split'].get(u[1], []): lang_refuse(pno, u[1], why, p)
     def edit(pno, active=None):
         """(new contents or None, plans, marks edits, {unit: why refused}) for page pno: the marks edits, and the splits
-        and phrase groups of the `active` units (all when None)."""
+        and phrase groups of the `active` units (all when None). new: {'page': a content stream or None, 'forms': {form
+        objgen: content bytes}}: a run is edited in the stream that draws it (#165), each parsed from its original content."""
         page, job = pages[pno - 1], jobs[pno]
         act = units(pno) if active is None else set(active)
-        try: ins = list(pikepdf.parse_content_stream(page))
+        try: pins = list(pikepdf.parse_content_stream(page))
         except Exception: return None, [], 0, {u: 'page content not readable' for u in act}
-        fonts = (_inherited(page, '/Resources') or {}).get('/Font')
+        res = _inherited(page, '/Resources') or {}
+        streams, fobj, changed = {None: pins}, {}, set()
+        def key_of(m):                             # the stream drawing run m; 'unknown' never defaults to the page (review 09)
+            if (pno, m) not in _STREAM: return 'unknown'
+            f = _STREAM[(pno, m)]
+            if f is None: return None
+            if f.objgen not in streams:
+                fi = _form_ins(f)
+                if fi is None: return 'unknown'
+                streams[f.objgen] = list(fi); fobj[f.objgen] = f
+            return f.objgen
         dropped = 0
         drop = set(job['drop'])
         for g, grp in job['groups'].items():
             if ('g', g) in act: drop |= grp['pdrop']        # a phrase group's own marks edits, only while it is kept (review 04 H3b)
+        by_stream = collections.defaultdict(list)
         for m in sorted(drop):
-            ins, ch = mcsplit.drop_lang(ins, m); dropped += ch
-        arr, plans, refused = pt_arr(pno), [], {}
+            k = key_of(m)
+            if k == 'unknown': LANG['marks_stream_unknown'] = LANG.get('marks_stream_unknown', 0) + 1; continue
+            by_stream[k].append(m)
+        for k, ms in by_stream.items():            # one pass per stream (a form's runs number in the thousands)
+            streams[k], ch = mcsplit.drop_lang_many(streams[k], ms); dropped += ch
+            if ch: changed.add(k)
+        plans, refused = [], {}
         todo = {m: ps for m, ps in job['split'].items() if unit(job, m) in act}
-        if todo and arr is None: return None, [], 0, {u: 'page has no tag-tree index' for u in act}
         if todo:
-            used = mcsplit.drawn_mcids(ins) | owned_on[pno]
-            nxt = [max(used | {len(arr) - 1}) + 1]
-            def new_mcid():
-                while nxt[0] < len(arr) and arr[nxt[0]] is not None: nxt[0] += 1
-                m_ = nxt[0]; nxt[0] += 1
-                assert m_ >= len(arr) or arr[m_] is None, 'a new MCID would land on a used index entry'
-                return m_
+            # new MCIDs avoid every number on the page (its content, every form it reaches, both indexes), since pdfplumber
+            # and verify key characters by (page, MCID), and land past the target stream's index array (review 09, R4)
+            used = set(_page_forms(pno)['sources']) | mcsplit.drawn_mcids(pins) | owned_on[pno] | fowned_on[pno]
+            nxt = [max(used | {-1}) + 1]
             for m, parts in sorted(todo.items()):
+                k = key_of(m)
+                if k == 'unknown': refused[unit(job, m)] = "the text's place in the content was not found"; continue
+                arr = pt_arr(pno) if k is None else pt_form_arr(fobj[k])
+                if arr is None: refused[unit(job, m)] = 'page has no tag-tree index' if k is None else 'the form has no tag entry'; continue
+                nxt[0] = max(nxt[0], len(arr))
+                def new_mcid(arr=arr):
+                    while nxt[0] < len(arr) and arr[nxt[0]] is not None: nxt[0] += 1
+                    m_ = nxt[0]; nxt[0] += 1
+                    assert m_ >= len(arr) or arr[m_] is None, 'a new MCID would land on a used index entry'
+                    return m_
+                fonts = res.get('/Font') if k is None else (fobj[k].get('/Resources') or res).get('/Font')
                 try:
-                    ins2, pieces = mcsplit.split_run(ins, fonts, m, [(p['first'], p['last']) for p in parts], new_mcid, expect_n=len(run_chars(pno, m)))
+                    ins2, pieces = mcsplit.split_run(streams[k], fonts, m, [(p['first'], p['last']) for p in parts], new_mcid, expect_n=len(run_chars(pno, m)))
                 except mcsplit.Refuse as e: refused[unit(job, m)] = str(e); continue
                 # the blank pieces a phrase's split leaves inside it (after its first segment, before its last) lose their /Lang too
                 for k_, (mc, kind, ci) in enumerate(pieces):
@@ -3386,8 +3621,10 @@ def fix_language_parts():
                     inner += pieces[:k_] if pos_ > 0 else []
                     for mc2, kind2, _ in inner:
                         if kind2 == 'run': ins2, ch = mcsplit.drop_lang(ins2, mc2); dropped += ch
-                ins = ins2; plans.append((m, pieces, parts))
-        new = pdf.make_stream(pikepdf.unparse_content_stream(ins)) if (dropped or plans) else None
+                streams[k] = ins2; changed.add(k); plans.append((m, pieces, parts))
+        if not changed: return None, plans, dropped, refused
+        new = {'page': pdf.make_stream(pikepdf.unparse_content_stream(streams[None])) if None in changed else None,
+               'forms': {og: pikepdf.unparse_content_stream(streams[og]) for og in changed if og is not None}}
         return new, plans, dropped, refused
     def settle(pno, active=None):
         """edit(), with every group a split refused taken out whole and the page edited again without it."""
@@ -3402,16 +3639,16 @@ def fix_language_parts():
         """The page keeps its original content (review 09, L3): tag_run's whole-run tags on it are taken back out of the tree
         and listed as refused, and a publisher's /Lang that remove_existing took off an element is put back, since the marks
         edits they rely on are not written."""
-        for (pg_, m), (kind, o, x) in list(_LANG_UNDO.items()):
+        for (pg_, m), (kind, o, x, f) in list(_LANG_UNDO.items()):
             if pg_ != pno: continue
             if kind == 'lang':
                 if x is None: del o['/Lang']
                 else: o.Lang = pikepdf.String(x)
             else:
-                sp = owner.get((pno, m)); ks = kids(o)
+                sp = elem_of(pno, m); ks = kids(o)
                 i = next((j for j, k in enumerate(ks) if is_elem(k) and sp is not None and same(k, sp)), None)
                 if i is None: continue                 # moved since (links, section moves): left as it is, and listed
-                ks[i] = x; set_kids(o, ks); pt_set_mcid(pno, m, o); owner[(pno, m)] = o
+                ks[i] = x; set_kids(o, ks); pt_set(pno, m, o, f); index_set(pno, m, o, f)
             for sp_ in [r for r in LANG['spans'] if r.get('whole') and r['page'] == pno and r['mcid'] == m]:
                 LANG['spans'].remove(sp_); LANG['whole'] -= 1; lang_refuse(pno, m, why, sp_)
             del _LANG_UNDO[(pg_, m)]
@@ -3434,28 +3671,43 @@ def fix_language_parts():
     if not edited: return
     order = sorted(edited)
     changed = [p for p in order if edited[p][1] is not None]
-    before = dict(zip(changed, _render_pages([(pages[p - 1], edited[p][0]) for p in changed])))
-    after = dict(zip(changed, _render_pages([(pages[p - 1], edited[p][1]) for p in changed])))
+    def item(pno, new, old):                       # the page drawn with its new content, and its forms' (#165)
+        if new is None: return (pages[pno - 1], old)
+        return (pages[pno - 1], new['page'] if new['page'] is not None else old, new['forms'])
+    def formed(new): return bool(new and new['forms'])
+    bt, at = [], []
+    before = dict(zip(changed, _render_pages([(pages[p - 1], edited[p][0]) for p in changed], texts=bt)))
+    after = dict(zip(changed, _render_pages([item(p, edited[p][1], edited[p][0]) for p in changed], texts=at)))
+    before_text, after_text = dict(zip(changed, bt)), dict(zip(changed, at))
     LANG['pages_checked'] = len(changed)
     hook = os.environ.get('APPLY_TEST_PIXEL_FAIL_RUN', '')          # tests only: 'page:mcid', a split of that run "looks different"
     hook = tuple(int(x) for x in hook.split(':')) if re.fullmatch(r'\d+:\d+', hook) else None
     page_hook = os.environ.get('APPLY_TEST_PIXEL_FAIL_PAGE', '')    # tests only: that page "looks different" whatever is on it (review 09, L3)
-    def looks_same(pno, img, plans):
+    thook = os.environ.get('APPLY_TEST_TEXT_FAIL_RUN', '')          # tests only: 'page:mcid', a split of that run "reads differently" (R7)
+    thook = tuple(int(x) for x in thook.split(':')) if re.fullmatch(r'\d+:\d+', thook) else None
+    def looks_same(pno, img, plans, text=None, form_edit=False):
+        """The page draws the same, and, where a form was edited, reads the same: a form's text is often invisible (3 Tr),
+        so a broken split there draws nothing a pixel check can see (review 09, R7)."""
         if page_hook == str(pno): return False
+        if form_edit:
+            if text != before_text.get(pno): return False
+            if thook and thook[0] == pno and any(m == thook[1] for m, _, _ in plans): return False
         return _same_image(before[pno], img) and not (hook and hook[0] == pno and any(m == hook[1] for m, _, _ in plans))
     for pno in changed:
-        if looks_same(pno, after[pno], edited[pno][2]): continue
+        if looks_same(pno, after[pno], edited[pno][2], after_text[pno], formed(edited[pno][1])): continue
         old, _, plans, _, act = edited[pno]
         LANG['retried_pages'].append(pno)                # tried again unit by unit
         us = sorted(act)
         trial = [edit(pno, {u}) for u in us]
-        alone = _render_pages([(pages[pno - 1], t[0] or old) for t in trial])
-        good = {u for u, im, t in zip(us, alone, trial) if looks_same(pno, im, t[1])}
+        tt = []
+        alone = _render_pages([item(pno, t[0], old) for t in trial], texts=tt)
+        good = {u for u, im, tx, t in zip(us, alone, tt, trial) if looks_same(pno, im, t[1], tx, formed(t[0]))}
         for keep in (good, set()):
             new, plans2, dropped, refused2, act2 = settle(pno, keep)
             act2 = {u for u in act2 if u not in refused2}
-            img = _render_pages([(pages[pno - 1], new)])[0] if new is not None else before[pno]
-            if looks_same(pno, img, plans2):
+            tx = []
+            img = _render_pages([item(pno, new, old)], texts=tx)[0] if new is not None else before[pno]
+            if looks_same(pno, img, plans2, tx[0] if tx else before_text[pno], formed(new)):
                 edited[pno] = (old, new, plans2, dropped, act2); break
         else:
             edited[pno] = (old, None, [], 0, set()); LANG['restored_pages'].append(pno)
@@ -3466,15 +3718,16 @@ def fix_language_parts():
         """Each phrase's runs still in its element's /K, in order, with only blank runs between (links, section moves and
         figure order may have moved entries since op_language)."""
         for ph in job['groups'][g]['phrases']:
-            o = ph['owner']
-            if owner.get((pno, ph['segs'][0][0])) is None or not same(owner[(pno, ph['segs'][0][0])], o): return False
-            idx = [mc_entry_index(o, pno, m) for m, _, _, _ in ph['segs']]
+            o, sk = ph['owner'], ph['stream']
+            e0 = elem_of(pno, ph['segs'][0][0])
+            if e0 is None or not same(e0, o): return False
+            idx = [mc_entry_index(o, pno, m, sk) for m, _, _, _ in ph['segs']]
             if None in idx or any(b_ <= a_ for a_, b_ in zip(idx, idx[1:])): return False
             ks = kids(o)
             for i0, i1 in zip(idx, idx[1:]):
                 for k in ks[i0 + 1:i1]:
-                    mm = kid_mcid(o, k, pno)
-                    if mm is None or mm not in ph['blank']: return False
+                    kk = kid_key(o, k, pno)
+                    if kk is None or kk[0] != sk or kk[1] not in ph['blank']: return False
         return True
     for pno in order:
         old, new, plans, dropped, act = edited[pno]
@@ -3483,7 +3736,8 @@ def fix_language_parts():
         if new is None and not groups_on: continue
         # resolve every run's tag entry before the page's content is written (review 06, M6): a run whose entry moved
         # since op_language (links, section moves, figure order) is refused, and the page keeps only its marks edits
-        lost = [m for m, _, _ in plans if pno in lose or owner.get((pno, m)) is None or mc_entry_index(owner[(pno, m)], pno, m) is None]
+        lost = [m for m, _, _ in plans if pno in lose or elem_of(pno, m) is None
+                or mc_entry_index(elem_of(pno, m), pno, m, stream_key(_STREAM.get((pno, m)))) is None]
         lost_g = [g for g in groups_on if pno in lose or not group_order_ok(job, g, pno)]
         if lost or lost_g:
             for u in act: refuse_unit(pno, u, 'the text\'s tag entry moved before the split was written')
@@ -3494,28 +3748,30 @@ def fix_language_parts():
             phrase_mc = collections.defaultdict(dict)      # phrase id -> {run: its phrase piece's MCID}
             if os.environ.get('APPLY_FAIL_LANG_PAGE') == str(pno): raise RuntimeError('test: a failure while the page is planned')   # tests only
             for m, pieces, parts in plans:
-                o = owner[(pno, m)]; i = mc_entry_index(o, pno, m)
+                o, f = elem_of(pno, m), _STREAM[(pno, m)]
+                i = mc_entry_index(o, pno, m, stream_key(f)) if o is not None else None
                 if i is None: raise ValueError(f'run {m}: its tag entry is gone')
-                same_pg = isinstance(kids(o)[i], int)
+                tmpl = kids(o)[i]                          # the kid the pieces replace: int, page MCR, or /MCR … /Stm (#165)
                 new_k, maps, recs = [], [], []
                 for mc, kind, ci in pieces:
                     if kind == 'run' or 'phrase' in parts[ci]:
-                        new_k.append(mc if same_pg else mcr(pno, mc)); maps.append((mc, o))
+                        new_k.append(kid_for(pno, mc, f, tmpl)); maps.append((mc, o))
                         if kind != 'run': phrase_mc[parts[ci]['phrase']][m] = mc
                     else:
                         part = parts[ci]
-                        sp = new_elem('Span', o, [mc], pg=pno, Lang=pikepdf.String(part['lang']))   # not in any /K until written below
+                        sp = new_elem('Span', o, [mc if f is None else kid_for(pno, mc, f, tmpl)], pg=pno, Lang=pikepdf.String(part['lang']))   # not in any /K until written below
                         new_k.append(sp); maps.append((mc, sp))
                         recs.append({'page': pno, 'mcid': mc, 'lang': part['lang'], 'text': part['text'], 'whole': False})
-                built.append((o, i, new_k, maps, recs, m, pieces))
+                built.append((o, i, new_k, maps, recs, m, pieces, f))
             phrase_plans = []                              # (phrase, its MCIDs from first to last, as they will stand in the owner's /K)
             for g in groups_on:
                 for ph in job['groups'][g]['phrases']:
                     o = ph['owner']
                     toks = []                              # the owner's /K after the splits, as MCIDs (None: anything else)
                     split_of = {m: pieces for (m, pieces, _), (oo, *_r) in zip(plans, built) if same(oo, o)}
-                    for k in kids(o):                      # an element may run across pages: an MCID counts only on this page
-                        mm = kid_mcid(o, k, pno)
+                    for k in kids(o):                      # an element may run across pages: an MCID counts only on this page,
+                        kk = kid_key(o, k, pno)            # and only in the phrase's own stream (review 09, R1)
+                        mm = kk[1] if kk is not None and kk[0] == ph['stream'] else None
                         toks += [x for x, _, _ in split_of[mm]] if mm in split_of else [mm]
                     first = ph['segs'][0][0] if ph['segs'][0][3] else phrase_mc[ph['gid']].get(ph['segs'][0][0])
                     last = ph['segs'][-1][0] if ph['segs'][-1][3] else phrase_mc[ph['gid']].get(ph['segs'][-1][0])
@@ -3533,26 +3789,25 @@ def fix_language_parts():
             for u in act: refuse_unit(pno, u, 'the page could not be planned')   # so tag_run's and remove_existing's tags hold
             log['failed'].append({'op': f'fix_language_parts page {pno}', 'error': f'{type(e).__name__}: {e}'[:300]})
             new, _p, dropped, _r = edit(pno, set())
-            if new is not None: pages[pno - 1].obj.Contents = new; LANG['marks_lang_removed'] += dropped
+            if new is not None: write_new(pno, new); LANG['marks_lang_removed'] += dropped
             continue
-        if new is not None: pages[pno - 1].obj.Contents = new   # then all of it: the content, each owner's /K, the index, the records
+        write_new(pno, new)                                # then all of it: the content (page and form), each owner's /K, the index, the records
         LANG['marks_lang_removed'] += dropped
-        for o, _i, new_k, maps, recs, m, pieces in built:
-            i = mc_entry_index(o, pno, m)                  # on the /K as it is now: an earlier split of this owner moved its entries (review 10, H1)
+        for o, _i, new_k, maps, recs, m, pieces, f in built:
+            i = mc_entry_index(o, pno, m, stream_key(f))   # on the /K as it is now: an earlier split of this owner moved its entries (review 10, H1)
             ks = kids(o); ks[i:i + 1] = new_k; set_kids(o, ks)
             for mc, el in maps:
-                pt_set_mcid(pno, mc, el); owner[(pno, mc)] = el
+                pt_set(pno, mc, el, f); index_set(pno, mc, el, f)
                 if el is not o: eff_pg[el.objgen] = pno
             for r in recs: LANG['spans'].append(r); LANG['split'] += 1; ok(f'language: {r["lang"]} Span (part of a run)')
             for sp in whole_at.get((pno, m), ()):          # a run tagged whole and split under its Span: the Span holds every piece
                 sp['mcids'] = [mc for mc, _, _ in pieces]
         for ph, inside in phrase_plans:                    # one Span over the phrase, at its first piece's place in the owner's /K
-            o = ph['owner']; ks = kids(o)
-            i0 = mc_entry_index(o, pno, inside[0]); i1 = mc_entry_index(o, pno, inside[-1])
-            same_pg = isinstance(ks[i0], int)
-            sp = new_elem('Span', o, [mc if same_pg else mcr(pno, mc) for mc in inside], pg=pno, Lang=pikepdf.String(ph['lang']))
+            o, sk, fx = ph['owner'], ph['stream'], ph['fx']; ks = kids(o)
+            i0 = mc_entry_index(o, pno, inside[0], sk); i1 = mc_entry_index(o, pno, inside[-1], sk)
+            sp = new_elem('Span', o, [kid_for(pno, mc, fx, ks[i0]) for mc in inside], pg=pno, Lang=pikepdf.String(ph['lang']))
             ks[i0:i1 + 1] = [sp]; set_kids(o, ks)
-            for mc in inside: pt_set_mcid(pno, mc, sp); owner[(pno, mc)] = sp
+            for mc in inside: pt_set(pno, mc, sp, fx); index_set(pno, mc, sp, fx)
             eff_pg[sp.objgen] = pno; parent_of[sp.objgen] = o
             LANG['spans'].append({'page': pno, 'mcid': inside[0], 'mcids': list(inside), 'lang': ph['lang'], 'text': ph['text'], 'whole': False,
                                   'segments': len(ph['segs']), 'parent_type': S(o)})

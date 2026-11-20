@@ -87,6 +87,61 @@ def count_codes(ins, fonts, mcid, xobjects=None):
             n += sum(len(bytes(y)) // nb for y in strs)
     return n
 
+def count_all(ins, fonts, xobjects=None):
+    """{mcid: count, or the reason count_codes would refuse} for every run in these instructions, in one pass (#165: a
+    form's text is thousands of runs, and count_codes scans the whole list for each). The same rules as count_codes: a
+    run's own codes and those of marked content nested in it; the first run of a number only (find_run's); the font in
+    force from the start (Tf, q and Q); a form drawn inside a run, text before any font, or a two-byte font with another
+    encoding refuse the runs open at that point; a run never closed is refused as find_run refuses it."""
+    out, open_, seen, cur, q = {}, [], set(), None, []
+    def refuse(why):
+        for _d, m in open_:
+            if m is not None and not isinstance(out[m], str): out[m] = why
+    for x in ins:
+        op = str(x.operator)
+        if op in ('BDC', 'BMC'):
+            m = _mcid(x)
+            if m is not None and m in seen: m = None            # a second run of the same number: find_run takes the first
+            if m is not None: seen.add(m); out[m] = 0
+            open_.append((len(open_), m)); continue
+        if op == 'EMC':
+            if open_: open_.pop()
+            continue
+        if op == 'Tf': cur = (str(x.operands[0]), fonts.get(x.operands[0]) if fonts is not None else None)
+        elif op == 'q': q.append(cur)
+        elif op == 'Q' and q: cur = q.pop()
+        elif op == 'Do':
+            if not any(m is not None for _d, m in open_): continue
+            xo = (xobjects or {}).get(x.operands[0]) if xobjects is not None else None
+            if xo is None or str(xo.get('/Subtype')) != '/Image': refuse('cannot count: a form drawn inside the text')
+        elif op in ('Tj', 'TJ', "'", '"'):
+            if not any(m is not None for _d, m in open_): continue
+            f = cur[1] if cur else None
+            if f is None: refuse('cannot count: text before any font'); continue
+            if str(f.get('/Subtype')) == '/Type0':
+                if str(f.get('/Encoding')) not in ('/Identity-H', '/Identity-V'): refuse('cannot count: two-byte font with another encoding'); continue
+                nb = 2
+            else: nb = 1
+            arg = x.operands[-1]
+            k = sum(len(bytes(y)) // nb for y in ([y for y in arg if isinstance(y, pikepdf.String)] if op == 'TJ' else [arg]))
+            for _d, m in open_:
+                if m is not None and not isinstance(out[m], str): out[m] += k
+    for _d, m in open_:
+        if m is not None: out[m] = "the text's marked content is not closed"
+    return out
+
+def drop_lang_many(ins, mcids):
+    """drop_lang for several runs in one pass: (instructions, how many /Lang were removed)."""
+    ins, n, todo = list(ins), 0, set(mcids)
+    for i, x in enumerate(ins):
+        if not todo: break
+        m = _mcid(x)
+        if m in todo:
+            todo.discard(m); p = _props(x)
+            if '/Lang' in p:
+                ins[i] = I([x.operands[0], pikepdf.Dictionary({k: v for k, v in p.items() if k != '/Lang'})], Op('BDC')); n += 1
+    return ins, n
+
 def code_bytes(font):
     """Bytes per character code: 1 (simple font), 2 (Type0, Identity-H). Refused otherwise."""
     if font is None: raise Refuse('text before any font')

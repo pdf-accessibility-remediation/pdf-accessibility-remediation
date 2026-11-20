@@ -191,3 +191,98 @@ def build_across_pages(path, page1, page2, kids_a, kids_b, doc_lang='en'):
     pdf.docinfo['/Title'] = 'Synthetic language test'; pdf.Root.ViewerPreferences = pikepdf.Dictionary(DisplayDocTitle=True)
     pdf.save(path, deterministic_id=True)
     return path
+
+
+def build_in_form(path, lines, doc_lang='en', page_lines=(), draws=1, second_page=False, do_inside=None, form_resources=True,
+                  page_refs=(), only_page_refs=(), page_mcid=None, at_marks=(), two_forms_share=None, no_structparents=False):
+    """Text drawn inside one form XObject (#165), the way an auto-tagged OCR layer is: the page's content only draws the
+    form; the form holds the runs, each its own marked content (MCID from 0, `/Lang (en-US)` in the marks unless a piece
+    says otherwise); the tag tree names them with /MCR … /Stm and no /Pg (the element's /Pg gives the page); the form has
+    its own /StructParents (key 1) and ParentTree array. lines: as build_lines' (each piece's text, font, parent, gap, lang).
+      page_lines      runs drawn in the page's own content after the form, one P each, page MCIDs numbered after the form's
+      draws           how many times the page draws the form; second_page: a second page draws it too
+      do_inside       'artifact' or 'mcid': the form's Do sits inside /Artifact BMC … EMC, or inside marked content with an MCID
+      form_resources  False: the form has no /Resources (the page's apply)
+      page_refs       form MCIDs also named by a page-level integer kid of another P (the tree names them twice)
+      only_page_refs  form MCIDs named only by a page-level integer kid (Sample N's PDF 87)
+      page_mcid       a page MCID drawn in the page's own content with this number (shared with a form run)
+      at_marks        form MCIDs whose marks carry /ActualText
+      two_forms_share an MCID a second, single-use form on the page also draws
+      no_structparents  the form has no /StructParents
+    Returns the path."""
+    pdf = pikepdf.new()
+    F = fonts(pdf)
+    out, y, n, kids, order, langs = ['BT', '72 740 Td'], 740, 0, {}, [], {}
+    for line in lines:
+        cur = None
+        for pc in line:
+            size, font = pc.get('size', 11), pc.get('font', 'F1')
+            if (font, size) != cur: out.append(f'/{font} {size} Tf'); cur = (font, size)
+            if pc.get('gap'): out.append(f'[-{pc["gap"]}] TJ')
+            lang = pc.get('lang', 'en-US')
+            props = f'<</MCID {n}' + (f' /Lang ({lang})' if lang else '') + (' /ActualText (x)' if n in at_marks else '') + '>>'
+            out += [f'/Span {props} BDC', show(font, pc['text']), 'EMC']
+            key = pc.get('parent', 'P0')
+            if key not in kids: kids[key] = []; order.append(key)
+            kids[key].append(n); n += 1
+        out.append('0 -30 Td'); y -= 30
+    out.append('ET')
+    form = pdf.make_stream('\n'.join(out).encode('latin-1'))
+    form.Type = pikepdf.Name.XObject; form.Subtype = pikepdf.Name.Form; form.BBox = [0, 0, 612, 792]
+    if form_resources: form.Resources = pikepdf.Dictionary(Font=F)
+    if not no_structparents: form.StructParents = 1
+    nform = n
+    extra = None
+    if two_forms_share is not None:
+        extra = pdf.make_stream(f'BT /F1 11 Tf 72 100 Td /Span <</MCID {two_forms_share}>> BDC (Zzz) Tj EMC ET'.encode())
+        extra.Type = pikepdf.Name.XObject; extra.Subtype = pikepdf.Name.Form; extra.BBox = [0, 0, 612, 792]
+        extra.Resources = pikepdf.Dictionary(Font=F)
+    do = ['q /Fm0 Do Q'] * draws
+    if do_inside == 'artifact': do = ['/Artifact BMC'] + do + ['EMC']
+    if do_inside == 'mcid': do = ['/P <</MCID 90>> BDC'] + do + ['EMC']
+    pout, pm = list(do), []
+    if extra is not None: pout.append('q /Fm1 Do Q')
+    k = nform if page_mcid is None else page_mcid
+    for t in page_lines or (['Shared'] if page_mcid is not None else []):
+        pout += ['BT /F1 11 Tf 72 80 Td', f'/Span <</MCID {k} /Lang (en-US)>> BDC', show('F1', t), 'EMC', 'ET']; pm.append(k); k += 1
+    pages_ = []
+    for i in range(2 if second_page else 1):
+        page = pdf.add_blank_page(page_size=(612, 792))
+        xo = pikepdf.Dictionary({'/Fm0': form}); 
+        if extra is not None: xo['/Fm1'] = extra
+        page.obj.Resources = pikepdf.Dictionary(Font=F, XObject=xo)
+        page.obj.Contents = pdf.make_stream('\n'.join(pout if i == 0 else do).encode('latin-1'))
+        pages_.append(page.obj)
+    st = pdf.make_indirect(pikepdf.Dictionary(Type=pikepdf.Name.StructTreeRoot))
+    doc = pdf.make_indirect(pikepdf.Dictionary(Type=pikepdf.Name.StructElem, S=pikepdf.Name.Document, P=st, K=pikepdf.Array()))
+    def P(ks): return pdf.make_indirect(pikepdf.Dictionary(Type=pikepdf.Name.StructElem, S=pikepdf.Name.P, P=doc, Pg=pages_[0], K=pikepdf.Array(ks)))
+    els, form_arr = [], [None] * nform
+    for key in order:
+        ms = [m for m in kids[key] if m not in only_page_refs]
+        el = P([pikepdf.Dictionary(Type=pikepdf.Name.MCR, Stm=form, MCID=m) for m in ms] + [m for m in kids[key] if m in only_page_refs])
+        els.append(el)
+        for m in kids[key]: form_arr[m] = el
+    page_arr = []
+    if page_refs:
+        el = P(list(page_refs)); els.append(el)
+    for m in pm:
+        el = P([m]); els.append(el)
+        while len(page_arr) <= m: page_arr.append(None)
+        page_arr[m] = el
+    for m in list(page_refs) + list(only_page_refs):
+        while len(page_arr) <= m: page_arr.append(None)
+        page_arr[m] = next(e for e in els if any(isinstance(x, int) and int(x) == m for x in e.K))
+    if extra is not None:
+        el = P([pikepdf.Dictionary(Type=pikepdf.Name.MCR, Stm=extra, MCID=two_forms_share)]); els.append(el)
+        extra.StructParents = 2
+    doc.K = pikepdf.Array(els); st.K = pikepdf.Array([doc])
+    nums = [1, pdf.make_indirect(pikepdf.Array(form_arr))]
+    if page_arr or pm:
+        pages_[0].StructParents = 0; nums = [0, pdf.make_indirect(pikepdf.Array(page_arr))] + nums
+    if extra is not None:
+        ea = [None] * (two_forms_share + 1); ea[two_forms_share] = els[-1]; nums += [2, pdf.make_indirect(pikepdf.Array(ea))]
+    st.ParentTree = pikepdf.Dictionary(Nums=pikepdf.Array(nums)); st.ParentTreeNextKey = 3
+    pdf.Root.StructTreeRoot = st; pdf.Root.MarkInfo = pikepdf.Dictionary(Marked=True); pdf.Root.Lang = pikepdf.String(doc_lang)
+    pdf.docinfo['/Title'] = 'Synthetic language test'; pdf.Root.ViewerPreferences = pikepdf.Dictionary(DisplayDocTitle=True)
+    pdf.save(path, deterministic_id=True)
+    return path
