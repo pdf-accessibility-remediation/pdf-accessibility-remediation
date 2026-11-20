@@ -375,8 +375,13 @@ Paid: each run is approved first, with its amount.
 | Gemini 4 Neon | 97.7% (0.8%) | 97.5% (2.5%) | $1.63 | 17.0 |
 
 Every Google model was served by Google under `data_collection: deny`, with reasoning at low effort and `max_tokens`
-12,000; no reply was cut off. The reply check dropped 3 of Flash's 1,419 answers (2 with a language tag the step may not
+12,000. Two of Flash's everyday answers were cut off (0.3%); no other reply was. The reply check dropped 3 of Flash's 1,419 answers (2 with a language tag the step may not
 write) and none of the others'. The Google models answer nearly every item, so on the harder items (Han with no reading
-nearby) they are wrong about twice as often as Sonnet, which leaves more of those for a person. Sonnet 5.5 stays the
-default. Gemini 3.8 Flash matches it on everyday items at a quarter of the cost; a change of default would need a paid
-run on a test book first.
+nearby) they are wrong more often than Sonnet, which leaves more of those for a person.
+
+The fixed adoption rule (`tools/lang_exp.py adopt`) picked Gemini 4 Neon: it drops Flash, Hydrogen and Argon on the harder
+items, and keeps Neon because Neon leaves no harder item untagged where Sonnet leaves 11 over three runs. Sonnet 5.5 was
+kept as the default all the same (2026-11-19): Neon's answer on every item comes at the price of about 5 more wrong tags on
+the harder items (17 against 12 over three runs), at about twice the cost ($1.63 a run against $0.86). An untagged item
+is left for a person to name, while a wrong tag is put before the person as the answer. Gemini 3.8 Flash matches Sonnet on everyday items at a
+quarter of the cost; a change of default would need a paid run on a test book first.

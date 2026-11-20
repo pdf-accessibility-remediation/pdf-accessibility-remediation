@@ -493,6 +493,7 @@ def _other_page(pno, cs, real_runs, struct, rules):
     def allow(a, b, kind):
         same = a.get('_m') == b.get('_m')
         if not ((('inrun' in rules) if same else (cross and pos[id(b)] not in notes))): return False
+        if kind != 'drop cap' and a['text'] in ENDS | STOPS: return False   # "L. Camacho", "v. Asian", "C., and": a word end (review 06, M2)
         i = last_of.get(id(a))
         return kind == 'drop cap' or i is None or i + 1 >= len(words) or not piece_of_english(i)
     one_letter(cs, ln, words, pos, drop, joins, allow)

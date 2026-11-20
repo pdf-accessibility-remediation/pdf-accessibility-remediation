@@ -205,3 +205,15 @@ def test_a_letter_is_not_joined_to_a_piece_of_an_english_word_drawn_in_pieces(tm
     body = ['[(These words are drawn in pieces like geo) ( ) 278 (graph) ( ) 278 (i) ( ) 278 (cal here and more words go on.)] TJ']
     got = forms(find(tmp_path, [[{'text': '', 'body': body}]]))
     assert 'ical' not in got and not any('cal' in f for f in got), got
+
+
+def test_an_initial_and_its_period_are_never_joined_to_the_next_word(tmp_path):
+    """review 06 M2: a tightly set "L. velunkata" or "v. toramio" (a space drawn over the next letter) read as one letter and
+    the next word; the period or comma after the letter is a word end, so "L.velunkata" is never made. A letter with no
+    period is still joined."""
+    body = ['[(These names are all made up: L.) ( ) 278 (velunkata and v.) ( ) 278 (toramio, C.,) ( ) 278 (pasquet here.)] TJ']
+    got = forms(find(tmp_path, [[{'text': '', 'body': body}]]))
+    assert not any('.' in f[:-1] or ',' in f[:-1] for f in got), got
+    assert {'velunkata', 'toramio', 'pasquet'} <= set(got), got
+    still = ['[(These words are all made up: v) ( ) 278 (elunkata is one of them here.)] TJ']
+    assert 'velunkata' in forms(find(tmp_path, [[{'text': '', 'body': still}]], name='s.pdf'))
