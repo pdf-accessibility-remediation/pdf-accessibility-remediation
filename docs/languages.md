@@ -129,11 +129,34 @@ approved.
    and the `/Lang` in its runs' marked content stays as it was. Its runs, and any runs that share one with it, are
    checked and kept or left out together. verify.py checks such a Span exactly: every run's own element is the Span,
    in reading order, under the element the place was in.
+   **Text drawn inside a form XObject** (#165 (tags on text inside a form XObject)): most of the collection's OCR'd books,
+   once intake has tagged them, draw each page's text inside one form XObject, and the tag tree points into it with
+   `/MCR … /Stm`. A place there is tagged the same way as on page text, whole runs, splits and places across runs alike:
+   the form's own content is edited, its own tag-tree index (`/StructParents` on the form) names the new Span, and a page
+   whose form changed is checked by drawing it and by reading its text before and after (the OCR text is invisible, so
+   only the reading shows a broken split). A run keeps its name (page and MCID); the executor finds the form that draws
+   it, and tags it only when nothing about that is in doubt. Otherwise the place is left out with its reason:
+   - "the text is drawn inside a form used in more than one place": one edit would change every place the form is drawn;
+   - "the text's number is used twice on the page": the page's own content, or a second form, holds the same MCID, so
+     the text read under it is two texts at once;
+   - "the tag tree names this text twice": a page-level reference and an `/MCR … /Stm` both name it (an auto-tagger's
+     tree can, on many pages of a book: see #168 (Intake: the auto-tagged tree names some form text as page text));
+   - "this text is drawn inside a form XObject, not in the page": only a page-level reference names it;
+   - "the form is drawn inside marked content on the page", "the text is drawn inside a nested form", "the form has no
+     tag entry", and "the text has its own spoken text" (spoken text in its marks).
+   A form drawn in several places (a decorative frame repeated on every page, say) is never edited: the `/Lang` in its
+   marks is neither listed for a person nor removed, and its runs are never tagged.
 6. **verify.py checks** that every tag holds its words and language. A tag that does not match is a rank-1 finding.
+   It works out which runs are drawn inside a form from the file itself, with the executor's conditions, and checks a
+   Span there like any other: its element, its runs and their stream, its place, its text, and the marks inside the
+   form.
 
 ### Chinese, Japanese and Korean
 
 The local rule (`lib/scripts.py`) runs first on every run: hangul is tagged Korean and kana Japanese automatically.
+Since #165 (tags on text inside a form XObject) it also reaches text drawn inside a form XObject, so on any OCR'd book
+whose text sits in forms (most of the collection) kana and hangul are tagged too, whether or not the book goes through
+the language step.
 AI parts in the same language as the local tag are dropped; AI parts in another language are split under it.
 Chinese characters with no kana (Han-only) may be named Japanese or Chinese by the AI; a person approves it before the
 book ships. Han the AI leaves untagged goes to a person (`han_review.csv`), as before.
