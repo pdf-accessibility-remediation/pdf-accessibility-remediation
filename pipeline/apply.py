@@ -1328,9 +1328,9 @@ def kid_for(pno, mc, f, tmpl):
     """A /K kid for new marked content mc, in the form of the kid it replaces: a page MCID (int when tmpl is an int, else
     an MCR naming the page), or an /MCR … /Stm into form f (with tmpl's /Pg when it had one)."""
     if f is None: return mc if isinstance(tmpl, int) else mcr(pno, mc)
-    d = pikepdf.Dictionary(Type=pikepdf.Name('/MCR'), Stm=f, MCID=mc)
-    if isinstance(tmpl, pikepdf.Dictionary) and '/Pg' in tmpl: d.Pg = tmpl.Pg
-    return d
+    if isinstance(tmpl, pikepdf.Dictionary) and '/Pg' in tmpl:          # built whole, before it is in any /K (rule 1: no key
+        return pikepdf.Dictionary(Type=pikepdf.Name('/MCR'), Stm=f, MCID=mc, Pg=tmpl.Pg)    # written on a tree object afterwards)
+    return pikepdf.Dictionary(Type=pikepdf.Name('/MCR'), Stm=f, MCID=mc)
 def index_set(pno, mc, el, f):
     """The kept index after a write: a page run in owner, a form run in fowner (never a form key in owner: review 09 R3)."""
     if f is None: owner[(pno, mc)] = el
