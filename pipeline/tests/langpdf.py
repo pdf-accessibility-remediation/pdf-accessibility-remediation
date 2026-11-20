@@ -155,3 +155,39 @@ def build_lines(path, lines, doc_lang='en', at_parent=None):
     pdf.docinfo['/Title'] = 'Synthetic language test'; pdf.Root.ViewerPreferences = pikepdf.Dictionary(DisplayDocTitle=True)
     pdf.save(path, deterministic_id=True)
     return path
+
+
+def build_across_pages(path, page1, page2, kids_a, kids_b, doc_lang='en'):
+    """Two pages and one P element that runs across both (review 06, M1): page1 and page2 are lists of run texts (each its own
+    MCID, numbered from 0 on each page, marks carrying /Lang en-US as born-digital books do). Element A has /Pg page 1 and the
+    kids kids_a: ('1', m) an integer kid (MCID m on page 1) or ('2', m) an MCR to MCID m on page 2. Element B has /Pg page 2 and
+    integer kids kids_b (MCIDs on page 2). Every page-1 run not in kids_a goes under a P of its own. Returns the path."""
+    pdf = pikepdf.new()
+    pgs = []
+    for runs in (page1, page2):
+        out = ['BT', '/F1 11 Tf', '72 740 Td']
+        for n, t in enumerate(runs): out += [f'/Span <</MCID {n} /Lang (en-US)>> BDC', show('F1', t), 'EMC']
+        out.append('ET')
+        page = pdf.add_blank_page(page_size=(612, 792))
+        page.obj.Resources = pikepdf.Dictionary(Font=fonts(pdf))
+        page.obj.Contents = pdf.make_stream('\n'.join(out).encode('latin-1'))
+        pgs.append(page.obj)
+    pgs[0].StructParents = 0; pgs[1].StructParents = 1
+    st = pdf.make_indirect(pikepdf.Dictionary(Type=pikepdf.Name.StructTreeRoot))
+    doc = pdf.make_indirect(pikepdf.Dictionary(Type=pikepdf.Name.StructElem, S=pikepdf.Name.Document, P=st, K=pikepdf.Array()))
+    def P(pg, ks): return pdf.make_indirect(pikepdf.Dictionary(Type=pikepdf.Name.StructElem, S=pikepdf.Name.P, P=doc, Pg=pg, K=pikepdf.Array(ks)))
+    def mcr(m): return pikepdf.Dictionary(Type=pikepdf.Name.MCR, Pg=pgs[1], MCID=m)
+    a = P(pgs[0], [m if p == '1' else mcr(m) for p, m in kids_a])
+    b = P(pgs[1], list(kids_b))
+    by1 = {m: a for p, m in kids_a if p == '1'}; by2 = {m: a for p, m in kids_a if p == '2'}; by2.update({m: b for m in kids_b})
+    els = [a, b]
+    for m in range(len(page1)):
+        if m not in by1: e = P(pgs[0], [m]); els.insert(0, e); by1[m] = e
+    doc.K = pikepdf.Array(els); st.K = pikepdf.Array([doc])
+    st.ParentTree = pikepdf.Dictionary(Nums=pikepdf.Array([0, pdf.make_indirect(pikepdf.Array([by1[m] for m in range(len(page1))])),
+                                                           1, pdf.make_indirect(pikepdf.Array([by2[m] for m in range(len(page2))]))]))
+    st.ParentTreeNextKey = 2
+    pdf.Root.StructTreeRoot = st; pdf.Root.MarkInfo = pikepdf.Dictionary(Marked=True); pdf.Root.Lang = pikepdf.String(doc_lang)
+    pdf.docinfo['/Title'] = 'Synthetic language test'; pdf.Root.ViewerPreferences = pikepdf.Dictionary(DisplayDocTitle=True)
+    pdf.save(path, deterministic_id=True)
+    return path

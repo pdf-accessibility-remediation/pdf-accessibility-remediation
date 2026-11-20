@@ -195,11 +195,16 @@ def own_mcids(n, pg):
         if isinstance(k, int): out.append((pg, k))
         elif is_pmcr(k): out.append((pidx[k.Pg.objgen] if '/Pg' in k else pg, int(k.MCID)))
     return out
-def mc_entry_index(el, pg, m):
+def kid_mcid(el, k, pg):
+    """The MCID of /K kid k of element el, if that kid is marked content on page pg, else None. An element may run across
+    pages: an integer kid sits on the element's own page, an MCR on its /Pg (review 06, M1)."""
     epg = eff_pg.get(el.objgen)
+    if isinstance(k, int): return k if epg == pg else None
+    if is_pmcr(k) and (pidx[k.Pg.objgen] if '/Pg' in k else epg) == pg: return int(k.MCID)
+    return None
+def mc_entry_index(el, pg, m):
     for i, k in enumerate(kids(el)):
-        if isinstance(k, int) and k == m and epg == pg: return i
-        if is_pmcr(k) and int(k.MCID) == m and (pidx[k.Pg.objgen] if '/Pg' in k else epg) == pg: return i
+        if kid_mcid(el, k, pg) == m: return i
     return None
 def nt_find(node, key):
     if '/Nums' in node:
@@ -1231,7 +1236,7 @@ def plan_phrase(p, explicit, doc_lang, spec):
     ks, blank = kids(o), []
     for i0, i1 in zip(idx, idx[1:]):
         for k in ks[i0 + 1:i1]:
-            mm = k if isinstance(k, int) else (int(k.MCID) if is_pmcr(k) and (pidx[k.Pg.objgen] if '/Pg' in k else eff_pg.get(o.objgen)) == pno else None)
+            mm = kid_mcid(o, k, pno)
             if mm is None or mc_text(pno, mm).strip(): return no('its runs are not next to each other in the tag tree')
             blank.append(mm)
     plan = []
@@ -3427,7 +3432,7 @@ def fix_language_parts():
             ks = kids(o)
             for i0, i1 in zip(idx, idx[1:]):
                 for k in ks[i0 + 1:i1]:
-                    mm = k if isinstance(k, int) else (int(k.MCID) if is_pmcr(k) else None)
+                    mm = kid_mcid(o, k, pno)
                     if mm is None or mm not in ph['blank']: return False
         return True
     for pno in order:
@@ -3469,8 +3474,7 @@ def fix_language_parts():
                     toks = []                              # the owner's /K after the splits, as MCIDs (None: anything else)
                     split_of = {m: pieces for (m, pieces, _), (oo, *_r) in zip(plans, built) if same(oo, o)}
                     for k in kids(o):                      # an element may run across pages: an MCID counts only on this page
-                        kp = eff_pg.get(o.objgen) if isinstance(k, int) else ((pidx[k.Pg.objgen] if '/Pg' in k else eff_pg.get(o.objgen)) if is_pmcr(k) else None)
-                        mm = (k if isinstance(k, int) else int(k.MCID)) if kp == pno else None
+                        mm = kid_mcid(o, k, pno)
                         toks += [x for x, _, _ in split_of[mm]] if mm in split_of else [mm]
                     first = ph['segs'][0][0] if ph['segs'][0][3] else phrase_mc[ph['gid']].get(ph['segs'][0][0])
                     last = ph['segs'][-1][0] if ph['segs'][-1][3] else phrase_mc[ph['gid']].get(ph['segs'][-1][0])

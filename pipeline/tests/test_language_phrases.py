@@ -218,3 +218,54 @@ def test_161_an_accented_last_letter_in_its_own_run_is_tagged_across_the_two_run
     sp = spans(out)
     assert len(sp) == 1 and sp[0][0] == 'haw' and sp[0][1][-1] == 1 and len(sp[0][1]) == 2, sp
     assert v['language']['all_match'] and v['pixel_pages_differing'] == [] and v['text_pages_changed'] == [] and v['index']['dangling'] == 0
+
+
+# review 06, M1: an element that runs across two pages. A /K kid counts as a run of this page only when it sits on this page
+# (apply.py kid_mcid): an integer kid on the element's own page, an MCR on its /Pg.
+PAGE1 = ['Words ', 'on ', 'the ', 'first ', 'page ', 'and ', 'more ', 'here.']
+PAGE2 = ['The ', 'velunka ', 'toramio ', 'here. ', 'Also ', 'pasquet.']
+ACROSS = [('velunka toramio', 'haw', [[2, [[1, 0, 7], [2, 0, 6]]]]), ('pasquet', 'haw', [[2, 5, 0, 6]])]
+
+
+def _two_pages(tmp_path, kids_a, name):
+    src = langpdf.build_across_pages(str(tmp_path / name), PAGE1, PAGE2, kids_a, [4, 5])
+    p = tmp_path / ('wo-' + name + '.json'); p.write_text(json.dumps(wo_of(ACROSS)))
+    out = str(tmp_path / ('out-' + name))
+    run('apply.py', src, p, out); run('verify.py', src, out)
+    return out, json.load(open(out + '.log.json')), json.load(open(out + '.verify.json'))
+
+
+def _page2_marks(path):
+    pdf = pikepdf.open(path)
+    return {int(x.operands[1].MCID): dict(x.operands[1]) for x in pikepdf.parse_content_stream(pdf.pages[1])
+            if str(x.operator) == 'BDC' and isinstance(x.operands[1], pikepdf.Dictionary) and '/MCID' in x.operands[1]}
+
+
+def test_a_phrase_on_the_second_page_of_an_element_across_two_pages_is_tagged(tmp_path):
+    out, log, v = _two_pages(tmp_path, [('1', 0), ('1', 1), ('2', 0), ('2', 1), ('2', 2), ('2', 3)], 'across.pdf')
+    lp = log['language_parts']
+    assert lp['phrases'] == 1 and not lp['refused'], lp
+    sp = sorted(spans(out))
+    assert sp == [('haw', [1, 2], 'P'), ('haw', [5], 'P')], sp     # the phrase's two runs, and the single-run place beside it
+    assert v['language']['all_match'] and v['language']['spans_written'] == 2, v['language']
+    assert v['pixel_pages_differing'] == [] and v['text_pages_changed'] == [] and v['index']['dangling'] == 0
+    m = _page2_marks(out)
+    assert all('/Lang' not in m[k] for k in (1, 2, 5)) and str(m[0]['/Lang']) == 'en-US'
+
+
+def test_a_first_page_kid_between_the_phrase_runs_refuses_the_phrase_only(tmp_path):
+    """Page 1's MCID 7 sits between the phrase's runs in /K, and page 2 has no MCID 7. Read without its page, the kid looked
+    like a blank page-2 run: the phrase was planned with it, the last step's page-aware check then failed, and the whole page
+    was restored, the single-run place on it lost. With the page check the phrase is refused at planning, and the single-run
+    place on the same page is still tagged."""
+    out, log, v = _two_pages(tmp_path, [('1', 0), ('1', 1), ('2', 0), ('2', 1), ('1', 7), ('2', 2), ('2', 3)], 'between.pdf')
+    lp = log['language_parts']
+    assert lp['refused'] == {'its runs are not next to each other in the tag tree': 1}, lp
+    assert spans(out) == [('haw', [5], 'P')]
+    assert not LANG_RESTORED(log)
+    m = _page2_marks(out)
+    assert all(str(m[k]['/Lang']) == 'en-US' for k in (1, 2)) and '/Lang' not in m[5]
+    assert v['language']['all_match'] and v['pixel_pages_differing'] == [] and v['text_pages_changed'] == [] and v['index']['dangling'] == 0
+
+
+def LANG_RESTORED(log): return log['language_parts'].get('restored_pages')
