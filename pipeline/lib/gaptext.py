@@ -71,6 +71,8 @@ def breaks(chars, page_chars=None):
                 brk[i] = g > GAP_EM * size and g > GAP_TYPICAL * typical[i] and not _filled(p, c, page_chars)
             else: brk[i] = last[-1] not in HYPHENS
         last = t
+    if any('_join' in c for c in cs):                  # langjoin (#150, #161): no break before a letter joined back to its word
+        brk = [False if c.get('_join') else x for c, x in zip(cs, brk)]
     return cs, brk
 
 def gap_text(chars, page_chars=None):

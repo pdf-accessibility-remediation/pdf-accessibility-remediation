@@ -57,6 +57,7 @@ SCRIPTS = [('greek', r'[Ͱ-Ͽἀ-῿]'), ('cyrillic', r'[Ѐ-ӿ]'), ('hebrew', r'
 SCRIPTS = [(n, re.compile(p)) for n, p in SCRIPTS]
 CUT = set('—–/“”"…«»„‚()[]{}')
 HYPHENS = '-‐‑'
+GROW_STOP = {'of', 'or', 'and', 'the', 'by', 'for', 'with', 'from', 'at'}   # English function words never join a title (#136)
 ITALIC = re.compile(r'(?i)ital|oblique|-it$|-it[A-Z]|It$')
 NUMERAL = re.compile(r'(?i)[ivxlcdm]+|\d[\d,.]*\w{0,3}')
 
@@ -224,7 +225,7 @@ def _core_span(cs):
     if i1 - i0 >= 2 and cs[i1]['text'] in ('s', 'S') and cs[i1 - 1]['text'] in "’'": i1 -= 2
     return i0, i1
 
-def page_places(pno, chars, page_chars=None, italic=None, doc_lang=None, spoken=None, grow=False, keep=None, removed=None):
+def page_places(pno, chars, page_chars=None, italic=None, doc_lang=None, spoken=None, grow=False, keep=None, removed=None, info=None, words0=None, extra=()):
     """chars: one page's pdfplumber characters in content order (plpages). Returns (places, words): the page's candidate
     places, and the page's words in reading order (for context: each place names its words by index). keep: joined
     spellings (lower case) the hyphen check must not take for English, because the book prints them whole (#140, book());
@@ -239,7 +240,7 @@ def page_places(pno, chars, page_chars=None, italic=None, doc_lang=None, spoken=
     pc = (lambda _p: chars) if page_chars is None else page_chars
     # 1. words, in order; each with its run, its index range and its text
     words = []
-    for w0 in ocrwords.words(chars, pc):
+    for w0 in (ocrwords.words(chars, pc) if words0 is None else words0):   # words0: lib/langjoin read them already (the same chars)
         ps = list(_pieces(w0))
         pos = {id(c): k for k, c in enumerate(w0)}
         if not ps: words.append({'chars': [], 'text': '', 'all': ''.join(c['text'] for c in w0), 'mcid': None}); continue
@@ -284,6 +285,24 @@ def page_places(pno, chars, page_chars=None, italic=None, doc_lang=None, spoken=
             a['joined'] = b['joined_from'] = a['text'] + b['text']
             a['hy_to'] = b
             a['line_end'] = le                       # #140: only then is the second half a place
+    # 2b. #136 (its comment, the continuation rule; measured, off unless `extra` names it): a hyphen inside its line whose
+    #     right neighbour letter touches it (within a quarter em, on the same line) has its real continuation there, drawn
+    #     elsewhere in content order: the hyphenated word is classified whole ("na-" + "akwa"); English as a whole
+    #     ("para-military"), its first part is no candidate. The continuation word is a second place of the same form.
+    if 'continuation' in extra:
+        first_of_word = {id(w['chars'][0]): w for w in words if w['chars']}
+        for a in words:
+            hy = a.get('tail')
+            if not hy or hy.get('text') not in HYPHENS or not a['chars'] or 'hy_to' in a or 'joined_from' in a: continue
+            lines = lines or LineIndex(chars)
+            em_ = _em(hy); mid = (hy['top'] + hy['bottom']) / 2
+            near = [c for c in lines.near(hy) if c is not hy and abs((c['top'] + c['bottom']) / 2 - mid) <= em_ / 2
+                    and -0.05 * em_ <= c['x0'] - hy['x1'] <= 0.25 * em_ and c['text'][:1].isalpha()]
+            b = next((first_of_word[id(c)] for c in sorted(near, key=lambda c: c['x0']) if id(c) in first_of_word), None)
+            if b is None or b is a or 'joined_from' in b or 'hy_to' in b or not b['text']: continue
+            whole = a['text'] + b['text']               # English joined either way ("para-" + "military"): no candidate
+            a['joined'] = b['joined_from'] = whole if in_english(whole) else a['text'] + '-' + b['text']
+            a['hy_to'] = b; a['line_end'] = True; a['src'] = 'continuation'
     # 3. classify Latin and other-script words
     for w in words:
         t = w['text']
@@ -292,6 +311,11 @@ def page_places(pno, chars, page_chars=None, italic=None, doc_lang=None, spoken=
         form = w.get('joined', t)
         it = all(italic(c.get('fontname')) for c in w['chars'] if c['text'].strip())
         w['italic'] = it; w['cls'] = classify(form, it); w['form'] = form
+        if not w['cls'] and extra and LATIN.search(form) and not NUMERAL.fullmatch(form) and not ocrwords.URL.search(form) \
+                and not other_script(form) and not in_english(form):
+            n_ = sum(1 for ch in form if ch.isalpha())
+            if 'italic' in extra and it and n_ >= 2: w['cls'] = ['unknown']; w['src'] = 'italic'      # #136: italics, 2+ letters
+            elif 'looser' in extra and n_ >= 3 and not form.isupper(): w['cls'] = ['unknown']; w['src'] = 'looser'   # #136: 3+, capitals too
         if w['cls'] and 'hy_to' in w and hyphen_english(t, w['hy_to']['text']):                   # "long-" / "standing" (#140)
             spelling = (t + w['hy_to']['text']).lower()
             if not (keep and spelling in keep):      # a spelling the book prints whole stays a candidate: madjoe, bumbye (#140)
@@ -330,6 +354,8 @@ def page_places(pno, chars, page_chars=None, italic=None, doc_lang=None, spoken=
         places.append({'page': pno, 'mcid': m, 'first': f, 'last': l, 'n': len(cs), 'text': text, 'form': form,
                        'class': sorted(set(cls)), 'italic': it, 'whole': not re.search(r'[^\W_]', rest),
                        'w0': wi[0], 'w1': wi[1]})
+        src = sorted({x['src'] for x in words[wi[0]:wi[1] + 1] if x.get('src')}) if wi[0] is not None else []
+        if src: places[-1]['source'] = src
     # word index of each character, for context
     wix = {}
     for k, w in enumerate(words):
@@ -367,6 +393,10 @@ def page_places(pno, chars, page_chars=None, italic=None, doc_lang=None, spoken=
                 particle such as no, to, wa only with a word that is not English beyond it: "Nihon no kenkyū", never "of the")."""
                 if not (0 <= i < len(words) and i > last_end and words[i]['mcid'] == m0 and latin_word(words[i])): return False
                 t = words[i]['text']
+                if t.lower() in GROW_STOP: return False                  # #136's narrower rule: "Tsurezuregusa of Kenkō", "… or …"
+                for n_ in (i - 1, i + 1):                               # a piece of an English word the PDF draws apart ("Se lections",
+                    if 0 <= n_ < len(words) and words[n_]['text'] and t.isalpha() and words[n_]['text'].isalpha():   # "Japa nese")
+                        if in_english(words[n_]['text'] + t if n_ < i else t + words[n_]['text']) and not (in_english(t) and in_english(words[n_]['text'])): return False
                 if not in_english(t) or (t[:1].isupper() and romanized_shape(t) and not common_romanized(t)): return True
                 return step != 0 and len(t) <= 2 and t.islower() and same(i + step, step) and not in_english(words[i + step]['text'])
             if all(is_italic(x) for x in words[k:j + 1]):                    # the italic run
@@ -423,6 +453,7 @@ def page_places(pno, chars, page_chars=None, italic=None, doc_lang=None, spoken=
         out.append(p)
     out += [pas[m] for m in sorted(pas)]
     out.sort(key=lambda p: (p['mcid'], p['first']))
+    if info is not None: info['words'] = words           # book(): words read whole across runs that got no place (#161)
     return out, [w['all'] for w in words]
 
 _TOKEN = re.compile(r"[^\W\d_](?:[^\W\d_]|['’ʻ‘])*[^\W\d_]|[^\W\d_]")
@@ -438,25 +469,69 @@ def whole_spellings(words):
             out.update(x.lower() for x in _TOKEN.findall(w))
     return out
 
-def book(PL, pages=None, doc_lang=None, spoken=None, grow=False):
+RULES = ('join', 'inrun', 'cross')              # lib/langjoin: #150's join, #161's in-run and cross-run joins (all on)
+RULE_NAMES = RULES + ('grow', 'looser', 'italic', 'continuation')   # #136's three: measured, off unless named
+
+def rules_from_env(value=None, grow=None):
+    """LANG_FINDER_RULES (measurement only, never from the app): '-inrun,-cross' turns rules off, 'join' alone lists them.
+    grow: LANG_GROW's answer (None: off). Returns (rules, note) where note names a non-default setting, else ''."""
+    v = (os.environ.get('LANG_FINDER_RULES', '') if value is None else value).strip()
+    rules = set(RULES)
+    if v:
+        items = [x.strip() for x in v.split(',') if x.strip()]
+        if all(x.startswith('-') for x in items): rules -= {x[1:] for x in items}
+        else: rules = {x for x in items if x in RULE_NAMES}
+    if grow: rules.add('grow')
+    return rules, (f'LANG_FINDER_RULES={v}' if v else '')
+
+def book(PL, pages=None, doc_lang=None, spoken=None, grow=False, pdf=None, rules=None):
     """Every page's places, the page word lists (for context), and counts. PL: plpages.Pages. doc_lang: the document's
     language (its /Lang, or the work order's): in a Chinese, Japanese or Korean document, Latin-script words are
     candidates ('latin') and CJK text in the document's own language is not. spoken: {'forms': {OCR form: reading},
     'pages': {page: reading}} for a scanned book's readings (M5), else None.
+    pdf: the open pikepdf.Pdf, for the tag tree the joins need (#150, #161; lib/langjoin). Without it, or with a ParentTree
+    that can't be read, no run is joined to another (today's reading); the in-run join (#161 A) still runs. rules: the
+    set of rules on (RULES; None: all, as audit.py runs them). `reading` in the result records what was applied.
     Two passes (#140, the printed-whole check): a word broken at a line end that the hyphen check would take for English
     ("mad-" + "joe") stays a candidate when the book prints the joined spelling whole elsewhere (madjoe). Pass 1 reads
     every page and collects the spellings the check removed; the book's whole spellings are the word-shaped tokens of its
     pages' words that don't end in a hyphen (whole_spellings: URLs and bibliography entries count); pass 2 reads again
     only the pages with a removed spelling the book prints whole. With pages=…, the whole spellings come from those pages
-    only."""
+    only. Places from a joined reading carry `source` (join, inrun, cross) and, when they span runs, `segments`."""
+    from lib import langjoin, gaptext
+    asked = sorted(set(RULES if rules is None else rules) | ({'grow'} if grow else set()))
+    rules = set(RULES if rules is None else rules)
+    grow = grow or 'grow' in rules
+    extra = rules & {'looser', 'italic', 'continuation'}
+    rules -= {'grow', 'looser', 'italic', 'continuation'}
+    struct = langjoin.Structure(pdf if rules & {'join', 'cross'} else None)
+    if not struct.ok: rules -= {'join', 'cross'}
     C = collections.Counter()
-    def read(pno, pg, keep=None, removed=None):
-        return page_places(pno, pg.chars, lambda p, _c=pg.chars: _c, doc_lang=doc_lang, grow=grow, keep=keep, removed=removed,
-                           spoken={'forms': (spoken or {}).get('forms') or {}, 'reading': ((spoken or {}).get('pages') or {}).get(pno)} if spoken else None)
+    unplaced = []
+    def read(pno, pg, keep=None, removed=None, collect=False):
+        R = langjoin.reading(pno, pg.chars, struct, rules) if rules else None
+        chars = R.chars if R else pg.chars
+        info = {}
+        places, words_ = page_places(pno, chars, lambda p, _c=chars: _c, doc_lang=doc_lang, grow=grow, keep=keep, removed=removed, info=info,
+                                     words0=R.words if R else None, extra=extra,
+                                     spoken={'forms': (spoken or {}).get('forms') or {}, 'reading': ((spoken or {}).get('pages') or {}).get(pno)} if spoken else None)
+        if R:
+            gaptext._LINES.pop(id(chars), None)
+            places = [q for q in (R.map(p) for p in places) if q is not None]
+            if collect:
+                for w in info.get('words') or []:
+                    if not w.get('chars') or w.get('mcid') is not None or not w.get('cls'): continue
+                    why = next((R.unplaced_keys[id(c)] for c in w['chars'] if id(c) in R.unplaced_keys), None)
+                    if why is None or why == 'cross_off' or not classify(w.get('form') or w['text'], w.get('italic', False)): continue
+                    ms = sorted({c['_m'] for c in w['chars'] if c.get('_m') is not None})
+                    unplaced.append({'page': pno, 'form': w.get('form') or w['text'], 'reason': why, 'mcids': ms})
+        for p in places:
+            if grow and 'title' in p['class']: p['source'] = sorted(set(p.get('source') or []) | {'grow'})
+        return places, words_
     by_page, words, gone = {}, {}, {}
     for pno, pg in enumerate(PL.pages, 1):
         if pages and pno not in pages: continue
-        rm = []; by_page[pno], words[str(pno)] = read(pno, pg, removed=rm)
+        rm = []; by_page[pno], words[str(pno)] = read(pno, pg, removed=rm, collect=True)
         if rm: gone[pno] = set(rm)
     if gone:
         whole = whole_spellings(words)
@@ -468,9 +543,12 @@ def book(PL, pages=None, doc_lang=None, spoken=None, grow=False):
         for c in p['class']:
             C[c] += 1; C[f'{c}:{"whole" if p["whole"] else "split"}'] += 1; forms[c].add(p['form'])
     fp = hashlib.sha256(json.dumps(sorted((p['form'], p['class']) for p in allp), ensure_ascii=False).encode()).hexdigest()[:16]
-    return {'version': 1, 'document_lang': doc_lang or '', 'wordlist_sha256': list_sha256()[:16], 'fingerprint': fp, 'places': allp, 'words': words,
+    applied = sorted(rules | extra | ({'grow'} if grow else set()))
+    return {'version': 2, 'document_lang': doc_lang or '', 'wordlist_sha256': list_sha256()[:16], 'fingerprint': fp, 'places': allp, 'words': words,
+            'reading': {'rules': applied, 'asked': asked, 'parents': struct.status}, 'unplaced': unplaced,
             'stats': {'places': len(allp), 'by_class': dict(sorted(C.items())),
-                      'forms': {k: len(v) for k, v in sorted(forms.items())}}}
+                      'forms': {k: len(v) for k, v in sorted(forms.items())}, 'unplaced': len(unplaced),
+                      'segmented': sum(1 for p in allp if p.get('segments'))}}
 
 def existing(pdf, PL, doc_lang, limit=300):
     """Language tags already in the PDF (a publisher's), on text not in the document's language: one place per run, its

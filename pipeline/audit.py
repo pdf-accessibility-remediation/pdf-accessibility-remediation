@@ -497,7 +497,12 @@ json.dump({'rule': f'every scanned page with {pagereads.WORDS_MIN}+ words of {pa
 # ---- words and passages that may be in another language (#118, language tagging; WCAG 3.1.2): found locally, written
 #      beside the digest, never into it (the work-order call doesn't see them). Places are character positions within
 #      their marked-content run (lib/langcands.py), so apply.py can find them without reading the text again.
-json.dump(langcands.book(PL, doc_lang=str(pdf.Root.get('/Lang', '') or '')), open(os.path.join(OUT, 'lang_candidates.json'), 'w', encoding='utf-8'), ensure_ascii=False)
+_lc_rules, _lc_note = langcands.rules_from_env(grow=os.environ.get('LANG_GROW', 'off').lower() in ('on', '1', 'yes'))   # LANG_FINDER_RULES: measurement only (never set by the app); LANG_GROW: titles grown here, once (#136, L4)
+if _lc_note: print(f'language candidates: read with testing settings ({_lc_note})')
+_lc = langcands.book(PL, doc_lang=str(pdf.Root.get('/Lang', '') or ''), pdf=pdf, rules=_lc_rules)
+if _lc_note: _lc['reading']['note'] = _lc_note
+if _lc['reading']['parents'] != 'ok': print(f"language candidates: the tag tree's parents could not be read ({_lc['reading']['parents']}): no run is joined to another")
+json.dump(_lc, open(os.path.join(OUT, 'lang_candidates.json'), 'w', encoding='utf-8'), ensure_ascii=False)
 
 # ---- the same validator before and after: veraPDF on the original (started at the top; verify.py runs it on the result).
 #      The full summary goes to verapdf.json for the before/after comparison; the digest gets every failed rule with

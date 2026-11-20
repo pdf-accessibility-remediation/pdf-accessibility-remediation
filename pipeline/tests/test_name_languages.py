@@ -431,3 +431,19 @@ def test_below_the_limit_nothing_about_held_back_forms_is_written(tmp_path, monk
     lr, e = load(R / 'language_run.json'), load(R / 'language_run.json')['estimate']
     assert lr['held_back_count'] == 0 and not any(k.startswith('held_back_') and k != 'held_back_count' for k in lr)
     assert e['held_back'] == 0 and not any(k.startswith('held_back_') for k in e)
+
+def test_an_audit_from_before_the_joined_reading_is_found_again(tmp_path, monkeypatch):
+    """#150 (03 §2.1, review 02 M4): a stopped run's audit made before the joined reading (version 1, no `reading`) is
+    found again with today's rules, so the estimate counts today's forms, and nothing is sent that wasn't estimated."""
+    src, A, R = folders(tmp_path)
+    old = load(A / 'lang_candidates.json')
+    old['version'] = 1; old.pop('reading'); old['places'] = [p for p in old['places'] if p['form'] != 'ryōgen']
+    json.dump(old, open(A / 'lang_candidates.json', 'w', encoding='utf-8'), ensure_ascii=False)
+    assert run(src, A, R, monkeypatch, '--dry-run') == []
+    est = load(R / 'language_estimate.json')
+    assert est['forms'] == 3                                      # ryōgen found again, not the old audit's two
+    same = load(A / 'lang_candidates.json'); same['version'] = 2
+    json.dump(old | {'version': 2, 'reading': {'rules': ['inrun'], 'asked': ['cross', 'inrun', 'join'], 'parents': 'not given'}},
+              open(A / 'lang_candidates.json', 'w', encoding='utf-8'), ensure_ascii=False)
+    os.remove(R / 'language_estimate.json')
+    assert run(src, A, R, monkeypatch, '--dry-run') == [] and load(R / 'language_estimate.json')['forms'] == 2   # today's: kept as saved

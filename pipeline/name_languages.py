@@ -107,11 +107,18 @@ def candidates(args, wo):
     saved = json.load(open(path, encoding='utf-8')) if os.path.exists(path) else None
     sp = spoken_of(wo, None)
     PL = None
-    if sp or saved is None or args.grow or (doc_lang and saved.get('document_lang', '') != doc_lang):
+    rules, note = langcands.rules_from_env(grow=args.grow)
+    # an audit made before #150 (version 1), or with other rules, is found again with today's (03 §2.1, review 02 M4):
+    # its forms may differ, so the estimate is made again and #159's hold catches more forms than were shown
+    stale = saved is not None and (saved.get('version') != 2 or sorted((saved.get('reading') or {}).get('asked') or []) != sorted(rules))
+    if sp or saved is None or stale or (doc_lang and saved.get('document_lang', '') != doc_lang):
         PL = plpages.Pages(args.pdf)
-        c = langcands.book(PL, doc_lang=doc_lang or None, spoken=sp, grow=args.grow)
-        how = ('found again over the spoken text' if sp else 'found with the work order\'s document language' if not args.grow or (doc_lang and saved and saved.get('document_lang', '') != doc_lang)
-               else 'found again') + (', titles grown (LANG_GROW)' if args.grow else '')
+        import pikepdf
+        with pikepdf.open(args.pdf) as pdf_:
+            c = langcands.book(PL, doc_lang=doc_lang or None, spoken=sp, grow=args.grow, pdf=pdf_, rules=rules)
+        how = ('found again over the spoken text' if sp else 'found with the work order\'s document language' if (doc_lang and saved and saved.get('document_lang', '') != doc_lang)
+               else 'found again with today\'s reading' if stale and not args.grow else 'found again' if args.grow else 'found with the work order\'s document language') \
+              + (', titles grown (LANG_GROW)' if args.grow else '') + (f' ({note})' if note else '')
     else: c, how = saved, 'the audit\'s'
     places = list(c['places'])
     try:

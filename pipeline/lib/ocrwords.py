@@ -31,7 +31,8 @@ def words(chars, page_chars=None):
     cs, brk = gaptext.breaks(chars, page_chars)
     word = []
     for i, c in enumerate(cs):
-        if c.get('mcid') is None or c['text'].isspace() or brk[i] or (word and abs(c['top'] - word[-1]['top']) > 3):
+        if c.get('_soft') and word: continue          # lib/langjoin (#161): a space between a letter and its word, kept in place, read through
+        if c.get('mcid') is None or c['text'].isspace() or brk[i] or (word and abs(c['top'] - word[-1]['top']) > 3 and not c.get('_join')):   # _join: a drop cap's word (lib/langjoin)
             if word: yield word
             word = []
         if c.get('mcid') is not None and not c['text'].isspace(): word.append(c)
