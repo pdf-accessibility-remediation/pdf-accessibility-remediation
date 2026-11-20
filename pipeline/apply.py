@@ -1156,8 +1156,8 @@ def drawn_here(pno, m, n):
     res = _inherited(pages[pno - 1], '/Resources') or {}
     try: got = mcsplit.count_codes(_CONTENT[pno], res.get('/Font'), m, res.get('/XObject') or {})
     except mcsplit.Refuse as e:                     # a count only (review 06, M1): the split's own refusals stay with the split
-        return 'run drawn inside a form XObject, not in the page' if str(e) == 'run not drawn in the page content' else str(e)
-    return None if got == n else 'characters do not line up with the run'
+        return 'this text is drawn inside a form XObject, not in the page' if str(e) == 'the text is not drawn in the page content' else str(e)
+    return None if got == n else 'the characters do not line up with the text'
 def remove_existing(lp):
     """The PDF's own language tags a person decided on the review page (language_parts version 2: forms with `current`).
     Removed ('remove'): the element that carries that value over the run loses its /Lang, and the run's marks lose theirs
@@ -1193,20 +1193,20 @@ def language_parts(parts):
         pno, m, f, l, lang = p['page'], p['mcid'], p['first'], p['last'], p['lang']
         if not (1 <= pno <= len(pages)): lang_refuse(pno, m, 'page not in the book', p); continue
         cs = run_chars(pno, m)
-        if l >= len(cs): lang_refuse(pno, m, 'characters do not line up with the run', p); continue
+        if l >= len(cs): lang_refuse(pno, m, 'the characters do not line up with the text', p); continue
         rest = ''.join(c['text'] for k, c in enumerate(cs) if k < f or k > l)
         text = ''.join(c['text'] for c in cs[f:l + 1])
         done.add((pno, m))
         o = owner.get((pno, m))
-        if o is None: lang_refuse(pno, m, 'run not in the tag tree', p); continue
+        if o is None: lang_refuse(pno, m, 'this text is not in the tag tree', p); continue
         why = drawn_here(pno, m, len(cs))
         if why: lang_refuse(pno, m, why, p); continue
         if not re.search(r'[^\W_]', rest): tag_run(pno, m, lang, ''.join(c['text'] for c in cs)); continue
         why = unspoken_owner(o)
         if why: lang_refuse(pno, m, why, p); continue
-        if pno in rewritten: lang_refuse(pno, m, 'page text rewritten from OCR: whole runs only', p); continue
+        if pno in rewritten: lang_refuse(pno, m, 'page text rewritten from OCR: whole pieces of text only', p); continue
         if any(c.get('upright') is False for c in cs):        # rotated or vertical text: not covered yet (#118 stress run, sands)
-            lang_refuse(pno, m, 'rotated or vertical text: whole runs only', p); continue
+            lang_refuse(pno, m, 'rotated or vertical text: whole pieces of text only', p); continue
         _LANG_SPLITS[(pno, m)].append({**p, 'text': text})
     return done
 def plan_phrase(p, explicit, doc_lang, spec):
@@ -1223,31 +1223,31 @@ def plan_phrase(p, explicit, doc_lang, spec):
         lang_refuse(pno, m0, why, {'text': p.get('form'), 'lang': lang}); LANG['phrases_refused'] = LANG.get('phrases_refused', 0) + 1
         return None
     if not (1 <= pno <= len(pages)): return no('page not in the book')
-    if pno in {pidx[k] for k, v in _REWRITES.items() if v and k in pidx}: return no('page text rewritten from OCR: whole runs only')
+    if pno in {pidx[k] for k, v in _REWRITES.items() if v and k in pidx}: return no('page text rewritten from OCR: whole pieces of text only')
     os_, texts = [], []
     for m, a, b in segs:
         cs = run_chars(pno, m)
-        if b >= len(cs): return no('characters do not line up with the run')
-        if any(c.get('upright') is False for c in cs): return no('rotated or vertical text: whole runs only')
+        if b >= len(cs): return no('the characters do not line up with the text')
+        if any(c.get('upright') is False for c in cs): return no('rotated or vertical text: whole pieces of text only')
         o = owner.get((pno, m))
-        if o is None: return no('run not in the tag tree')
+        if o is None: return no('this text is not in the tag tree')
         why = drawn_here(pno, m, len(cs))
         if why: return no(why)
         t = ''.join(c['text'] for c in cs); k = scripts.kind(t)
         what = 'tag' if (pno, m) in explicit else (scripts.action(k, t, doc_lang, spec.get('kana_runs'))[0] if k else None)
-        if what == 'tag': return no('a run inside it is tagged by a fixed rule')
+        if what == 'tag': return no('text inside it is tagged by a fixed rule')
         os_.append(o); texts.append(''.join(c['text'] for c in cs[a:b + 1]))
     if len({o.objgen for o in os_}) != 1: return no('its words sit under different tags')
     o = os_[0]
     why = unspoken_owner(o)
     if why: return no(why)
     idx = [mc_entry_index(o, pno, m) for m, _, _ in segs]
-    if None in idx or any(b_ <= a_ for a_, b_ in zip(idx, idx[1:])): return no('its runs are not next to each other in the tag tree')
+    if None in idx or any(b_ <= a_ for a_, b_ in zip(idx, idx[1:])): return no('its pieces of text are not next to each other in the tag tree')
     ks, blank = kids(o), []
     for i0, i1 in zip(idx, idx[1:]):
         for k in ks[i0 + 1:i1]:
             mm = kid_mcid(o, k, pno)
-            if mm is None or mc_text(pno, mm).strip(): return no('its runs are not next to each other in the tag tree')
+            if mm is None or mc_text(pno, mm).strip(): return no('its pieces of text are not next to each other in the tag tree')
             blank.append(mm)
     plan = []
     for n_, (m, a, b) in enumerate(segs):
@@ -3486,7 +3486,7 @@ def fix_language_parts():
         lost = [m for m, _, _ in plans if pno in lose or owner.get((pno, m)) is None or mc_entry_index(owner[(pno, m)], pno, m) is None]
         lost_g = [g for g in groups_on if pno in lose or not group_order_ok(job, g, pno)]
         if lost or lost_g:
-            for u in act: refuse_unit(pno, u, 'the run\'s tag entry moved before the split was written')
+            for u in act: refuse_unit(pno, u, 'the text\'s tag entry moved before the split was written')
             new, plans, dropped, _ = edit(pno, set()); groups_on = []
             if new is None: continue
         try:                                               # first the page's whole plan, with nothing in the tree changed yet (review 08, L1)

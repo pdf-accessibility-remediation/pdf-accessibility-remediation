@@ -54,7 +54,7 @@ def find_run(ins, mcid):
         elif op == 'EMC':
             d -= 1
             if d == 0: return start, k
-    raise Refuse('run not closed')
+    raise Refuse("the text's marked content is not closed")
 
 def count_codes(ins, fonts, mcid, xobjects=None):
     """How many character codes run `mcid` shows in these instructions, nested marked content and spoken-text spans
@@ -63,7 +63,7 @@ def count_codes(ins, fonts, mcid, xobjects=None):
     split_run, nothing else refuses: a run with a path, an image, its own ActualText or a " operator is still counted
     (review 06, M1: apply.py's check that a tag lands on the run pdfplumber read)."""
     se = find_run(ins, mcid)
-    if se is None: raise Refuse('run not drawn in the page content')
+    if se is None: raise Refuse('the text is not drawn in the page content')
     start, end = se
     cur = _font_state(ins, start, fonts); q = []; n = 0
     for i in range(start + 1, end):
@@ -73,7 +73,7 @@ def count_codes(ins, fonts, mcid, xobjects=None):
         elif op == 'Q' and q: cur = q.pop()
         elif op == 'Do':                             # an image adds no characters; a form may (with or without its own MCIDs)
             xo = (xobjects or {}).get(x.operands[0]) if xobjects is not None else None
-            if xo is None or str(xo.get('/Subtype')) != '/Image': raise Refuse('cannot count: a form drawn inside the run')
+            if xo is None or str(xo.get('/Subtype')) != '/Image': raise Refuse('cannot count: a form drawn inside the text')
         elif op in ('Tj', 'TJ', "'", '"'):
             f = cur[1] if cur else None
             if f is None: raise Refuse('cannot count: text before any font')
@@ -128,10 +128,10 @@ def split_run(ins, fonts, mcid, cuts, new_mcid, expect_n=None):
     Returns (new instructions, pieces) with pieces [(mcid, kind, cut index or None)], or raises Refuse."""
     ins = list(ins)
     se = find_run(ins, mcid)
-    if se is None: raise Refuse('run not drawn in the page content')
+    if se is None: raise Refuse('the text is not drawn in the page content')
     start, end = se
     p0 = _props(ins[start]); tag = ins[start].operands[0]
-    if '/ActualText' in p0 or '/Alt' in p0: raise Refuse('the run has its own spoken text')
+    if '/ActualText' in p0 or '/Alt' in p0: raise Refuse('the text has its own spoken text')
     bt = 0
     for x in ins[:start]:
         op = str(x.operator)
@@ -142,7 +142,7 @@ def split_run(ins, fonts, mcid, cuts, new_mcid, expect_n=None):
     segs, d, k, b0 = [], 0, start + 1, None
     if inside:
         for j in range(start + 1, end):
-            if str(ins[j].operator) in ('BT', 'ET'): raise Refuse('run crosses a text object')
+            if str(ins[j].operator) in ('BT', 'ET'): raise Refuse('the text crosses into another text object')
         segs = [(start, end)]
     else:
         for j in range(start + 1, end):
@@ -151,11 +151,11 @@ def split_run(ins, fonts, mcid, cuts, new_mcid, expect_n=None):
                 if b0 is not None: raise Refuse('nested text objects')
                 b0 = j
             elif op == 'ET':
-                if b0 is None: raise Refuse('text object not opened in the run')
+                if b0 is None: raise Refuse("text object not opened inside the text's marked content")
                 segs.append((b0, j)); b0 = None
             elif b0 is None and (op in DRAW or op in SHOW or op in ('BDC', 'BMC', 'EMC')):
-                raise Refuse('the run draws outside its text objects')
-        if b0 is not None or not segs: raise Refuse('run has no closed text object')
+                raise Refuse("the text's marked content draws outside its text objects")
+        if b0 is not None or not segs: raise Refuse('the text has no closed text object')
     # 2. units: character codes in content order (a nested spoken-text span's codes form one group)
     units = []                       # dict(seg, i, e, b0, b1, group)
     fcur = _font_state(ins, (segs[0][0] if not inside else start), fonts)
@@ -168,16 +168,16 @@ def split_run(ins, fonts, mcid, cuts, new_mcid, expect_n=None):
             if op == 'Tf': fcur = (str(x.operands[0]), fonts.get(x.operands[0]) if fonts is not None else None)
             elif op == 'q': q.append(fcur)
             elif op == 'Q' and q: fcur = q.pop()
-            elif op in ('Do', 'BI', 'INLINE IMAGE'): raise Refuse('an image or form drawn inside the run')
+            elif op in ('Do', 'BI', 'INLINE IMAGE'): raise Refuse('an image or form drawn inside the text')
             elif op in ('BDC', 'BMC'):
                 p = _props(x)
                 if depth == 0 and p is not None and '/ActualText' in p and '/MCID' not in p:
                     gid += 1; group = gid; depth = 1
                 elif depth == 0 and op == 'BDC' and isinstance(x.operands[1], pikepdf.Name): raise Refuse('named property list')
-                else: raise Refuse('other marked content nested in the run')
+                else: raise Refuse('other marked content nested in the text')
             elif op == 'EMC':
                 if depth: depth, group = 0, None
-            elif op == '"': raise Refuse('the run uses the " operator')
+            elif op == '"': raise Refuse('the text uses the " operator')
             elif op in ('Tj', 'TJ', "'"):
                 nb = code_bytes(fcur[1] if fcur else None)
                 parts = [(None, x.operands[0])] if op != 'TJ' else [(e, y) for e, y in enumerate(x.operands[0]) if isinstance(y, pikepdf.String)]
@@ -188,13 +188,13 @@ def split_run(ins, fonts, mcid, cuts, new_mcid, expect_n=None):
                         units.append({'seg': s, 'i': i, 'e': e, 'b0': b, 'b1': b + nb, 'group': group})
     # 3. pieces: every unit gets a piece number; cuts must sit between units of different groups, in one segment
     n = len(units)
-    if expect_n is not None and n != expect_n: raise Refuse('characters do not line up with the run')
+    if expect_n is not None and n != expect_n: raise Refuse('the characters do not line up with the text')
     piece = [0] * n
     order = sorted(cuts)
     bounds = []                      # (unit index where a piece starts, kind, cut index)
     prev_last = -1
     for ci, (f, l) in sorted(enumerate(cuts), key=lambda t: t[1]):
-        if not (0 <= f <= l < n): raise Refuse('characters do not line up with the run')
+        if not (0 <= f <= l < n): raise Refuse('the characters do not line up with the text')
         if f <= prev_last: raise Refuse('places overlap')
         prev_last = l
         if units[f]['seg'] != units[l]['seg']: raise Refuse('the place crosses two text objects')

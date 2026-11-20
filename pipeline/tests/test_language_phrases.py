@@ -260,7 +260,7 @@ def test_a_first_page_kid_between_the_phrase_runs_refuses_the_phrase_only(tmp_pa
     place on the same page is still tagged."""
     out, log, v = _two_pages(tmp_path, [('1', 0), ('1', 1), ('2', 0), ('2', 1), ('1', 7), ('2', 2), ('2', 3)], 'between.pdf')
     lp = log['language_parts']
-    assert lp['refused'] == {'its runs are not next to each other in the tag tree': 1}, lp
+    assert lp['refused'] == {'its pieces of text are not next to each other in the tag tree': 1}, lp
     assert spans(out) == [('haw', [5], 'P')]
     assert not LANG_RESTORED(log)
     m = _page2_marks(out)

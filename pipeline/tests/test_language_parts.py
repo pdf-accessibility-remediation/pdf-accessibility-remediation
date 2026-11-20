@@ -274,7 +274,7 @@ def test_cjk_rule_never_tags_a_form_run_under_a_page_runs_number(tmp_path):
     wo = tmp_path / 'wo.json'; wo.write_text(json.dumps({'language': {'runs': [{'page': 1, 'mcid': 0, 'lang': 'ja'}]}}))
     out = str(tmp_path / 'out.pdf'); run('apply.py', src2, wo, out)
     log = json.load(open(out + '.log.json'))
-    assert log['language_parts']['spans'] == [] and log['language_parts']['refused'] == {'characters do not line up with the run': 1}
+    assert log['language_parts']['spans'] == [] and log['language_parts']['refused'] == {'the characters do not line up with the text': 1}
     assert str(marks(out)[0]['/Lang']) == 'en-US'
     res = pikepdf.open(out)
     assert not any(str(k.get('/S')) == '/Span' for k in res.Root.StructTreeRoot.K[0].K)
@@ -336,7 +336,7 @@ def test_a_path_inside_the_run_does_not_open_the_form_mcid_guard(tmp_path):
     wo = tmp_path / 'wo.json'; wo.write_text(json.dumps({'language': {'runs': [{'page': 1, 'mcid': 0, 'lang': 'ja'}]}}))
     out = str(tmp_path / 'out.pdf'); run('apply.py', src2, wo, out)
     log = json.load(open(out + '.log.json'))
-    assert log['language_parts']['spans'] == [] and log['language_parts']['refused'] == {'characters do not line up with the run': 1}
+    assert log['language_parts']['spans'] == [] and log['language_parts']['refused'] == {'the characters do not line up with the text': 1}
 
 def test_a_run_whose_entry_moved_keeps_the_page_whole(tmp_path, monkeypatch):
     """review 06, M6: when a run's tag entry can't be found at the late pass, its page keeps its content (only the marks
@@ -345,7 +345,7 @@ def test_a_run_whose_entry_moved_keeps_the_page_whole(tmp_path, monkeypatch):
     runs = [{'lang': 'en-US', 'text': 'The city of Heiankyo was the capital.'}]
     src, out, log, v = apply_verify(tmp_path, runs, [part(1, 0, 12, 19, 'ja-Latn')])
     lp = log['language_parts']
-    assert lp['split'] == 0 and lp['refused'] == {"the run's tag entry moved before the split was written": 1}
+    assert lp['split'] == 0 and lp['refused'] == {"the text's tag entry moved before the split was written": 1}
     assert v['pixel_pages_differing'] == [] and v['text_pages_changed'] == [] and v['index']['dangling'] == 0
     assert not any(f['op'].startswith('fix_language_parts') for f in log['failed'])
 
