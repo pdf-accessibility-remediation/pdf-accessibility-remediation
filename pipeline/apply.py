@@ -3321,6 +3321,8 @@ def fix_language_parts():
             for m in grp['runs']: job['of'][m] = g
     if not jobs: return
     reindex()
+    owned_on = collections.defaultdict(set)         # page -> its MCIDs in the tag tree, once: owner changes only in the write loop below
+    for (pg_, mm_) in owner: owned_on[pg_].add(mm_)
     def unit(job, m): return ('g', job['of'][m]) if m in job['of'] else ('r', m)
     def units(pno):
         job = jobs[pno]
@@ -3354,7 +3356,7 @@ def fix_language_parts():
         todo = {m: ps for m, ps in job['split'].items() if unit(job, m) in act}
         if todo and arr is None: return None, [], 0, {u: 'page has no tag-tree index' for u in act}
         if todo:
-            used = mcsplit.drawn_mcids(ins) | {mm for (pg, mm) in owner if pg == pno}
+            used = mcsplit.drawn_mcids(ins) | owned_on[pno]
             nxt = [max(used | {len(arr) - 1}) + 1]
             def new_mcid():
                 while nxt[0] < len(arr) and arr[nxt[0]] is not None: nxt[0] += 1
