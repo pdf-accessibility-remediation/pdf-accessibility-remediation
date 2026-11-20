@@ -150,7 +150,8 @@ if any(isinstance(o, pikepdf.Stream) and o.get('/Subtype') == '/Form' and '/Stru
                 if x is not None and x.get('/Subtype') == '/Form':
                     _mc(x, x.get('/Resources', res), pno, x if '/StructParents' in x else form, depth + 1)
     for i_, p_ in enumerate(pages, 1): _mc(p_, p_.obj.get('/Resources'), i_, None, 0)
-    content_mcids = {x for x in content_mcids if x in page_mc_seen or x not in {(pn, m) for _, pn, m in form_mc}}
+    in_forms = {(pn, m) for _, pn, m in form_mc}    # built once: inside the comprehension it was rebuilt for every MCID
+    content_mcids = {x for x in content_mcids if x in page_mc_seen or x not in in_forms}
     for fo, pn, m in form_mc:
         arr = PT.get(int(pdf.get_object(fo).StructParents)); og = owner_stm.get((fo, m))
         got = arr[m] if arr is not None and m < len(arr) else None
