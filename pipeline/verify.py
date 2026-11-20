@@ -43,6 +43,7 @@ nouni, pua = collections.Counter(), collections.Counter(); pua_pages = collectio
 def _no_unicode(t): return t.startswith('(cid:') or t == '\ufffd' or (len(t) == 1 and ord(t) < 32 and t not in '\t\n\r')
 _CM = set()
 _TXT, _POS = collections.defaultdict(list), {}     # per (page, MCID) in the result: its text, and where its first character sits
+_ORD = {}                                          # per (page, MCID): its first character's index in the page's content order (#150)
 with pdfplumber.open(A) as pa, pdfplumber.open(B) as pb:
     for i in range(len(pa.pages)):
         PA, PB = pa.pages[i], pb.pages[i]
@@ -64,10 +65,10 @@ with pdfplumber.open(A) as pa, pdfplumber.open(B) as pb:
             if _no_unicode(t): nouni[i + 1] += 1
             elif len(t) == 1 and 0xE000 <= ord(t) <= 0xF8FF: pua[ord(t)] += 1; pua_pages[i + 1] += 1
         content_mcids_page = {(i + 1, c['mcid']) for c in cb if c.get('mcid') is not None}
-        for c in cb:
+        for n_c, c in enumerate(cb):
             if c.get('mcid') is None: continue
             k = (i + 1, c['mcid']); _TXT[k].append(c['text'])
-            if k not in _POS: _POS[k] = (c['top'], c['x0'], c['size'])
+            if k not in _POS: _POS[k] = (c['top'], c['x0'], c['size']); _ORD[k] = n_c
         _CM.update(content_mcids_page); PA.close(); PB.close()
 out['text_pages_changed'] = tdiff; out['untagged_chars'] = untag; out['artifact_chars'] = art
 if REWRITES: out['ocr_text_rewritten'] = {'pages': rewritten_ok, 'words': sum(len(v) for v in REWRITES.values())}   # the only text changes allowed
@@ -277,8 +278,33 @@ def _lang_section():
     def scripts_primary(t): return re.split(r'[-_]', str(t or '').strip())[0].lower()
     written = (_alog.get('language_parts') or {}).get('spans') or []
     mism, by_lang = [], collections.Counter()
+    first_at = _ORD
+    def squash(t): return re.sub(r'\s+', '', t or '')
     for sp in written:
         k = (sp['page'], sp['mcid']); by_lang[sp['lang']] += 1
+        if sp.get('segments'):                     # one Span over several runs (#150, #161; review 02 M2): checked exactly, no walk up
+            keys = [(sp['page'], x) for x in sp.get('mcids') or []]
+            ogs = {owner.get(kk) for kk in keys}
+            el = pdf.get_object(next(iter(ogs))) if len(ogs) == 1 and None not in ogs else None
+            par = el.get('/P') if el is not None else None
+            kk_ = el.get('/K') if el is not None else None
+            kid_m = [int(x) if isinstance(x, int) else int(x.MCID) for x in (list(kk_) if isinstance(kk_, pikepdf.Array) else [kk_])
+                     if isinstance(x, int) or (isinstance(x, pikepdf.Dictionary) and '/MCID' in x)] if el is not None else []
+            pos_ = [first_at.get(kk) for kk in keys]
+            got = ''.join(t for kk in keys for t in _TXT.get(kk, ()))
+            why = None
+            if el is None: why = 'not in the tag tree' if None in ogs else 'its runs sit under different tags'
+            elif str(el.get('/Lang', '')) != sp['lang']: why = f'its tag says {str(el.get("/Lang", "")) or "no language"}'
+            elif kid_m != [kk[1] for kk in keys]: why = 'its tag holds other runs'
+            elif par is None or (sp.get('parent_type') and str(par.get('/S', '')).lstrip('/') != sp['parent_type']) \
+                    or not any(isinstance(x, pikepdf.Dictionary) and x.objgen == el.objgen for x in (list(par.get('/K')) if isinstance(par.get('/K'), pikepdf.Array) else [par.get('/K')])):
+                why = 'its tag is not where the place was'
+            elif None in pos_ or pos_ != sorted(pos_): why = 'its runs are not in reading order'
+            elif squash(got) != squash(sp['text']): why = 'its marked content holds other text'
+            elif any(kk in _BDC_LANG and not same_lang(_BDC_LANG[kk], sp['lang']) for kk in keys):
+                why = f'its marked content says {next(_BDC_LANG[kk] for kk in keys if kk in _BDC_LANG)}'
+            if why: mism.append({'page': sp['page'], 'mcid': sp['mcid'], 'lang': sp['lang'], 'text': sp['text'][:80], 'why': why})
+            continue
         og = owner.get(k); el = pdf.get_object(og) if og else None
         for _ in range(4):                     # a run split under its Span: its first piece may sit in a part's Span below it
             if el is None or str(el.get('/Lang', '')) == sp['lang'] or not sp.get('mcids'): break

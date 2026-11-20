@@ -35,6 +35,29 @@ approved.
      A second pattern: a word hyphenated inside its line whose real continuation the PDF draws elsewhere in the text,
      and whose first part alone is short (under four letters), capitalized without marks, or English, is no candidate.
      Examples: the Anindilyakwa morphemes on an interlinear page ("ki-", "ku-", "na-"), and Hawaiian "uka-".
+   - **Words and phrases across marked content (#150, #161; `lib/langjoin.py`).** OCR text and auto-tagged text often
+     put each word, or each piece of a word, in its own marked-content run. The finder reads a page in *stretches*:
+     - **OCR-pattern pages** (most runs hold one word or less: OpenDataLoader's output and OCR layers): runs are joined,
+       never split. A stretch ends at a new line, a change of parent element, a gap over twice the page's usual word gap,
+       a word ending in `,` `;` `:` `.` `?` or `!`, the first word of a line after a line-end hyphen, an opening quote or
+       bracket (not one inside a word, nor before a word of Hawaiian shape: an ʻokina), a note number in its own run, and
+       wherever the tag tree keeps the runs apart (not next to each other in their element, or under spoken text). Inside a
+       word drawn across runs, the pieces stay one word when one piece holds a single letter or the joined letters are
+       English; a letter set apart from its word by a hair (under 0.15 em, or a drop cap) is joined back.
+     - **Other pages:** a first or last letter set apart inside one run is joined back. A word cut across two runs is
+       read whole when it passes the same word checks; it gets one place across both runs only when one tag can cover
+       it (same element, next to each other, no spoken text in the way, one line). A drop cap is read with its word but
+       never tagged with it.
+     - A place across several runs carries `segments` (each run's first and last character), and the executor tags it
+       with one Span over all of it, or not at all (below). Every place records which rule made it (`source`).
+     - **Words not tagged.** A word read whole whose letters sit in runs no one tag can cover (different elements, a drop
+       cap, spoken text in the way) is never sent, and is counted and listed (`unplaced`; see "Words not tagged" below).
+     - The audit's `lang_candidates.json` (version 2) records what was applied (`reading`). When the tag tree can't be
+       read, no run is joined to another. An audit made before this (version 1) is found again when the step runs, with
+       today's reading; its word forms may differ from the first estimate, so the estimate is made again, and if more
+       forms would be held back than were shown, the review holds (see "Word forms not sent").
+     - `LANG_FINDER_RULES` (testing only, see [Options](options.md)) turns rules off for a measurement; a run that used
+       it says so in review.md.
 2. **The language step asks the AI** (`name_languages.py`, prompt `prompts/language_v3.md`): each word form with its
    context, each snippet once per request, through OpenRouter with `data_collection: deny`. The context
    (`lib/langreq.py` `CTX`) is 10 words on each side of up to two places per form (a word is a piece with a letter or
@@ -82,7 +105,9 @@ approved.
    list (*a priori*, *ad hoc*) count as English. (language_v3 is language_v1 with these two lines from language_v2,
    adopted after a paid check on the test items, 2026-11-13: 248 and 249 right against 246 and 232, the same one wrong
    medium-confidence answer, no reply cut off.)
-3. **The decisions go into the work order** as `language_parts` (version 2: one row per word form, with its places).
+3. **The decisions go into the work order** as `language_parts` (version 2: one row per word form, with its places;
+   version 3 when a place spans several runs: such a row is `[page, [[mcid, first, last], …], form]`, every other row as
+   in version 2. Only `lib/langreq.py` reads rows by their shape: `rows()` and `has_forms()`).
    The work-order prompt (`workorder_v11.md`, and `workorder_v12.md` after it) leaves language tags to this step.
 4. **A person decides every form** on the review page's "Languages" section (see [Review page](review-page.md#languages)),
    one by one or with a group approval ([Group approval](review-page.md#group-approval), #124).
@@ -98,6 +123,12 @@ approved.
    `"mono no aware" (Japanese (Romanized)) · PDF 12 (printed 3)`. It shows 20 per reason; the rest are in
    `record.json` (`apply.language_parts.refused_places`, the first 200 places in all). review.html shows the same list,
    nested under each reason.
+   **A place across several runs** gets one Span over its runs, written in the executor's last step, after every check:
+   all its runs under one element, next to each other, none tagged by a fixed rule (kana, hangul), and the page looking
+   the same after the splits. If any check fails, the whole place is left out and listed once: no half-tagged phrase,
+   and the `/Lang` in its runs' marked content stays as it was. Its runs, and any runs that share one with it, are
+   checked and kept or left out together. verify.py checks such a Span exactly: every run's own element is the Span,
+   in reading order, under the element the place was in.
 6. **verify.py checks** that every tag holds its words and language. A tag that does not match is a rank-1 finding.
 
 ### Chinese, Japanese and Korean
@@ -214,6 +245,18 @@ sent. There is no limit on the number of word forms unless `LANGUAGE_MAX_FORMS` 
 - **To send more,** raise the limit for that PDF: `LANGUAGE_MAX_USD=…` (or `BOOK_MAX_USD=…` when the PDF's limit is what
   held them back) for the run, or the limits in the app's settings, then a new estimate.
 
+### Words not tagged
+
+#161 (find words split at their first or last letter): a word the finder read whole, whose letters the PDF stores in
+runs that no one language tag can cover (different elements, a drop cap, spoken text in the way), is never sent and
+never tagged. The record keeps the count, the reasons (codes) and the first 200 forms with their pages
+(`language_status.unplaced`). review.md's Language Tags section says "**Words not tagged (N):** each is printed as one
+word, but the PDF stores its letters in separate places, so no language tag can cover it. They may be in another
+language; the list gives their pages." The review page shows the same under "Languages" in the fold "Words Not Tagged
+(N)", read only. The count is in the Language Tags line's details ("Approved (… · 12 words not tagged)"). It is not a
+condition of Ready (Patrick, 2026-11-19). A place the executor refuses late (the page would look different, …) is not
+counted here: it is in "Not placed by the executor".
+
 ### Sending, retries and interruptions
 
 #135 (parallel requests):
@@ -265,6 +308,10 @@ sent. There is no limit on the number of word forms unless `LANGUAGE_MAX_FORMS` 
   proposed no tag at all: every form is then a row under "Left Untagged by the AI", for a person to confirm or tag,
   so the line never reads Not Applicable after the step ran;
 - **Approved (reviewer on date)** when none is left.
+- Words the finder could not place (see "Words not tagged") add "· N words not tagged" to the details of any of these,
+  without changing the value. A book with no word forms to decide but some words not tagged reads **Not Applicable (no
+  word forms to decide · N words not tagged)**: Not Applicable still means there was nothing to decide, and the details
+  say what was found (Patrick, 2026-11-19).
 
 The record keeps what happened as `language_status` (`candidates`: the word forms found, and `state`). A record made
 before this (2026-11-14) has none, and its line reads as it did.
@@ -293,3 +340,26 @@ within the language step's default limit ($6 then, $25 since #155); with the wor
 Sonnet 5.5 stays the language step's model (2026-11-14): Opus 5.5 was no more accurate on the 473 test items and costs
 about 2.2 times as much. Sonnet 5.5, measured on the test books (2026-11-13): about $0.09 per 100 forms. A book with 2,800 forms (cadaverous)
 cost $2.53; one with 840 forms (ryukyu) $0.78. A book with no candidates costs nothing.
+
+## Scoring another model
+
+#142 (compare Google's current models with the one in use): any model OpenRouter lists can be scored on the language
+test set (the 250 everyday and 223 harder "masked" items of #118), with the same prompt and requests, and no new code.
+Paid: each run is approved first, with its amount.
+
+1. **A folder of its own** under `runs/` with the request set and the items: copy `requests/W10.json` and `items.json`
+   from the test folder (`runs/118-language-tagging/ctx15/`: the requests scored at 98.0% with Sonnet 5.5), so the replies
+   and the ledger stay in that folder.
+2. **Check the model's privacy setting first** (a fraction of a cent; a made-up word, no book text):
+   `python3 tools/lang_test.py probe DIR --model ID --cap USD --ledger spend.json --prompt ../prompts/language_v3.md`.
+   A refusal means no provider serves the model with `data_collection: deny`: don't test it.
+3. **One run**:
+   `python3 tools/lang_test.py send DIR --model ID --run 1 --set W10 --cap USD --ledger spend.json --prompt ../prompts/language_v3.md`
+   (always name language_v3; the tool's own default is the older v1). For a model that reasons, add
+   `--reasoning-effort low` and `--max-tokens 12000`: reasoning counts inside the token limit, and a cut-off reply is
+   scored as a miss. The cap is checked before every request, against the same token figure the request carries; a reply
+   with no cost reported is counted at its worst case. The ledger records each request's provider, reasoning setting,
+   time and finish reason.
+4. **Score** (free): `python3 tools/lang_exp.py DIR NAME=MODEL/W10 … --ledger spend.json --md DIR/score.md`. Each
+   variant shows right, wrong (at high or medium confidence), untagged or low, cut off, and the same answer in every run,
+   with 95% ranges, for the everyday and the masked items apart. More runs narrow the range.

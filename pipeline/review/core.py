@@ -209,10 +209,9 @@ def build_items(wo, digest, order=None, ro=None):
         add(f'adopt_orphans:{i}', 'adopt_orphans', 'Reading order', ['adopt_orphans', i], r, (r or {}).get('label') or 'Orphan text',
             page=ps[0] if ps else None, pages=ps, orphans=runs[:6])
     lp = wo.get('language_parts') or {}
-    if lp.get('version') == 2:                                   # #118: one row per word form a person decides (review 06, stage D)
+    if langreq.has_forms(lp):                                    # #118: one row per word form a person decides (review 06, stage D)
         pages_of = collections.defaultdict(set)
-        for r in lp.get('parts') or []:
-            if isinstance(r, list) and len(r) == 5: pages_of[r[4]].add(r[0])
+        for pg_, _segs, fi_ in langreq.rows(lp): pages_of[fi_].add(pg_)
         rows = set(langreq.to_decide(lp.get('forms')))            # Latin-script names and English words left untagged: listed, not decided,
         for i, f in enumerate(lp.get('forms') or []):              # unless the AI tagged nothing at all (then every form is a row)
             if i not in rows: continue
@@ -236,7 +235,7 @@ def build_items(wo, digest, order=None, ro=None):
             'Note to the reviewer from the AI', page=refs[0] if refs else None, page_refs=refs)
     listed = {'retype', 'rolemap', 'actual_text', 'merges', 'document', 'alt', 'page_figures', 'tables', 'flatten', 'keep_lists',
               'artifacts', 'ocr_words', 'page_readings', 'deferrals', 'notes_for_reviewer', 'schema', *READING} | workorder_check.META
-    if lp.get('version') == 2: listed.add('language_parts')
+    if langreq.has_forms(lp): listed.add('language_parts')
     if figures_card(ro): listed.add('fix_figure_order')            # the Figures Moved card is that decision
     for k, v in wo.items():
         if k not in listed:
@@ -1501,6 +1500,24 @@ def held_back_info(R, run_dir=None):
             'forms': hb.get('forms') or [],
             'sentence': AS.held_back_words(est, after=True) or '', 'reason': G.held_back_reason(hb),   # review 31 L3: after the run, in the past tense
             'accepted': acc if acc.get('by') and acc.get('count') == hb['count'] and acc.get('sha') == hb.get('sha') else None}
+
+def unplaced_info(R, run_dir=None):
+    """#161 addition 3: the words the finder could not place (record.json language_status.unplaced once the report ran,
+    else the audit's lang_candidates.json while the run waits for its first review), for the review page's read-only
+    "Words Not Tagged" fold: {count, forms: [[form, [pages]]]}, or None. Never a condition of Ready (Patrick, 2026-11-19)."""
+    run_dir = run_dir or R
+    rec = load(os.path.join(run_dir, 'record.json')) or {}
+    st = rec.get('language_status') if isinstance(rec.get('language_status'), dict) else None
+    up = (st or {}).get('unplaced')
+    if up is None and not st:
+        lc = load(os.path.join(R, '_audit', 'lang_candidates.json')) or load(os.path.join(run_dir, '_audit', 'lang_candidates.json'))
+        rows = (lc or {}).get('unplaced') if isinstance(lc, dict) else None
+        if rows:
+            by = collections.OrderedDict()
+            for u in rows: by.setdefault(u.get('form'), set()).add(u.get('page'))
+            up = {'count': len(rows), 'forms': [{'form': f, 'pages': sorted(p for p in ps if isinstance(p, int))} for f, ps in list(by.items())[:200]]}
+    if not up or not up.get('count'): return None
+    return {'count': up['count'], 'forms': [[u['form'], u.get('pages') or []] for u in up.get('forms') or []]}
 
 def language_review(items, decisions):
     """The Languages section's decisions, counted for the record (record language_review; lib/glance.py's Language Tags

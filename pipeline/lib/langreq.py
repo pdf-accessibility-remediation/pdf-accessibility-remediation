@@ -387,6 +387,39 @@ def needs_person(f, d):
     non_latin = any(c.startswith(NON_LATIN) for c in f['class'])
     return f['group'] == 'existing' or not d or (non_latin and (not d.get('lang') or d.get('confidence') == 'low'))
 
+# ---- the rows of language_parts, version 2 and 3: the one reader (review 02, H2). Every other module reads rows through
+# rows() and has_forms(), never by a row's length or the version number: a version 3 row is [page, [[mcid, first, last],
+# …], form index] (#150, #161: one place across several runs), a version 2 row [page, mcid, first, last, form index].
+def _whole(v): return isinstance(v, int) and not isinstance(v, bool)
+
+def has_forms(lp):
+    """True for language_parts with forms and rows (version 2, or 3 with segmented rows)."""
+    return isinstance(lp, dict) and lp.get('version') in (2, 3)
+
+def parse_row(r):
+    """(page, segments [[mcid, first, last], …], form index), or (None, why) for a row of neither shape."""
+    if isinstance(r, list) and len(r) == 5 and all(_whole(x) for x in r): return r[0], [[r[1], r[2], r[3]]], r[4]
+    if isinstance(r, list) and len(r) == 3 and _whole(r[0]) and _whole(r[2]) and isinstance(r[1], list) and len(r[1]) >= 2 \
+            and all(isinstance(x, list) and len(x) == 3 and all(_whole(v) for v in x) for x in r[1]):
+        return r[0], [list(x) for x in r[1]], r[2]
+    return None, ('segments not lists of three whole numbers' if isinstance(r, list) and len(r) == 3 and isinstance(r[1], list) else 'not five whole numbers')
+
+def segments_problem(segs):
+    """None, or why a row's segments are out of order: a run index below 0, a character range not in order, a run twice."""
+    if any(m < 0 or not 0 <= f <= l for m, f, l in segs): return 'run or character indexes not in order'
+    if len({m for m, _, _ in segs}) != len(segs): return 'a run appears twice in one place'
+    return None
+
+def rows(lp):
+    """Yields (page, segments, form index) for every row of a usable shape whose form exists; others are skipped, as each
+    reader skipped them before (workorder_check reports them: row_problem)."""
+    if not has_forms(lp): return
+    n = len(lp.get('forms') or [])
+    for r in lp.get('parts') or []:
+        page, segs, *fi = parse_row(r)
+        if page is None or not fi or not 0 <= fi[0] < n: continue
+        yield page, segs, fi[0]
+
 def to_rows(fs, decisions, tag_conf=('high', 'medium'), readings=None, reasons=None):
     """Decisions → language_parts, version 2 (review 06, record size): one entry per form, with the AI's answer and whether
     it is tagged (`tag`: high or medium confidence with a language), and the places as rows [page, mcid, first, last,
@@ -407,8 +440,9 @@ def to_rows(fs, decisions, tag_conf=('high', 'medium'), readings=None, reasons=N
              'tag': bool(f['group'] != 'existing' and d.get('lang') and d.get('confidence') in tag_conf),
              **({'person': True} if needs_person(f, d) else {}), 'places': len(f['places'])}
         i = len(forms); forms.append(e)
-        for p in f['places']: rows.append([p['page'], p['mcid'], p['first'], p['last'], i])
-    return {'version': 2, 'forms': forms, 'parts': rows}
+        for p in f['places']:
+            rows.append([p['page'], [list(x) for x in p['segments']], i] if p.get('segments') else [p['page'], p['mcid'], p['first'], p['last'], i])
+    return {'version': 3 if any(len(r) == 3 for r in rows) else 2, 'forms': forms, 'parts': rows}   # version 2 byte for byte with no segments
 
 def to_decide(forms):
     """The indexes of the version-2 forms a person decides on the review page: those the AI tagged or left to a person;
@@ -419,16 +453,17 @@ def to_decide(forms):
     return pick if pick else list(range(len(fs)))
 
 def expand(lp):
-    """language_parts of either version → the parts to tag, as dicts {page, mcid, first, last, lang, form, text?}: version 1
-    as written (every part tagged), version 2 the rows of forms with `tag` true. apply.py and the checks read this."""
+    """language_parts of any version → the parts to tag, as dicts {page, mcid, first, last, lang, form, text?}: version 1
+    as written (every part tagged), versions 2 and 3 the rows of forms with `tag` true. A version 3 row across several runs
+    carries `segments` [[mcid, first, last], …] (mcid, first, last: its first segment's). apply.py and the checks read this."""
     if not isinstance(lp, dict): return []
-    if lp.get('version') != 2: return list(lp.get('parts') or [])
+    if not has_forms(lp): return list(lp.get('parts') or [])
     forms = lp.get('forms') or []
     out = []
-    for r in lp.get('parts') or []:
-        if not (isinstance(r, list) and len(r) == 5 and isinstance(r[4], int) and 0 <= r[4] < len(forms)): continue
-        f = forms[r[4]]
+    for page, segs, fi in rows(lp):
+        f = forms[fi]
         if f.get('tag') and f.get('lang'):
-            out.append({'page': r[0], 'mcid': r[1], 'first': r[2], 'last': r[3], 'lang': f['lang'], 'form': f.get('form'),
-                        'class': f.get('class'), 'confidence': f.get('confidence')})
+            m, a, b = segs[0]
+            out.append({'page': page, 'mcid': m, 'first': a, 'last': b, 'lang': f['lang'], 'form': f.get('form'),
+                        'class': f.get('class'), 'confidence': f.get('confidence'), **({'segments': segs} if len(segs) > 1 else {})})
     return out

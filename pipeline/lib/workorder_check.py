@@ -15,7 +15,7 @@ digest's reading_order lines are used. A move is kept only when the audit finds 
 flagged): a move the audit gives no reason for only re-nests a section or leaves it where it is.
 """
 import re, unicodedata
-from lib import readorder, langtag
+from lib import readorder, langtag, langreq
 
 ALLOWED = {'H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'P', 'Span', 'Caption', 'Note', 'Div', 'Figure'}
 KNOWN = {'schema', 'sections', 'artifacts', 'document', 'rolemap', 'merges', 'actual_text', 'retype', 'flatten', 'alt',
@@ -213,7 +213,7 @@ def check_language_parts(wo, pages, places=None):
     dropped = []
     lp = wo.get('language_parts')
     if lp is None: return dropped
-    if isinstance(lp, dict) and lp.get('version') == 2: return _check_rows(lp, pages, dropped)
+    if langreq.has_forms(lp): return _check_rows(lp, pages, dropped)
     if not isinstance(lp, dict) or not isinstance(lp.get('parts'), list):
         dropped.append({'where': 'language_parts', 'item': lp, 'why': 'not a {"parts": [...]} object'}); wo.pop('language_parts'); return dropped
     def whole(v): return isinstance(v, int) and not isinstance(v, bool)
@@ -246,7 +246,9 @@ READING_KEYS = {'lang', 'langs', 'text', 'with', 'places', 'back'}
 GROUP_APPROVALS = {'all_shown', 'readings', 'printed_reading'}   # the review page's group-approval buttons (#124; #132 the third)
 
 def _check_rows(lp, pages, dropped):
-    """language_parts version 2 (lib/langreq.to_rows): forms, and rows [page, mcid, first, last, form index]. A form whose
+    """language_parts versions 2 and 3 (lib/langreq.to_rows): forms, and rows [page, mcid, first, last, form index] or
+    [page, [[mcid, first, last], …], form index] (one place across several runs: #150, #161). The structure (one parent,
+    next to each other, no spoken text) is the finder's and the executor's to check: this check has no PDF (review 02, M3). A form whose
     language is not one the step may write is not tagged (its `tag` set false, its places kept for a person); a row that is
     not five whole numbers in range, or that overlaps a row of a tagged form in the same run, is dropped."""
     forms = lp.get('forms') if isinstance(lp.get('forms'), list) else []
@@ -271,18 +273,18 @@ def _check_rows(lp, pages, dropped):
         g = f.get('group_approval')
         if g is not None and not (isinstance(g, dict) and g.get('button') in GROUP_APPROVALS):
             dropped.append({'where': 'language_parts.forms', 'item': f.get('form'), 'why': 'group_approval not one of the group-approval buttons'}); f.pop('group_approval')
-    def whole(v): return isinstance(v, int) and not isinstance(v, bool)
     keep, seen = [], {}
     for r in lp.get('parts') if isinstance(lp.get('parts'), list) else []:
         why = None
-        if not (isinstance(r, list) and len(r) == 5 and all(whole(x) for x in r)): why = 'not five whole numbers'
-        elif not 1 <= r[0] <= pages: why = 'page not in the book'
-        elif r[1] < 0 or not 0 <= r[2] <= r[3]: why = 'run or character indexes not in order'
-        elif not 0 <= r[4] < len(forms): why = 'no such form'
-        elif forms[r[4]].get('tag'):
-            k = (r[0], r[1])
-            if any(not (r[3] < a or r[2] > b) for a, b in seen.get(k, [])): why = 'overlaps another part in the same run'
-            else: seen.setdefault(k, []).append((r[2], r[3]))
+        page, segs, *fi = langreq.parse_row(r)                  # one shape check for every reader (review 02, H2)
+        if page is None: why = segs
+        elif not 1 <= page <= pages: why = 'page not in the book'
+        elif langreq.segments_problem(segs): why = langreq.segments_problem(segs)
+        elif not 0 <= fi[0] < len(forms): why = 'no such form'
+        elif forms[fi[0]].get('tag'):                       # each segment against every tagged row in its run, of either shape
+            if any(not (b_ < a or a_ > b) for m, a_, b_ in segs for a, b in seen.get((page, m), [])): why = 'overlaps another part in the same run'
+            else:
+                for m, a_, b_ in segs: seen.setdefault((page, m), []).append((a_, b_))
         if why: dropped.append({'where': 'language_parts', 'item': r, 'why': why})
         else: keep.append(r)
     lp['parts'] = keep

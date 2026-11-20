@@ -1900,12 +1900,21 @@ function langHeld(h) {
     (acc ? '<p>' + acc + '</p>' : '') +
     (h.accepted && !HELD_ACCEPT ? '' : '<button type="button" id="langHeldAccept">' + (HELD_ACCEPT ? 'Undo the Acceptance' : 'Accept Without the Word Forms Not Sent') + '</button>') + '</div>';   // review 31 L3: a name with its context
 }
+// #161 addition 3: words the finder could not place: read-only, never a condition of Ready (Patrick, 2026-11-19)
+function langUnplaced(u) {
+  if (!u || !u.count) return '';
+  return '<div class="pp-note" id="langUnplaced"><details id="langUnplacedList"><summary>Words Not Tagged (' + fmtN(u.count) + ')</summary>' +
+    '<p>Each is printed as one word, but the PDF stores its letters in separate places, so no language tag can cover it. ' +
+    'They may be in another language; the list gives their pages.</p>' +
+    (u.forms.length ? '<p>' + u.forms.map(f => esc(f[0]) + ' (' + f[1].slice(0, 3).map(p => 'PDF page ' + p).join(', ') + (f[1].length > 3 ? ' …' : '') + ')').join(' · ') + '</p>' : '') +
+    '</details></div>';
+}
 function renderLanguages() {
-  if ((!LANGS.total && !LANGS.held_back) || OCR_ONLY) { langBox.hidden = true; return; }
+  if ((!LANGS.total && !LANGS.held_back && !LANGS.unplaced) || OCR_ONLY) { langBox.hidden = true; return; }
   const open = new Set([...langBox.querySelectorAll('details[open]')].map(d => d.dataset.group));
   langBox.hidden = false;
   langBox.innerHTML = '<h2 id="langTitle">Languages' + (LANGS.total ? ' (' + fmtN(LANGS.total) + ')' : '') + '</h2>' +   // review 31 L3: no "(0)" when every form was held back
-    '<p>' + LANG_INTRO + '</p>' + langHeld(LANGS.held_back) +
+    '<p>' + LANG_INTRO + '</p>' + langHeld(LANGS.held_back) + langUnplaced(LANGS.unplaced) +
     LANGS.groups.map(langFold).join('');
   langBox.querySelectorAll('details').forEach(d => { if (open.has(d.dataset.group)) d.open = true; });
 }

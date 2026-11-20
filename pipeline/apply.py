@@ -1092,6 +1092,8 @@ def op_notes(spec):
 _LANG_WHOLE = []                                   # (page, mcid): runs tagged whole, whose marks lose their /Lang
 _LANG_SPLITS = collections.defaultdict(list)       # (page, mcid) -> parts to split out of that run
 _LANG_DROP = []                                    # (page, mcid): runs whose marks lose a publisher's /Lang a person removed
+_LANG_PHRASES = []                                 # #150, #161: places across several runs, planned in op_language, written only in
+                                                   # fix_language_parts' last step, after their group passed every check (review 04 H3a)
 LANG = log['language_parts'] = {'spans': [], 'whole': 0, 'split': 0, 'refused': collections.Counter(), 'refused_places': [],
                                 'retried_pages': [], 'restored_pages': [], 'marks_lang_removed': 0}
 def lang_refuse(pno, m, why, part=None):
@@ -1150,23 +1152,22 @@ def remove_existing(lp):
     (in the late pass). Kept ('kept', "Keep the Tag", review 08 M5): when an element over the run carries the value, the
     run's marks lose their own /Lang (an en-US in the marks would be read instead of the kept tag, 02 H1); a value carried
     by the marks alone stays as it is. A tag a person changed is tagged anew like any other part (expand)."""
-    if not isinstance(lp, dict) or lp.get('version') != 2: return
+    if not langreq.has_forms(lp): return
     forms = lp.get('forms') or []
-    for r in lp.get('parts') or []:
-        if not (isinstance(r, list) and len(r) == 5 and 0 <= r[4] < len(forms)): continue
-        f = forms[r[4]]
+    for pno, segs, fi in langreq.rows(lp):
+        f = forms[fi]
         if not (f.get('current') and f.get('decided') in ('remove', 'kept')): continue
-        pno, m = r[0], r[1]
-        el, carrier = owner.get((pno, m)), None
-        for _ in range(8):
-            if el is None or not is_elem(el): break
-            if '/Lang' in el and str(el.Lang).strip() == str(f['current']).strip(): carrier = el; break
-            el = parent_of.get(el.objgen)
-        if f['decided'] == 'kept':
-            if carrier is not None: _LANG_DROP.append((pno, m)); LANG['existing_kept'] = LANG.get('existing_kept', 0) + 1
-            continue
-        if carrier is not None: del carrier['/Lang']; ok('language: a tag in the PDF removed')
-        _LANG_DROP.append((pno, m)); LANG['existing_removed'] = LANG.get('existing_removed', 0) + 1
+        for m, _a, _b in segs:                                  # an existing tag's place is one run; a row of several is read run by run
+            el, carrier = owner.get((pno, m)), None
+            for _ in range(8):
+                if el is None or not is_elem(el): break
+                if '/Lang' in el and str(el.Lang).strip() == str(f['current']).strip(): carrier = el; break
+                el = parent_of.get(el.objgen)
+            if f['decided'] == 'kept':
+                if carrier is not None: _LANG_DROP.append((pno, m)); LANG['existing_kept'] = LANG.get('existing_kept', 0) + 1
+                continue
+            if carrier is not None: del carrier['/Lang']; ok('language: a tag in the PDF removed')
+            _LANG_DROP.append((pno, m)); LANG['existing_removed'] = LANG.get('existing_removed', 0) + 1
 def language_parts(parts):
     """The language step's tags (workorder.json `language_parts`, checked by workorder_check.check_language_parts): a
     place that covers its whole run (no letter or digit outside it) is tagged as a run; any other is queued for a split.
@@ -1193,6 +1194,59 @@ def language_parts(parts):
             lang_refuse(pno, m, 'rotated or vertical text: whole runs only', p); continue
         _LANG_SPLITS[(pno, m)].append({**p, 'text': text})
     return done
+def plan_phrase(p, explicit, doc_lang, spec):
+    """A place across several runs (#150, #161; language_parts version 3), checked before any edit. Nothing is written into
+    the tree here (review 04 H3a): the place is recorded in _LANG_PHRASES, its partial first or last segment queued for a
+    split flagged with the phrase, and fix_language_parts writes one Span over all of it, or nothing. Refused whole, and
+    listed once, when: a run is not in the tree, not drawn in the page, rotated, or on a page rewritten from OCR; a run is
+    one a fixed rule tags (kana, hangul, an explicit run: that rule tags it, as without the phrase); the runs have different
+    elements, or the element has spoken text; they are not next to each other in its /K (only blank runs between); or
+    letters other than the place's sit between its pieces."""
+    pno, segs, lang = p['page'], p['segments'], p['lang']
+    m0 = segs[0][0]
+    def no(why):
+        lang_refuse(pno, m0, why, {'text': p.get('form'), 'lang': lang}); LANG['phrases_refused'] = LANG.get('phrases_refused', 0) + 1
+        return None
+    if not (1 <= pno <= len(pages)): return no('page not in the book')
+    if pno in {pidx[k] for k, v in _REWRITES.items() if v and k in pidx}: return no('page text rewritten from OCR: whole runs only')
+    os_, texts = [], []
+    for m, a, b in segs:
+        cs = run_chars(pno, m)
+        if b >= len(cs): return no('characters do not line up with the run')
+        if any(c.get('upright') is False for c in cs): return no('rotated or vertical text: whole runs only')
+        o = owner.get((pno, m))
+        if o is None: return no('run not in the tag tree')
+        why = drawn_here(pno, m, len(cs))
+        if why: return no(why)
+        t = ''.join(c['text'] for c in cs); k = scripts.kind(t)
+        what = 'tag' if (pno, m) in explicit else (scripts.action(k, t, doc_lang, spec.get('kana_runs'))[0] if k else None)
+        if what == 'tag': return no('a run inside it is tagged by a fixed rule')
+        os_.append(o); texts.append(''.join(c['text'] for c in cs[a:b + 1]))
+    if len({o.objgen for o in os_}) != 1: return no('its words sit under different tags')
+    o = os_[0]
+    why = unspoken_owner(o)
+    if why: return no(why)
+    idx = [mc_entry_index(o, pno, m) for m, _, _ in segs]
+    if None in idx or any(b_ <= a_ for a_, b_ in zip(idx, idx[1:])): return no('its runs are not next to each other in the tag tree')
+    ks, blank = kids(o), []
+    for i0, i1 in zip(idx, idx[1:]):
+        for k in ks[i0 + 1:i1]:
+            mm = k if isinstance(k, int) else (int(k.MCID) if is_pmcr(k) and (pidx[k.Pg.objgen] if '/Pg' in k else eff_pg.get(o.objgen)) == pno else None)
+            if mm is None or mc_text(pno, mm).strip(): return no('its runs are not next to each other in the tag tree')
+            blank.append(mm)
+    plan = []
+    for n_, (m, a, b) in enumerate(segs):
+        cs = run_chars(pno, m)
+        before, after = ''.join(c['text'] for c in cs[:a]), ''.join(c['text'] for c in cs[b + 1:])
+        if (n_ > 0 and before.strip()) or (n_ < len(segs) - 1 and after.strip()): return no('other text sits between its pieces')
+        plan.append((m, a, b, not before.strip() and not after.strip()))
+    ph = {'gid': len(_LANG_PHRASES), 'page': pno, 'owner': o, 'segs': plan, 'blank': blank, 'lang': lang, 'form': p.get('form'),
+          'text': ''.join(texts)}
+    for m, a, b, whole in plan:
+        if not whole: _LANG_SPLITS[(pno, m)].append({**{k: v for k, v in p.items() if k != 'segments'}, 'mcid': m, 'first': a, 'last': b,
+                                                     'text': ''.join(c['text'] for c in run_chars(pno, m)[a:b + 1]), 'phrase': ph['gid']})
+    _LANG_PHRASES.append(ph)
+    return ph
 def op_language(spec):
     """CJK runs (lib/scripts.py): a run in the document's own language needs no tag (Han-only text in a Chinese, Japanese
     or Korean document; hangul in a Korean one; kana in a Japanese one). Otherwise hangul runs get ko, kana runs the AI's
@@ -1202,8 +1256,8 @@ def op_language(spec):
     reindex()
     explicit = {(r['page'], r['mcid']): r['lang'] for r in spec.get('runs', [])}
     lp_ = wo.get('language_parts') if isinstance(wo.get('language_parts'), dict) else {}
-    fs_ = lp_.get('forms') or [] if lp_.get('version') == 2 else []
-    decided = {(r[0], r[1]) for r in lp_.get('parts') or [] if isinstance(r, list) and len(r) == 5 and 0 <= r[4] < len(fs_) and fs_[r[4]].get('decided')}
+    fs_ = lp_.get('forms') or [] if langreq.has_forms(lp_) else []
+    decided = {(pg_, m_) for pg_, segs_, fi_ in langreq.rows(lp_) if fs_[fi_].get('decided') for m_, _, _ in segs_}
     for k in decided & set(explicit):                             # a person's decision on a form wins over a v10 explicit run (review 08, L2)
         explicit.pop(k); LANG['explicit_overridden'] = LANG.get('explicit_overridden', 0) + 1
     doc_lang = str(pdf.Root.get('/Lang', ''))                     # set by op_document, which runs before this step
@@ -1213,8 +1267,10 @@ def op_language(spec):
     # covering the whole run, adds nothing and is dropped; a part in another language stays, split out under the new
     # Span. Han the AI left untagged in a run the local rule defers goes on the deferred list, as without the step.
     by_run = collections.defaultdict(list)
-    for p in langreq.expand(wo.get('language_parts')):          # version 2: the rows of forms marked to tag
-        by_run[(p['page'], p['mcid'])].append(p)
+    phrases = []
+    for p in langreq.expand(wo.get('language_parts')):          # versions 2 and 3: the rows of forms marked to tag
+        if p.get('segments'): phrases.append(p)                 # across several runs (#150, #161): planned below, never through tag_run
+        else: by_run[(p['page'], p['mcid'])].append(p)
     remove_existing(wo.get('language_parts'))
     keep, local_tag, local_defer = [], {}, {}
     for (pno, m), ps in by_run.items():
@@ -1238,6 +1294,10 @@ def op_language(spec):
         if why: reject(f'lang {PG(pno)} m{m}', why); lang_refuse(pno, m, why, whole_part(pno, m, val)); continue
         tag_run(pno, m, val)
     language_parts(keep)
+    phrase_runs = set()
+    for p in phrases:                                             # after tag_run and the splits of single runs: a run either touched is refused
+        ph = plan_phrase(p, explicit, doc_lang, spec)
+        if ph: phrase_runs |= {(ph['page'], m) for m, _, _, _ in ph['segs']} | {(ph['page'], m) for m in ph['blank']}
     queued = {(pno, m): [(p['first'], p['last']) for p in ps] for (pno, m), ps in _LANG_SPLITS.items()}
     tagged_whole = {(sp['page'], sp['mcid']) for sp in LANG['spans'] if sp.get('whole')}
     for (pno, m), (k, val, t, ps) in sorted(local_defer.items()):
@@ -1248,7 +1308,7 @@ def op_language(spec):
         if not left: continue
         if k == 'han_only': han.append({'page': pno, 'label': labels.get(pno), 'mcid': m, 'text': t.strip()})
         else: log['deferred'].append({'page': pno, 'mcid': m, 'what': val})
-    covered = set(by_run)
+    covered = set(by_run) | phrase_runs
     for pno in range(1, len(pages) + 1):
         by, n_chars = collections.defaultdict(str), collections.Counter()
         for c in PL.pages[pno - 1].chars:
@@ -3216,30 +3276,75 @@ def fix_language_parts():
     """The content edits of the language step, in two phases (review 02, M9.1). First, on every page with work: remove the
     /Lang inside the marks of each run tagged whole (H1), and split each run that holds a tagged place (lib/mcsplit.py).
     Then each such page is drawn before and after at verify.py's scale. A page that differs by one pixel is tried again
-    run by run: the marks edits (which draw nothing) and every split that leaves the page the same on its own are kept,
+    unit by unit: the marks edits (which draw nothing) and every unit that leaves the page the same on its own are kept,
     the others are listed as not tagged; if the page still differs, it gets its original content back. Only then is the
     structure written, for what passed: a Span with the language per place, and the run's new pieces in the owner's /K
-    and the tag-tree index."""
+    and the tag-tree index.
+    A unit is a run with splits, or a phrase group (#150, #161, review 02 H3): the runs a place across several runs touches,
+    closed over places that share a run. A group is kept or refused whole, at every check (a split refused, the pixel
+    retry, a lost tag entry, the planning step): a refused group takes back only its own marks edits (the /Lang in its
+    whole runs' and blank runs' marks, review 04 H3b), never tag_run's or remove_existing's, and leaves no Span. Its Span,
+    its pieces in the tree and the tag-tree index are written only in the last step, after the group passed (H3a)."""
     import time
     t0 = time.time()
-    jobs = collections.defaultdict(lambda: {'drop': set(), 'split': {}})
+    jobs = collections.defaultdict(lambda: {'drop': set(), 'split': {}, 'groups': {}, 'of': {}})
     for pno, m in _LANG_WHOLE + _LANG_DROP: jobs[pno]['drop'].add(m)
     for (pno, m), parts in _LANG_SPLITS.items(): jobs[pno]['split'][m] = sorted(parts, key=lambda p: p['first'])
+    by_page = collections.defaultdict(list)
+    for ph in _LANG_PHRASES: by_page[ph['page']].append(ph)
+    for pno, phs in by_page.items():                    # phrase groups: union of phrases that share a run
+        job, root = jobs[pno], {}
+        def find(x):
+            while root[x] != x: root[x] = root[root[x]]; x = root[x]
+            return x
+        runs_of = {ph['gid']: {m for m, _, _, _ in ph['segs']} | set(ph['blank']) for ph in phs}
+        for g in runs_of: root[g] = g
+        owner_run = {}
+        for g, rs in runs_of.items():
+            for m in rs:
+                if m in owner_run: root[find(g)] = find(owner_run[m])
+                else: owner_run[m] = g
+        for ph in phs:
+            g = find(ph['gid'])
+            grp = job['groups'].setdefault(g, {'phrases': [], 'runs': set(), 'pdrop': set()})
+            grp['phrases'].append(ph); grp['runs'] |= runs_of[ph['gid']]
+            grp['pdrop'] |= {m for m, _, _, whole in ph['segs'] if whole} | set(ph['blank'])
+        for g, grp in job['groups'].items():
+            for m in grp['runs']: job['of'][m] = g
     if not jobs: return
     reindex()
-    def edit(pno, runs=None):
-        """(new contents or None, plans, marks edits, {run: why refused}) for page pno: the marks edits, and the splits
-        of `runs` (every run with work when None)."""
+    def unit(job, m): return ('g', job['of'][m]) if m in job['of'] else ('r', m)
+    def units(pno):
+        job = jobs[pno]
+        return {unit(job, m) for m in job['split']} | {('g', g) for g in job['groups']}
+    def refuse_unit(pno, u, why):
+        job = jobs[pno]
+        if u[0] == 'g':
+            grp = job['groups'][u[1]]
+            for ph in grp['phrases']:
+                lang_refuse(pno, ph['segs'][0][0], why, {'text': ph['form'], 'lang': ph['lang']}); LANG['phrases_refused'] = LANG.get('phrases_refused', 0) + 1
+            for m in grp['runs']:                       # a single-run place split in the same run goes with the group
+                for p in job['split'].get(m, []):
+                    if 'phrase' not in p: lang_refuse(pno, m, why, p)
+        else:
+            for p in job['split'].get(u[1], []): lang_refuse(pno, u[1], why, p)
+    def edit(pno, active=None):
+        """(new contents or None, plans, marks edits, {unit: why refused}) for page pno: the marks edits, and the splits
+        and phrase groups of the `active` units (all when None)."""
         page, job = pages[pno - 1], jobs[pno]
+        act = units(pno) if active is None else set(active)
         try: ins = list(pikepdf.parse_content_stream(page))
-        except Exception: return None, [], 0, {m: 'page content not readable' for m in job['split']}
+        except Exception: return None, [], 0, {u: 'page content not readable' for u in act}
         fonts = (_inherited(page, '/Resources') or {}).get('/Font')
         dropped = 0
-        for m in sorted(job['drop']):
+        drop = set(job['drop'])
+        for g, grp in job['groups'].items():
+            if ('g', g) in act: drop |= grp['pdrop']        # a phrase group's own marks edits, only while it is kept (review 04 H3b)
+        for m in sorted(drop):
             ins, ch = mcsplit.drop_lang(ins, m); dropped += ch
         arr, plans, refused = pt_arr(pno), [], {}
-        todo = {m: ps for m, ps in job['split'].items() if runs is None or m in runs}
-        if todo and arr is None: return None, [], 0, {m: 'page has no tag-tree index' for m in job['split']}
+        todo = {m: ps for m, ps in job['split'].items() if unit(job, m) in act}
+        if todo and arr is None: return None, [], 0, {u: 'page has no tag-tree index' for u in act}
         if todo:
             used = mcsplit.drawn_mcids(ins) | {mm for (pg, mm) in owner if pg == pno}
             nxt = [max(used | {len(arr) - 1}) + 1]
@@ -3251,52 +3356,96 @@ def fix_language_parts():
             for m, parts in sorted(todo.items()):
                 try:
                     ins2, pieces = mcsplit.split_run(ins, fonts, m, [(p['first'], p['last']) for p in parts], new_mcid, expect_n=len(run_chars(pno, m)))
-                except mcsplit.Refuse as e: refused[m] = str(e); continue
+                except mcsplit.Refuse as e: refused[unit(job, m)] = str(e); continue
+                # the blank pieces a phrase's split leaves inside it (after its first segment, before its last) lose their /Lang too
+                for k_, (mc, kind, ci) in enumerate(pieces):
+                    if kind != 'span' or 'phrase' not in parts[ci]: continue
+                    ph = _LANG_PHRASES[parts[ci]['phrase']]
+                    pos_ = [sm for sm, _, _, _ in ph['segs']].index(m)
+                    inner = pieces[k_ + 1:] if pos_ < len(ph['segs']) - 1 else []
+                    inner += pieces[:k_] if pos_ > 0 else []
+                    for mc2, kind2, _ in inner:
+                        if kind2 == 'run': ins2, ch = mcsplit.drop_lang(ins2, mc2); dropped += ch
                 ins = ins2; plans.append((m, pieces, parts))
         new = pdf.make_stream(pikepdf.unparse_content_stream(ins)) if (dropped or plans) else None
         return new, plans, dropped, refused
+    def settle(pno, active=None):
+        """edit(), with every group a split refused taken out whole and the page edited again without it."""
+        act = units(pno) if active is None else set(active)
+        while True:
+            new, plans, dropped, refused = edit(pno, act)
+            bad = {u for u in refused if u[0] == 'g' and u in act}
+            if not bad: return new, plans, dropped, refused, act
+            for u in bad: refuse_unit(pno, u, refused[u])
+            act -= bad
     edited = {}
     for pno in sorted(jobs):
-        new, plans, dropped, refused = edit(pno)
-        for m, why in refused.items():
-            for p in jobs[pno]['split'].get(m, []): lang_refuse(pno, m, why, p)
-        if new is not None: edited[pno] = (pages[pno - 1].obj.get('/Contents'), new, plans, dropped)
+        new, plans, dropped, refused, act = settle(pno)
+        for u, why in refused.items():
+            if u[0] == 'r': refuse_unit(pno, u, why)
+        act = {u for u in act if u not in refused}
+        groups_on = {u[1] for u in act if u[0] == 'g'}
+        if new is not None or groups_on:
+            old = pages[pno - 1].obj.get('/Contents')
+            edited[pno] = (old, new, plans, dropped, act)
     if not edited: return
     order = sorted(edited)
-    before = dict(zip(order, _render_pages([(pages[p - 1], edited[p][0]) for p in order])))
-    after = dict(zip(order, _render_pages([(pages[p - 1], edited[p][1]) for p in order])))
-    LANG['pages_checked'] = len(order)
-    for pno in order:
-        if _same_image(before[pno], after[pno]): continue
-        old, _, plans, _ = edited[pno]
-        LANG['retried_pages'].append(pno)                # tried again run by run
-        runs = [m for m, _, _ in plans]
-        alone = _render_pages([(pages[pno - 1], edit(pno, {m})[0]) for m in runs])
-        good = {m for m, im in zip(runs, alone) if _same_image(before[pno], im)}
+    changed = [p for p in order if edited[p][1] is not None]
+    before = dict(zip(changed, _render_pages([(pages[p - 1], edited[p][0]) for p in changed])))
+    after = dict(zip(changed, _render_pages([(pages[p - 1], edited[p][1]) for p in changed])))
+    LANG['pages_checked'] = len(changed)
+    hook = os.environ.get('APPLY_TEST_PIXEL_FAIL_RUN', '')          # tests only: 'page:mcid', a split of that run "looks different"
+    hook = tuple(int(x) for x in hook.split(':')) if re.fullmatch(r'\d+:\d+', hook) else None
+    def looks_same(pno, img, plans):
+        return _same_image(before[pno], img) and not (hook and hook[0] == pno and any(m == hook[1] for m, _, _ in plans))
+    for pno in changed:
+        if looks_same(pno, after[pno], edited[pno][2]): continue
+        old, _, plans, _, act = edited[pno]
+        LANG['retried_pages'].append(pno)                # tried again unit by unit
+        us = sorted(act)
+        trial = [edit(pno, {u}) for u in us]
+        alone = _render_pages([(pages[pno - 1], t[0] or old) for t in trial])
+        good = {u for u, im, t in zip(us, alone, trial) if looks_same(pno, im, t[1])}
         for keep in (good, set()):
-            new, plans2, dropped, _ = edit(pno, keep)
-            if new is not None and _same_image(before[pno], _render_pages([(pages[pno - 1], new)])[0]):
-                edited[pno] = (old, new, plans2, dropped); break
+            new, plans2, dropped, refused2, act2 = settle(pno, keep)
+            act2 = {u for u in act2 if u not in refused2}
+            img = _render_pages([(pages[pno - 1], new)])[0] if new is not None else before[pno]
+            if looks_same(pno, img, plans2):
+                edited[pno] = (old, new, plans2, dropped, act2); break
         else:
-            edited[pno] = (old, None, [], 0); LANG['restored_pages'].append(pno)
-        kept = {m for m, _, _ in edited[pno][2]}
-        for m, _, parts in plans:
-            if m not in kept:
-                for p in parts: lang_refuse(pno, m, 'the page would look different', p)
+            edited[pno] = (old, None, [], 0, set()); LANG['restored_pages'].append(pno)
+        for u in act - edited[pno][4]: refuse_unit(pno, u, 'the page would look different')
     lose = {int(x) for x in os.environ.get('APPLY_TEST_LOSE_ENTRY', '').split(',') if x.strip().isdigit()}   # tests only (review 06, M6)
+    def group_order_ok(job, g, pno):
+        """Each phrase's runs still in its element's /K, in order, with only blank runs between (links, section moves and
+        figure order may have moved entries since op_language)."""
+        for ph in job['groups'][g]['phrases']:
+            o = ph['owner']
+            if owner.get((pno, ph['segs'][0][0])) is None or not same(owner[(pno, ph['segs'][0][0])], o): return False
+            idx = [mc_entry_index(o, pno, m) for m, _, _, _ in ph['segs']]
+            if None in idx or any(b_ <= a_ for a_, b_ in zip(idx, idx[1:])): return False
+            ks = kids(o)
+            for i0, i1 in zip(idx, idx[1:]):
+                for k in ks[i0 + 1:i1]:
+                    mm = k if isinstance(k, int) else (int(k.MCID) if is_pmcr(k) else None)
+                    if mm is None or mm not in ph['blank']: return False
+        return True
     for pno in order:
-        old, new, plans, dropped = edited[pno]
-        if new is None: continue
+        old, new, plans, dropped, act = edited[pno]
+        job = jobs[pno]
+        groups_on = sorted(u[1] for u in act if u[0] == 'g')
+        if new is None and not groups_on: continue
         # resolve every run's tag entry before the page's content is written (review 06, M6): a run whose entry moved
         # since op_language (links, section moves, figure order) is refused, and the page keeps only its marks edits
         lost = [m for m, _, _ in plans if pno in lose or owner.get((pno, m)) is None or mc_entry_index(owner[(pno, m)], pno, m) is None]
-        if lost:
-            for m, _, parts in plans:
-                for p in parts: lang_refuse(pno, m, 'the run\'s tag entry moved before the split was written', p)
-            new, plans, dropped, _ = edit(pno, set())
+        lost_g = [g for g in groups_on if pno in lose or not group_order_ok(job, g, pno)]
+        if lost or lost_g:
+            for u in act: refuse_unit(pno, u, 'the run\'s tag entry moved before the split was written')
+            new, plans, dropped, _ = edit(pno, set()); groups_on = []
             if new is None: continue
         try:                                               # first the page's whole plan, with nothing in the tree changed yet (review 08, L1)
             built = []                                     # (owner, entry index, its new kids, [(mcid, element)], [Span records], run, pieces)
+            phrase_mc = collections.defaultdict(dict)      # phrase id -> {run: its phrase piece's MCID}
             if os.environ.get('APPLY_FAIL_LANG_PAGE') == str(pno): raise RuntimeError('test: a failure while the page is planned')   # tests only
             for m, pieces, parts in plans:
                 o = owner[(pno, m)]; i = mc_entry_index(o, pno, m)
@@ -3304,18 +3453,42 @@ def fix_language_parts():
                 same_pg = isinstance(kids(o)[i], int)
                 new_k, maps, recs = [], [], []
                 for mc, kind, ci in pieces:
-                    if kind == 'run': new_k.append(mc if same_pg else mcr(pno, mc)); maps.append((mc, o))
+                    if kind == 'run' or 'phrase' in parts[ci]:
+                        new_k.append(mc if same_pg else mcr(pno, mc)); maps.append((mc, o))
+                        if kind != 'run': phrase_mc[parts[ci]['phrase']][m] = mc
                     else:
                         part = parts[ci]
                         sp = new_elem('Span', o, [mc], pg=pno, Lang=pikepdf.String(part['lang']))   # not in any /K until written below
                         new_k.append(sp); maps.append((mc, sp))
                         recs.append({'page': pno, 'mcid': mc, 'lang': part['lang'], 'text': part['text'], 'whole': False})
                 built.append((o, i, new_k, maps, recs, m, pieces))
+            phrase_plans = []                              # (phrase, its MCIDs from first to last, as they will stand in the owner's /K)
+            for g in groups_on:
+                for ph in job['groups'][g]['phrases']:
+                    o = ph['owner']
+                    toks = []                              # the owner's /K after the splits, as MCIDs (None: anything else)
+                    split_of = {m: pieces for (m, pieces, _), (oo, *_r) in zip(plans, built) if same(oo, o)}
+                    for k in kids(o):                      # an element may run across pages: an MCID counts only on this page
+                        kp = eff_pg.get(o.objgen) if isinstance(k, int) else ((pidx[k.Pg.objgen] if '/Pg' in k else eff_pg.get(o.objgen)) if is_pmcr(k) else None)
+                        mm = (k if isinstance(k, int) else int(k.MCID)) if kp == pno else None
+                        toks += [x for x, _, _ in split_of[mm]] if mm in split_of else [mm]
+                    first = ph['segs'][0][0] if ph['segs'][0][3] else phrase_mc[ph['gid']].get(ph['segs'][0][0])
+                    last = ph['segs'][-1][0] if ph['segs'][-1][3] else phrase_mc[ph['gid']].get(ph['segs'][-1][0])
+                    if first is None or last is None or first not in toks or last not in toks: raise ValueError(f'phrase on page {pno}: a piece is missing')
+                    i0, i1 = toks.index(first), toks.index(last)
+                    inside = toks[i0:i1 + 1]
+                    allowed = {phrase_mc[ph['gid']].get(m) for m, _, _, _ in ph['segs']} | {m for m, _, _, w in ph['segs'] if w} | set(ph['blank'])
+                    for m, _, _, w in ph['segs']:          # the blank pieces a split leaves inside the phrase
+                        if not w: allowed |= {x for x, kind, _ in split_of.get(m, []) if kind == 'run'}
+                    if i1 < i0 or any(x is None or x not in allowed for x in inside):
+                        raise ValueError(f'phrase on page {pno}: its pieces are not next to each other ({[x for x in inside if x is None or x not in allowed][:5]} between {first} and {last})')
+                    phrase_plans.append((ph, inside))
         except Exception as e:                             # one page's failure stays on that page (review 06, M6): its content and its tree as they were
             LANG['restored_pages'].append(pno)
+            for u in act: refuse_unit(pno, u, 'the page could not be planned') if u[0] == 'g' else None
             log['failed'].append({'op': f'fix_language_parts page {pno}', 'error': f'{type(e).__name__}: {e}'[:300]})
             continue
-        pages[pno - 1].obj.Contents = new                  # then all of it: the content, each owner's /K, the index, the records
+        if new is not None: pages[pno - 1].obj.Contents = new   # then all of it: the content, each owner's /K, the index, the records
         LANG['marks_lang_removed'] += dropped
         for o, _i, new_k, maps, recs, m, pieces in built:
             i = mc_entry_index(o, pno, m)                  # on the /K as it is now: an earlier split of this owner moved its entries (review 10, H1)
@@ -3326,6 +3499,17 @@ def fix_language_parts():
             for r in recs: LANG['spans'].append(r); LANG['split'] += 1; ok(f'language: {r["lang"]} Span (part of a run)')
             for sp in LANG['spans']:                       # a run tagged whole and split under its Span: the Span holds every piece
                 if sp.get('whole') and sp['page'] == pno and sp['mcid'] == m: sp['mcids'] = [mc for mc, _, _ in pieces]
+        for ph, inside in phrase_plans:                    # one Span over the phrase, at its first piece's place in the owner's /K
+            o = ph['owner']; ks = kids(o)
+            i0 = mc_entry_index(o, pno, inside[0]); i1 = mc_entry_index(o, pno, inside[-1])
+            same_pg = isinstance(ks[i0], int)
+            sp = new_elem('Span', o, [mc if same_pg else mcr(pno, mc) for mc in inside], pg=pno, Lang=pikepdf.String(ph['lang']))
+            ks[i0:i1 + 1] = [sp]; set_kids(o, ks)
+            for mc in inside: pt_set_mcid(pno, mc, sp); owner[(pno, mc)] = sp
+            eff_pg[sp.objgen] = pno; parent_of[sp.objgen] = o
+            LANG['spans'].append({'page': pno, 'mcid': inside[0], 'mcids': list(inside), 'lang': ph['lang'], 'text': ph['text'], 'whole': False,
+                                  'segments': len(ph['segs']), 'parent_type': S(o)})
+            LANG['phrases'] = LANG.get('phrases', 0) + 1; ok(f'language: {ph["lang"]} Span (a place across {len(ph["segs"])} runs)')
     LANG['render_check_seconds'] = round(time.time() - t0, 2)
 
 # ================================================================== run, in a fixed order

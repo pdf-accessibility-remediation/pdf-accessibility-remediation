@@ -136,7 +136,23 @@ def language_status():
     out = {'candidates': n, 'state': state}
     hb = held_back_of(lr_run)
     if hb: out['held_back'] = hb                       # #159: only when forms were held back (records below the limit stay as they were)
+    up = unplaced_of(lc)
+    if up: out['unplaced'] = up                        # #161 addition 3: words the finder could not place (none: no key, as before)
+    note = ((lc or {}).get('reading') or {}).get('note') if isinstance(lc, dict) else None
+    if note: out['reading_note'] = note                # a terminal run with LANG_FINDER_RULES (review 02 L2): said in review.md
     return out
+
+def unplaced_of(lc):
+    """#161 addition 3 (review 04 M1): the words the finder read whole across marked-content runs but could place under no
+    one tag (lang_candidates.json `unplaced`: their whole spelling a candidate), with their reasons (codes, for the record)
+    and up to 200 forms with their pages. The executor's own late refusals stay in its refused list. None when there are none."""
+    rows = (lc or {}).get('unplaced') if isinstance(lc, dict) else None
+    if not rows: return None
+    by_form, why = collections.OrderedDict(), collections.Counter()
+    for u in rows:
+        by_form.setdefault(u.get('form'), set()).add(u.get('page')); why[u.get('reason') or 'other'] += 1
+    return {'count': len(rows), 'by_reason': dict(why.most_common()),
+            'forms': [{'form': f, 'pages': sorted(p for p in ps if isinstance(p, int))} for f, ps in list(by_form.items())[:200]]}
 
 def held_back_of(lr):
     """#159: what the language step held back, from its record (the first report; a re-report keeps the earlier record's
@@ -1192,14 +1208,16 @@ if bad:
     L += [f'- {json.dumps(b, ensure_ascii=False)}' for b in bad]
     L.append('')
 lp_ = (wo or {}).get('language_parts') or {}
+from lib import langreq as langreq_
 haw_el_ = (log.get('haw_elements') or {}).get('elements') or []     # review 08, H2: whole lines tagged Hawaiian on pages read by the AI
 _hb = (record.get('language_status') or {}).get('held_back') if isinstance(record.get('language_status'), dict) else None   # #159
-if lp_.get('version') == 2 or lang_log or haw_el_ or (isinstance(ai_override, dict) and ai_override.get('by')) or _hb:   # #118 (#151: an override, #159: forms not sent)
+_unp = (record.get('language_status') or {}).get('unplaced') if isinstance(record.get('language_status'), dict) else None   # #161
+_rnote = (record.get('language_status') or {}).get('reading_note') if isinstance(record.get('language_status'), dict) else None
+if langreq_.has_forms(lp_) or lang_log or haw_el_ or (isinstance(ai_override, dict) and ai_override.get('by')) or _hb or _unp or _rnote:   # #118 (#151: an override, #159: forms not sent, #161: words not tagged)
     sys.path.insert(0, os.path.dirname(os.path.abspath(__file__))); from lib import langtag as LT
     forms_ = lp_.get('forms') or []
     pages_of_ = collections.defaultdict(set)
-    for r_ in lp_.get('parts') or []:
-        if isinstance(r_, list) and len(r_) == 5: pages_of_[r_[4]].add(r_[0])
+    for pg_, _segs_, fi_ in langreq_.rows(lp_): pages_of_[fi_].add(pg_)
     tagged_ = [(i, f) for i, f in enumerate(forms_) if f.get('tag') and f.get('lang')]
     person_ = [(i, f) for i, f in enumerate(forms_) if not f.get('tag') and f.get('person') and f.get('decided') not in ('untagged', 'remove', 'kept')]
     exempt_ = collections.Counter(f.get('why') for f in forms_ if not f.get('tag') and not f.get('person'))
@@ -1215,6 +1233,16 @@ if lp_.get('version') == 2 or lang_log or haw_el_ or (isinstance(ai_override, di
         if _hb.get('forms'):
             L += [line(('The first 200: ' if _hb['count'] > len(_hb['forms']) else '') + ' · '.join(f'"{f}"' for f in _hb['forms']), entry=False)]
         L.append('')
+    if _unp:                                                              # #161 addition 3 (review 02 M9, review 04 L2): never sent, never tagged
+        L += [line(f'**Words not tagged ({_unp["count"]:,}):** each is printed as one word, but the PDF stores its letters in separate '
+                   'places, so no language tag can cover it. They may be in another language; the list gives their pages.', entry=False)]
+        _uf = _unp.get('forms') or []
+        if _uf:
+            L += [line(('The first 200: ' if len(_uf) >= 200 and _unp['count'] > len(_uf) else '')
+                       + ' · '.join(f'"{excerpt(u["form"])}" ({", ".join(pg(p) for p in u["pages"][:3])}{" …" if len(u["pages"]) > 3 else ""})' for u in _uf), entry=False)]
+        L.append('')
+    if _rnote:                                                            # review 02 L2: never reads like a default run
+        L += [line(f'**Read with testing settings:** the words were found with {_rnote}, not the default rules.', entry=False), '']
     if isinstance(ai_override, dict) and ai_override.get('by'):          # #151: the person chose to review without what was missing
         L += [line(f'**Reviewed without missing AI suggestions:** {ai_override["by"]} on {DT.day(ai_override.get("date"))}'
                    + (f' ({"; ".join(ai_override["missing"])})' if ai_override.get('missing') else ''), entry=False), '']

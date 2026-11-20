@@ -89,6 +89,19 @@ LANG_NOT_DONE = {'off': 'the language step was turned off', 'left_out_book': 'th
                  'left_out_cap': 'the language step was left out: over its own limit', 'failed': 'the language step did not finish',
                  'not_run': 'the language step was not run'}
 def language_line(record):
+    """The Language Tags line (_language_line), with the words the finder could not place in its details when there are
+    any (#161 addition 3, review 02 M9): "Approved (Kim on November 19, 2026 · 12 words not tagged)". Never a condition of
+    Ready (Patrick, 2026-11-19). A line with no details gets them; "Not Applicable" says why it still applies."""
+    ok, text = _language_line(record)
+    st = record.get('language_status') if isinstance(record.get('language_status'), dict) else {}
+    n = ((st or {}).get('unplaced') or {}).get('count') or 0
+    if not n: return ok, text
+    words = f'{n:,} word{"" if n == 1 else "s"} not tagged'
+    if text == 'Not Applicable': return ok, f'Not Applicable (no word forms to decide · {words})'
+    if text.endswith(')'): return ok, text[:-1] + f' · {words})'
+    return ok, f'{text} ({words})'
+
+def _language_line(record):
     """(ok, text) of the Language Tags requirement (#118). Not Applicable only when the audit found no word forms for
     the language step (record language_status.candidates 0, the PDF's own language tags counted too; a record made
     before round 18 has no status and keeps the old reading); forms found but none decided: Not Done (why); the count
@@ -97,8 +110,8 @@ def language_line(record):
     Languages section); otherwise Not Reviewed, with what is left. Until that section exists every such book reads Not
     Reviewed (review 06, H2: approving the work order as one item must not approve its language tags)."""
     lp = (record.get('workorder') or {}).get('language_parts') or {}
-    none_tagged = lp.get('version') == 2 and bool(lp.get('forms')) and not any(isinstance(f, dict) and (f.get('tag') or f.get('person')) for f in lp['forms'])
-    if lp.get('version') == 2: todo = [lp['forms'][i] for i in langreq.to_decide(lp.get('forms'))]   # what a person decides
+    none_tagged = langreq.has_forms(lp) and bool(lp.get('forms')) and not any(isinstance(f, dict) and (f.get('tag') or f.get('person')) for f in lp['forms'])
+    if langreq.has_forms(lp): todo = [lp['forms'][i] for i in langreq.to_decide(lp.get('forms'))]   # what a person decides
     else: todo = list({(p.get('form') or p.get('text')) for p in lp.get('parts') or []})
     lr = record.get('language_review') or {}
     st = record.get('language_status')
@@ -201,7 +214,7 @@ def n_forms(wo):
     review/core.py build_items and language_line), or version 1's distinct words."""
     lp = (wo or {}).get('language_parts') or {}
     if not isinstance(lp, dict): return 0
-    if lp.get('version') == 2: return len(langreq.to_decide(lp.get('forms')))
+    if langreq.has_forms(lp): return len(langreq.to_decide(lp.get('forms')))
     return len({(p.get('form') or p.get('text')) for p in lp.get('parts') or [] if isinstance(p, dict)})
 def forms_text(n): return f'{n:,} word form{"" if n == 1 else "s"} under "Languages"'
 
