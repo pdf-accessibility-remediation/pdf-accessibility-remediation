@@ -32,6 +32,8 @@ def copy(waiting, tmp_path):
     """A scratch copy of the waiting run, so a test may write ai_check.json in it."""
     D = str(tmp_path / 'he1'); shutil.copytree(waiting, D); return D
 
+NOSLEEP = lambda s: None
+
 def make_plan(R, model='test/model'): return hecheck.plan(R, PROMPT, 'handedit_check_v1.md', model)
 
 def ok(text, cost=0.01, finish='stop'):
@@ -90,10 +92,39 @@ def test_a_charged_reply_that_was_cut_off_is_kept_with_its_cost_but_not_reused(c
     assert not hecheck.reusable(hecheck.saved(copy), p) and 'cut off' in hecheck.words(hecheck.saved(copy))
     assert hecheck.answers(hecheck.saved(copy)) == {'alt': {}, 'page_figures': {}, 'decoration': {}, 'text': {}}
 
-def test_a_failed_request_saves_nothing(copy):
+def test_a_failed_request_is_sent_once_more_and_saves_nothing_when_nothing_was_charged(copy):
+    calls = []
     with pytest.raises(hecheck.Stop, match='429'):
-        hecheck.execute(copy, make_plan(copy), lambda body: {'resp': None, 'code': 429, 'message': 'slow down'})
-    assert hecheck.saved(copy) is None and hecheck.paid(copy) == 0
+        hecheck.execute(copy, make_plan(copy), lambda body: calls.append(1) or {'resp': None, 'code': 429, 'message': 'slow down'}, sleep=NOSLEEP)
+    assert len(calls) == 2 and hecheck.saved(copy) is None and hecheck.paid(copy) == 0                  # main's one retry rule (lib/aisend.py)
+
+def test_a_failure_then_an_answer_is_one_check(copy):
+    p = make_plan(copy); seq = iter([{'resp': None, 'code': 500, 'message': 'oops'}, ok(fenced({}), cost=0.01)])
+    out = hecheck.execute(copy, p, lambda body: next(seq), sleep=NOSLEEP)
+    assert out['outcome'] == 'done' and out['attempts'] == 2 and out['cost_usd'] == 0.01 and hecheck.paid(copy) == 0.01
+
+def test_a_charge_that_is_not_known_counts_at_its_worst_case(copy):
+    p = make_plan(copy)
+    out = hecheck.execute(copy, p, lambda body: {'resp': None, 'timeout': True}, worst=0.04, sleep=NOSLEEP)     # sent, no reply in time, twice
+    assert out['outcome'] == 'failed' and out['worst_usd'] == 0.08 and hecheck.paid(copy) == 0.08 and out['attempts'] == 2
+    out = hecheck.execute(copy, p, lambda body: {'resp': None, 'timeout': True}, worst=0.04, sleep=NOSLEEP, limits={'check': (0.05, 0.0)})
+    assert out['attempts'] == 1 and out['worst_usd'] == 0.04                                              # no room for a second one under the limit
+    assert hecheck.paid(copy) == 0.12                                                                    # the first check's charge is still counted
+
+def test_a_reply_that_reports_no_cost_counts_at_its_worst_case(copy):
+    p = make_plan(copy); r = ok(fenced({})); del r['resp']['usage']['cost']
+    out = hecheck.execute(copy, p, lambda body: r, worst=0.04, sleep=NOSLEEP)
+    assert out['outcome'] == 'done' and out['cost_usd'] == 0 and out['worst_usd'] == 0.04 and hecheck.paid(copy) == 0.04
+
+def test_an_earlier_checks_charge_is_kept_when_a_new_one_replaces_its_file(copy):
+    from lib import costs
+    p = make_plan(copy)
+    hecheck.execute(copy, p, lambda body: ok('```json\n{"alt": [', cost=0.40, finish='length'), sleep=NOSLEEP)    # cut off: paid, not reused
+    out = hecheck.execute(copy, p, lambda body: ok(fenced({}), cost=0.40), sleep=NOSLEEP)
+    assert out['earlier_cost_usd'] == 0.4 and hecheck.paid(copy) == 0.8 and costs.book_spent(copy) == 0.8
+    hecheck.from_reply(copy, p, fenced({}))                                                              # a saved reply never resets what was paid
+    assert hecheck.paid(copy) == 0.8
+    s = hecheck.summary(hecheck.saved(copy)); assert hecheck.total(s) == 0.8 and s['earlier_cost_usd'] == 0.8
 
 def test_nothing_to_check_is_refused_with_the_reason(copy):
     f = os.path.join(copy, '_handedit', 'hand_edit.json'); he = json.load(open(f))
@@ -187,7 +218,7 @@ def test_an_estimate_not_yet_spent_is_shown_and_a_failed_check_gives_no_draft(co
     json.dump({'worst_case_usd': 0.05}, open(os.path.join(copy, hecheck.ESTIMATE), 'w'))
     assert core.refresh_ai_check(copy)
     assert core.load(os.path.join(copy, 'review_items.json'))['hand_edit']['ai_estimate'] == 0.05
-    p = make_plan(copy); hecheck.execute(copy, p, lambda body: ok('no json here'))                    # unreadable: kept, with no answers
+    p = make_plan(copy); hecheck.execute(copy, p, lambda body: ok('no json here'), sleep=NOSLEEP)       # unreadable (twice): kept, with no answers
     assert core.refresh_ai_check(copy)
     he = core.load(os.path.join(copy, 'review_items.json'))['hand_edit']
     assert he['ai_check']['outcome'] == 'unreadable' and 'ai_estimate' not in he and he['text_checks'] == []
@@ -224,3 +255,35 @@ def test_ai_check_goes_with_the_review_path_only(waiting, tmp_path):
     assert 'handedit_check.py' in r.stdout and 'to ask the AI to check the edit' in r.stdout
     r = sh([sys.executable, 'handedit.py', 'import', P, edited, '--by', 'Pat', '--note', 'n', '--label', 'he-z', '--no-run'])
     assert 'handedit_check' not in r.stdout                                                               # without the flag: as before
+
+# ------------------------------------------------------------------ figures with no image, the base PDF, the prompt, the model
+def test_a_figure_with_no_image_is_reported_not_skipped_silently(copy):
+    for f in os.listdir(os.path.join(copy, '_audit', 'figures')): os.remove(os.path.join(copy, '_audit', 'figures', f))
+    he = json.load(open(os.path.join(copy, '_handedit', 'hand_edit.json'))); rest = hecheck.targets(copy)[1:]
+    p = hecheck.plan(copy, PROMPT, 'handedit_check_v1.md', 'm', targets_=(he, *rest))                   # the changed page still goes
+    assert p['items'] == [] and p['lacking'] == [1] and [t['page'] for t in p['texts']] == [1] and 'had no image to send (PDF 1)' in p['note']
+    out = hecheck.execute(copy, p, lambda body: ok(fenced({'text_pages': [{'page': 1, 'verdict': 'unsure', 'why': 'cannot tell'}]})), sleep=NOSLEEP)
+    assert out['sent']['lacking'] == [1] and 'no image to send' in hecheck.words(out)
+    assert hecheck.estimate(p, 3e-6, 15e-6)['note'] == p['note']
+    with pytest.raises(hecheck.Stop, match='no figure had an image to send'):                           # the figure alone: said, not "no figure with a card"
+        hecheck.plan(copy, PROMPT, 'handedit_check_v1.md', 'm', targets_=(dict(he, text_pages=[]), *rest))
+
+def test_the_base_pdf_is_hashed_once_per_plan(copy, monkeypatch):
+    n = []; real = hecheck._sha_file
+    monkeypatch.setattr(hecheck, '_sha_file', lambda path: n.append(path) or real(path))
+    make_plan(copy)
+    assert len(n) == 1
+
+def test_the_script_and_the_app_read_the_same_prompt_file():
+    from webapp import spend as SP
+    path = hecheck.prompt_path(PIPE)
+    assert path and os.path.samefile(path, os.path.join(os.path.dirname(PIPE), 'prompts', 'handedit_check_v1.md'))
+    import hashlib
+    assert SP.current_check_prompt() == hashlib.sha256(open(path, encoding='utf-8').read().encode()).hexdigest()[:16]
+
+def test_the_script_takes_the_model_from_MODEL_and_refuses_an_auto_choice(copy):
+    env = dict(os.environ, HTTPS_PROXY='http://127.0.0.1:9', https_proxy='http://127.0.0.1:9')
+    r = subprocess.run([sys.executable, os.path.join(PIPE, 'handedit_check.py'), copy, '--dry-run'], capture_output=True, text=True, env=dict(env, MODEL='auto:sonnet'))
+    assert r.returncode == 1 and r.stderr.startswith('refused:') and 'not a model' in r.stderr
+    r = subprocess.run([sys.executable, os.path.join(PIPE, 'handedit_check.py'), copy, '--dry-run'], capture_output=True, text=True, env=dict(env, MODEL='anthropic/test-model'))
+    assert 'anthropic/test-model' in r.stdout                                                           # used (the lookup then stops: no network here)

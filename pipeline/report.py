@@ -81,7 +81,8 @@ if he and not he.get('ai_check'):                      # the AI's check of the h
     from lib import hecheck
     _ck = hecheck.summary(hecheck.saved(os.path.join(os.path.dirname(INTAKE_DIR) if INTAKE_DIR else R)))
     if _ck: he = dict(he, ai_check=_ck)
-cost_check = round(((he or {}).get('ai_check') or {}).get('cost_usd') or 0, 6)     # a re-apply repeats it from the earlier record, once
+from lib import hecheck as _hc
+cost_check = _hc.total((he or {}).get('ai_check'))     # a re-apply repeats it from the earlier record, once
 wo_ai = load('workorder.ai.json') if rv else None     # the AI's version: kept in record.json for every reviewed run          # earlier paid calls in this folder whose reply couldn't be used
 cost_this = (run.get('usage') or {}).get('cost_usd') or 0
 cost_earlier = round(sum(a.get('cost_usd') or 0 for a in attempts), 6)
@@ -674,7 +675,7 @@ if he:                                                # handedit.py import: what
     if ck:                                            # #100: what the AI was asked, what it said, and who decided
         from lib import hecheck
         L += ['', line(f'- **The AI checked the edit before the review** ({hecheck.words(ck)}; model `{ck.get("model") or "not recorded"}` · prompt '
-                       f'`{ck.get("prompt_file") or "not recorded"}` ({ck.get("prompt_sha256") or "hash not recorded"}) · ${(ck.get("cost_usd") or 0):.3f}). '
+                       f'`{ck.get("prompt_file") or "not recorded"}` ({ck.get("prompt_sha256") or "hash not recorded"}) · ${_hc.total(ck):.3f}). '
                        'Its answers were suggestions on the review page: a person approved or changed each alt text, and nothing was applied without that review.',
                        key='hand_edit:ai_check', entry=False)]
         tv = (ck.get('kept') or {}).get('text_pages') or []

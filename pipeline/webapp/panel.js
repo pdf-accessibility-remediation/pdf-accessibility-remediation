@@ -568,15 +568,16 @@ function dlMarked(sel) {                                          // the line un
 function aiCheckBlock(s) {
   const c = s.ai_check; if (!c) return '';
   let h = '<h3>' + esc(tc('Draft with the AI')) + '</h3>';
+  const again = !c.done || c.done.retry;                         // a check that gave no draft may be asked for again
   if (c.done) h += '<p>' + esc(c.done.outcome === 'done' ? 'Done: ' : 'It did not give a draft: ') + esc(c.done.words) + (c.done.cost_usd ? ' ($' + Number(c.done.cost_usd).toFixed(3) + ')' : '') +
-    '. The review page shows each suggestion on its card.</p>';
-  else h += '<p>One small AI request can draft alt text for the figures the edit touched and say how each changed page reads. The answers are suggestions: you approve or change each one in the review.</p>';
+    (c.done.outcome === 'done' ? '. The review page shows each suggestion on its card.' : '. You can ask again.') + '</p>';
+  if (!c.done) h += '<p>One small AI request can draft alt text for the figures the edit touched and say how each changed page reads. The answers are suggestions: you approve or change each one in the review.</p>';
   const e = c.estimate;
-  if (e && !c.done) h += '<p>' + esc(tc('Max Estimated Cost')) + ': $' + Number(e.ceiling_usd).toFixed(2) + ' (' + esc((e.figures || 0) + ' figure' + (e.figures === 1 ? '' : 's') + ', ' + (e.text_pages || 0) + ' changed page' + (e.text_pages === 1 ? '' : 's')) + ')' +
+  if (e && again) h += '<p>' + esc(tc('Max Estimated Cost')) + ': $' + Number(e.ceiling_usd).toFixed(2) + ' (' + esc((e.figures || 0) + ' figure' + (e.figures === 1 ? '' : 's') + ', ' + (e.text_pages || 0) + ' changed page' + (e.text_pages === 1 ? '' : 's')) + ')' +
     (e.note ? ' ' + esc(e.note) : '') + '</p>' + (e.blocked ? '<p class="pp-note">' + esc(e.blocked) + '</p>' : '');
   h += '<div class="pp-row">';
-  if (!c.done) h += '<button type="button" id="pp-ai-est" data-act="ai-estimate">' + esc(tc(e ? 'Get a New Estimate' : 'Get an Estimate')) + '</button>';
-  if (e && !c.done && !e.blocked) h += '<button type="button" class="pp-primary" id="pp-ai-spend" data-act="ai-check" data-fp="' + esc(e.fingerprint) + '">' + esc(tc('Draft with the AI (up to $' + Number(e.ceiling_usd).toFixed(2) + ')')) + '</button>';
+  if (again) h += '<button type="button" id="pp-ai-est" data-act="ai-estimate">' + esc(tc(e ? 'Get a New Estimate' : 'Get an Estimate')) + '</button>';
+  if (e && again && !e.blocked) h += '<button type="button" class="pp-primary" id="pp-ai-spend" data-act="ai-check" data-fp="' + esc(e.fingerprint) + '">' + esc(tc('Draft with the AI (up to $' + Number(e.ceiling_usd).toFixed(2) + ')')) + '</button>';
   return h + '</div>';
 }
 function waitingBlock(s) {

@@ -159,10 +159,9 @@ def uploaded_again(s, ej):
 def current_check_prompt():
     """The AI check of a hand edit's prompt (handedit_check_v1.md): its sha256[:16] as handedit_check.py computes it, or None."""
     import hashlib
-    for d in (os.path.join(config.PIPELINE, 'prompts'), os.path.join(config.ROOT, 'prompts')):
-        p = os.path.join(d, 'handedit_check_v1.md')
-        if os.path.isfile(p): return hashlib.sha256(open(p, encoding='utf-8').read().encode()).hexdigest()[:16]
-    return None
+    from lib import hecheck
+    p = hecheck.prompt_path(config.PIPELINE)                  # the one lookup handedit_check.py uses, so the two always read the same file
+    return hashlib.sha256(open(p, encoding='utf-8').read().encode()).hexdigest()[:16] if p else None
 
 def authorize_handedit_check(s, run, R, fingerprint):
     """The AI's check of a hand edit (#100), for an edited copy waiting for its first review: the estimate shown is the one on disk

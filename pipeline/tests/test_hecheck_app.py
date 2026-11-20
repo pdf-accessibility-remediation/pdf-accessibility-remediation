@@ -10,7 +10,8 @@ HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))            # 
 sys.path.insert(0, HERE)
 from lib import costs, hecheck, origin  # noqa: E402
 from webapp import config, jobs, spend as SP, runs as RN  # noqa: E402
-from test_webapp import setup, settings, fake, wait  # noqa: E402,F401
+from test_webapp import setup, settings, fake, wait, app  # noqa: E402,F401
+from test_webapp_panel import post  # noqa: E402
 
 MODEL, _ = SP.current_model_and_prompt()
 PROMPT = SP.current_check_prompt()
@@ -125,7 +126,8 @@ def test_the_estimate_job_is_free_and_the_spend_job_is_paid(setup):
     fp = costs.estimate(str(R), 'handedit_check', costs.limits_of(s))['fingerprint']
     sp = RN.start_ai_check(s, 'bk/he1', str(R), 'spend', {'fingerprint': fp})
     assert sp['kind'] == 'spend' and sp['paid'] and sp['env_set']['AUTO'] == '1' and sp['fingerprint'] == fp and 'AI check' in sp['what']
-    assert RN.heading(sp) == 'Processing: AI Check of the Hand Edit'
+    assert RN.heading(sp) == 'Processing: AI Check of the Hand Edit' and sp['check'] is True            # told by a field, not by the label's words
+    sp['what'] = 'something else entirely'; assert RN.heading(sp) == 'Processing: AI Check of the Hand Edit'
     assert RN.heading(j) == 'Processing: Cost Estimate (AI Check of the Hand Edit)'
 
 def test_the_spend_job_needs_the_estimate_that_was_shown(setup):
@@ -157,3 +159,38 @@ def test_no_other_job_kind_may_carry_the_check_paid(setup):
     s = settings(setup); R = waiting_copy(setup)
     with pytest.raises(ValueError): jobs.create(s['jobs'], 'ai-estimate', 'bk/he1', ['true'], config.child_env(s, {'AUTO': '1'}), env_set={'AUTO': '1'}, R=str(R))
     with pytest.raises(ValueError): jobs.create(s['jobs'], 'ai-estimate', 'bk/he1', ['true'], config.child_env(s), paid=True, R=str(R))
+
+# ------------------------------------------------------------------ the routes, over HTTP
+def test_the_routes_reach_an_edited_copy_that_waits_for_its_review(app):
+    """A waiting run has no record.json, so find_run finds it only for the actions that ask for it (the first version of these
+    routes did not, and answered 404 to every press of the buttons)."""
+    port, t = app['port'], app['t']
+    waiting_copy(t, name='book', label='he1')
+    assert post(port, '/api/run/book/nope/ai-estimate')[0] == 404                                  # no such run
+    st, b = post(port, '/api/run/book/r1/ai-estimate')                                              # a finished run that is not a copy
+    assert st == 409 and 'hand edit' in b['error']
+    st, b = post(port, '/api/run/book/he1/ai-check', {'fingerprint': 'x'})                          # reached, and refused for its own reason
+    assert st == 409 and 'no estimate' in b['error']
+    st, b = post(port, '/api/run/book/he1/ai-estimate')
+    assert st == 202 and b['job']['kind'] == 'ai-estimate'
+
+# ------------------------------------------------------------------ trying again, and what a finished check job says
+def test_a_check_that_gave_no_draft_may_be_asked_for_again(setup):
+    s = settings(setup); R = waiting_copy(setup)
+    saved_check(R, outcome='cut_off', cost=0.05)
+    v = RN.ai_check_view(s, str(R))['done']
+    assert v['outcome'] == 'cut_off' and v['retry'] is True and v['cost_usd'] == 0.05
+    saved_check(R); assert RN.ai_check_view(s, str(R))['done']['retry'] is False
+    js = open(os.path.join(HERE, 'webapp', 'panel.js'), encoding='utf-8').read()
+    assert "const again = !c.done || c.done.retry;" in js and "if (again) h += '<button type=\"button\" id=\"pp-ai-est\"" in js
+
+def test_a_finished_check_job_never_reads_stopped_for_review(setup):
+    s = settings(setup); R = waiting_copy(setup); estimate_file(R)                                   # workorder.ai.json exists, record.json does not
+    fp = costs.estimate(str(R), 'handedit_check', costs.limits_of(s))['fingerprint']
+    j = RN.start_ai_check(s, 'bk/he1', str(R), 'spend', {'fingerprint': fp})
+    j = jobs.update(s['jobs'], j['id'], status='done', ended='2026-11-18T10:00:00')
+    saved_check(R); assert RN.result(str(R), j, {}).startswith('drafts ready')
+    saved_check(R, outcome='cut_off'); out = RN.result(str(R), j, {})
+    assert out.startswith('finished, but it gave no draft') and 'cut off' in out and 'stopped for review' not in out
+    e = jobs.update(s['jobs'], RN.start_ai_check.__globals__['jobs'].create(s['jobs'], 'ai-estimate', 'bk/he1', ['true'], config.child_env(s), R=str(R))['id'], status='done', ended='2026-11-18T10:00:00')
+    assert RN.result(str(R), e, {}).startswith('estimate ready')

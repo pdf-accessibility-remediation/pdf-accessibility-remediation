@@ -16,8 +16,8 @@ whose text reads differently, each with its old and new wording and a picture of
 text goes in as context only. The reply is cut to those figures and pages (`scope`); its answers are suggestions the review
 page puts into its cards, never decisions of the work order, and a person approves or changes each one.
 """
-import os, io, re, json, base64, hashlib, datetime
-from lib import figpasses
+import os, io, re, json, time, base64, hashlib, datetime
+from lib import figpasses, aisend
 
 FORMAT = 'handedit-check/1'
 SAVED = os.path.join('_handedit', 'ai_check.json')
@@ -28,7 +28,7 @@ N_EXAMPLES = 8
 CHARS_PER_TOKEN, INPUT_MARGIN = 2.2, 1.25      # decide.py's calibration
 SIDE, QUALITY = 800, 80            # a figure crop or page picture: long side in pixels, JPEG quality
 VERDICTS = ('correction', 'damage', 'unsure')
-ALLOWED = figpasses.ALLOWED + ('text_pages',)
+PROMPT_FILE = 'handedit_check_v1.md'
 
 class Stop(Exception):
     """Something that stops the check before any call is paid for (the message is for a person)."""
@@ -39,6 +39,14 @@ def _load(p):
     except (OSError, ValueError): return None
 
 def _sha(b): return hashlib.sha256(b).hexdigest()
+
+def prompt_path(pipeline_dir):
+    """The prompt file's path (pipeline/prompts/, else the repo's prompts/), or None: the one lookup the script and the app's Spend
+    both use, so they always read the same file."""
+    for d in (os.path.join(pipeline_dir, 'prompts'), os.path.join(os.path.dirname(pipeline_dir), 'prompts')):
+        p = os.path.join(d, PROMPT_FILE)
+        if os.path.isfile(p): return p
+    return None
 
 def _save(p, d):
     tmp = p + '.tmp'
@@ -85,10 +93,10 @@ def _sha_file(p):
         for b in iter(lambda: f.read(1 << 20), b''): h.update(b)
     return h.hexdigest()
 
-def style_examples(he):
-    """Alt text the parent's result already carries, for the book's naming and style: up to N_EXAMPLES, evenly spaced."""
+def style_examples(he, p):
+    """Alt text the parent's result already carries (p: its path from base_path, None when it is gone), for the PDF's naming and
+    style: up to N_EXAMPLES, evenly spaced."""
     from lib import handedit
-    p = base_path(he)
     if not p: return []
     try: figs = [f for f in handedit.figures(p, {}) if (f.get('alt') or '').strip()]
     except Exception: return []
@@ -121,6 +129,7 @@ def plan(R, prompt, prompt_file, model, targets_=None):
     request's messages, its size and a fingerprint of everything that decides the answer. Raises Stop when there is nothing
     to send, with the reason."""
     he, digest, tg = targets_ or targets(R)
+    base = base_path(he)                                       # hashed once: it is a whole PDF
     figs = {f['obj']: f for f in digest.get('figures') or []}
     pfs = {f['page']: dict(f, obj=f'page {f["page"]}') for f in digest.get('page_figures') or []}
     items, lacking = [], []
@@ -133,7 +142,7 @@ def plan(R, prompt, prompt_file, model, targets_=None):
     tp = sorted(x['page'] for x in he.get('text_pages') or [] if not x.get('heard_same'))
     if tp:
         from lib import handedit
-        base = base_path(he); edited = os.path.join(R, '_handedit', (he.get('edited') or {}).get('file') or '')
+        edited = os.path.join(R, '_handedit', (he.get('edited') or {}).get('file') or '')
         if not base or not os.path.isfile(edited):
             note = 'The text was not checked: the PDF the edit started from, or the edited copy, is no longer where it was.'
         else:
@@ -142,12 +151,15 @@ def plan(R, prompt, prompt_file, model, targets_=None):
                 a, b = window(handedit.heard(bc.get(pg, [])), handedit.heard(ec.get(pg, [])))
                 texts.append({'page': pg, 'before': a, 'after': b, 'image': page_image(edited, pg)})
             if len(tp) > TEXT_PAGES: note = f'The text of {len(tp) - TEXT_PAGES} more page(s) was not sent: the reviewer compares them.'
+    if lacking:                                                # a card whose image is missing is not sent: say so, never leave it unmentioned
+        pgs = ', '.join(f'PDF {n}' for n in sorted({n for n in lacking if n is not None})) or 'a page not recorded'
+        note = ((note + ' ') if note else '') + f'{len(lacking)} figure(s) had no image to send ({pgs}): their alt text is written by hand.'
     if not items and not texts:
-        raise Stop('there is nothing to check: no figure with a card for the review page and no page whose text reads differently'
-                   + (f' ({note})' if note else ''))
+        raise Stop('there is nothing to check: ' + ('no figure had an image to send and ' if lacking else 'no figure with a card for the review page and ')
+                   + 'no page whose text reads differently' + (f' ({note})' if note else ''))
     enc = [encode(open(f['_path'], 'rb').read()) for f in items]
     clean = [{k: v for k, v in f.items() if k != '_path'} for f in items]
-    data = figpasses.context(digest, None, [{k: v for k, v in f.items() if k not in ('old_alt', 'edit')} for f in clean], {}, style_examples(he))
+    data = figpasses.context(digest, None, [{k: v for k, v in f.items() if k not in ('old_alt', 'edit')} for f in clean], {}, style_examples(he, base))
     msgs = messages(prompt, data, clean, enc, texts)
     chars = sum(len(c['text']) for c in msgs[1]['content'] if c['type'] == 'text') + len(prompt)
     px = sum(w * h for _, (w, h) in enc) + sum(w * h for t in texts for (w, h) in [t['image'][1]])
@@ -226,38 +238,57 @@ def reusable(s, p):
     """A saved check that finished, for the same model, instructions, figures, pages and examples: used again at no cost."""
     return bool(s) and s.get('outcome') == 'done' and s.get('fingerprint') == p['fingerprint']
 
+def total(s):
+    """What a saved check has cost, in dollars: this request's known charge, a charge not known at its worst case (a request that
+    timed out, or a reply with no cost in it), and what earlier checks in the same folder paid before this one replaced them.
+    s: _handedit/ai_check.json, or record.json's hand_edit.ai_check (the same fields)."""
+    s = s or {}
+    return round((s.get('cost_usd') or 0) + (s.get('worst_usd') or 0) + (s.get('earlier_cost_usd') or 0), 6)
+
 def paid(R):
-    """What the check has cost this run folder, wherever it ended (a request that was charged and then cut off counts)."""
-    return round((saved(R) or {}).get('cost_usd') or 0, 6)
+    """What the check has cost this run folder, wherever each request ended: a charged reply that was cut off counts, so does an earlier
+    check that a later one replaced, and a charge that is not known counts at its worst case."""
+    return total(saved(R))
 
 def summary(s):
-    """record.json hand_edit.ai_check: the saved check without the reply text."""
+    """record.json hand_edit.ai_check: the saved check without the reply text (cost fields as in the file; read them with total())."""
     if not s: return None
-    return {k: s.get(k) for k in ('model', 'prompt_file', 'prompt_sha256', 'fingerprint', 'date', 'cost_usd', 'outcome', 'sent', 'kept', 'dropped', 'seconds')}
+    return {k: s.get(k) for k in ('model', 'prompt_file', 'prompt_sha256', 'fingerprint', 'date', 'cost_usd', 'worst_usd', 'earlier_cost_usd', 'outcome',
+                                  'attempts', 'sent', 'kept', 'dropped', 'seconds')}
 
-def execute(R, p, send, now=None):
-    """Send the request, save the check and return it. send(body) → {'resp': …, 'seconds': …} or {'resp': None, 'code': …, 'message': …}
-    (decide.py's send_fn). A charge is saved whatever the reply was; a reply that was cut off or unreadable is saved with no answers
-    and is not reused."""
+def execute(R, p, send, now=None, worst=0.0, limits=None, sleep=None, say=print):
+    """Send the request, save the check and return it. send(body) is lib/aisend.py's send function (or a fake with its shape):
+    {'resp': …, 'seconds': …} or {'resp': None, 'code': …, 'message': …, 'timeout': …}. The request goes through aisend.call, so it has the
+    other AI steps' one retry rule (once more after a failure or an unreadable reply, when the limits have room for its worst case).
+    worst: the request's worst case in dollars, as estimated; limits: {name: (cap, spent before)} for aisend.Budget. A charge is saved
+    whatever the reply was (a charge that is not known counts at its worst case), and what an earlier check in this folder paid is
+    carried (earlier_cost_usd). A reply that was cut off or unreadable is saved with no answers and is not reused. A failure that
+    charged nothing raises Stop and saves nothing."""
+    prev = saved(R); earlier = total(prev) if prev else 0.0
     body = {'model': p['model'], 'max_tokens': p['max_tokens'], 'usage': {'include': True}, 'provider': {'data_collection': 'deny'},
             'messages': p['messages']}
-    res = send(body)
-    resp = res.get('resp')
-    if not isinstance(resp, dict):
-        raise Stop(f'the AI request failed ({res.get("code") or "no reply"}: {res.get("message") or "no message"}). Nothing was saved; no charge is known')
-    ch = (resp.get('choices') or [{}])[0] if resp.get('choices') else None
-    u = resp.get('usage') or {}
+    budget = aisend.Budget(limits or {'check': (None, 0.0)})
+    ok, which = budget.try_reserve('check', worst)
+    if not ok: raise Stop(f'the check could cost up to ${worst:.2f}, more than the {which} limit has room for')
+    res = aisend.call(send, body, 'check', worst, budget, label='AI check', say=say, sleep=sleep or time.sleep,
+                      readable=lambda t: figpasses.parse(t) is not None)
+    calls, fin = res['calls'], res['final']
+    unknown = res['worst_usd'] + sum(worst for c in calls if 'error' not in c and c.get('cost') is None)      # no cost in a reply: its worst case
+    known = res['cost_usd']
+    if 'error' in fin and not known and not unknown:
+        raise Stop(f'the AI request failed ({fin["error"]["code"]}: {fin["error"]["message"] or "no message"}). Nothing was charged and nothing was saved')
     out = {'schema': FORMAT, 'date': (now or datetime.datetime.now()).isoformat(timespec='seconds'), 'model': p['model'], 'prompt_file': p['prompt_file'],
-           'prompt_sha256': p['prompt_sha256'], 'fingerprint': p['fingerprint'], 'cost_usd': u.get('cost') or 0, 'seconds': res.get('seconds'),
-           'usage': {'prompt_tokens': u.get('prompt_tokens'), 'completion_tokens': u.get('completion_tokens')},
-           'sent': {'figures': [{'obj': f.get('obj'), 'page': f.get('page'), 'edit': f.get('edit')} for f in p['items']], 'text_pages': [t['page'] for t in p['texts']]},
+           'prompt_sha256': p['prompt_sha256'], 'fingerprint': p['fingerprint'], 'cost_usd': round(known, 6), 'worst_usd': round(unknown, 4),
+           'earlier_cost_usd': earlier, 'attempts': len(calls), 'seconds': fin.get('seconds'),
+           'usage': {'prompt_tokens': fin.get('input_tokens'), 'completion_tokens': fin.get('output_tokens')},
+           'sent': {'figures': [{'obj': f.get('obj'), 'page': f.get('page'), 'edit': f.get('edit')} for f in p['items']], 'text_pages': [t['page'] for t in p['texts']],
+                    'lacking': p.get('lacking') or []},
            'reply': None, 'finish': None, 'outcome': 'failed', 'kept': None, 'dropped': []}
-    if ch is None:
-        out['error'] = (resp.get('error') or {}).get('message') or 'no choices in the response'
+    if 'error' in fin:
+        out['error'] = fin['error']['message'] or str(fin['error']['code'])
     else:
-        text = (ch.get('message') or {}).get('content') or ''
-        if isinstance(text, list): text = ''.join(x.get('text', '') for x in text)
-        out.update(reply=text, finish=ch.get('finish_reason'))
+        text = fin.get('text') or ''
+        out.update(reply=text, finish=fin.get('finish'))
         if out['finish'] != 'stop': out['outcome'] = 'cut_off'
         else:
             rep = figpasses.parse(text)
@@ -267,15 +298,17 @@ def execute(R, p, send, now=None):
     return out
 
 def from_reply(R, p, text, now=None):
-    """The same as execute() for a saved reply file's text (a test, handedit_case.py): no request, no cost."""
+    """The same as execute() for a saved reply file's text (a test, handedit_case.py): no request, no cost; what an earlier check
+    paid stays counted."""
     def send(_body): return {'resp': {'choices': [{'message': {'content': text}, 'finish_reason': 'stop'}], 'usage': {'cost': 0}}, 'seconds': 0}
-    out = execute(R, p, send, now)
-    return out
+    return execute(R, p, send, now)
 
 def words(s):
-    """What a finished check says in one line for the report and the run page; the reason when it did not finish."""
+    """What a finished check says in one line for the report and the run page; the reason when it did not finish, and the figures that
+    had no image to send."""
     if not s: return None
     n = {'done': 'answered', 'cut_off': 'the reply was cut off, so nothing was suggested', 'unreadable': 'the reply could not be read, so nothing was suggested',
          'failed': 'the request failed, so nothing was suggested'}.get(s.get('outcome'), 'not finished')
-    sent = s.get('sent') or {}
-    return (f'{len(sent.get("figures") or [])} figure(s) and {len(sent.get("text_pages") or [])} page(s) of changed text checked by the AI ({n})')
+    sent = s.get('sent') or {}; lacking = sent.get('lacking') or []
+    return (f'{len(sent.get("figures") or [])} figure(s) and {len(sent.get("text_pages") or [])} page(s) of changed text checked by the AI ({n})'
+            + (f'; {len(lacking)} figure(s) had no image to send, so their alt text is written by hand' if lacking else ''))

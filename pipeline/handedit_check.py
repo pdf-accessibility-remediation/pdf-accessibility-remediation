@@ -15,13 +15,15 @@ is applied without that review.
 --dry-run prints and saves the estimate and stops (ESTIMATE=1 does the same). The step refuses before any request when its worst
 case passes --max-usd (default MAX_USD, else the per-request limit of lib/costs.py DEFAULT_LIMITS), when the PDF's spending so
 far plus it passes --book-max-usd (default BOOK_MAX_USD, else the per-PDF limit there), or when the credit is lower. It asks y/N unless AUTO=1 or --yes (the app's Spend sets AUTO=1).
---reply FILE uses a saved answer instead of a request (no cost, no network; the tests and tools/handedit_case.py). Relative paths
+A request that fails or comes back unreadable is sent once more, as the other AI steps' requests are (lib/aisend.py), when the limits
+have room; every charge counts toward the PDF's limit, an earlier check's included, and a charge that is not known counts at its worst
+case. --reply FILE uses a saved answer instead of a request (no cost, no network; the tests and tools/handedit_case.py). Relative paths
 are taken from the folder the command runs in. The API key comes from OPENROUTER_API_KEY or the nearest .env, as for decide.py.
 Exit 1: refused or failed, with the reason.
 """
-import sys, os, re, json, time, argparse, hashlib, urllib.request, urllib.error
+import sys, os, re, json, argparse, urllib.request, urllib.error
 HERE = os.path.dirname(os.path.abspath(__file__)); sys.path.insert(0, HERE)
-from lib import hecheck, costs
+from lib import hecheck, costs, aisend
 
 def load_env():
     d = HERE
@@ -63,11 +65,11 @@ def main(argv=None):
     dry = args.dry_run or bool(os.environ.get('ESTIMATE'))
     max_usd = args.max_usd if args.max_usd is not None else num('MAX_USD', costs.DEFAULT_LIMITS['per_call_usd'])
     book_max = args.book_max_usd if args.book_max_usd is not None else num('BOOK_MAX_USD', costs.DEFAULT_LIMITS['per_book_usd'])
-    prompt_file = next((p for p in (os.path.join(HERE, 'prompts', 'handedit_check_v1.md'), os.path.join(os.path.dirname(HERE), 'prompts', 'handedit_check_v1.md'))
-                        if os.path.isfile(p)), None)
-    if not prompt_file: sys.exit('refused: no prompt file handedit_check_v1.md in pipeline/prompts/ or prompts/')
+    prompt_file = hecheck.prompt_path(HERE)
+    if not prompt_file: sys.exit(f'refused: no prompt file {hecheck.PROMPT_FILE} in pipeline/prompts/ or prompts/')
     prompt = open(prompt_file, encoding='utf-8').read()
-    model = args.model or re.search(r"^DEFAULT_MODEL = '([^']+)'", open(os.path.join(HERE, 'decide.py'), encoding='utf-8').read(), re.M).group(1)
+    model = args.model or os.environ.get('MODEL') or re.search(r"^DEFAULT_MODEL = '([^']+)'", open(os.path.join(HERE, 'decide.py'), encoding='utf-8').read(), re.M).group(1)
+    if model.startswith('auto:'): sys.exit(f'refused: {model} is a choice of the work order\'s step, not a model: name one (--model or MODEL=, for example anthropic/claude-sonnet-5.5)')
     try: p = hecheck.plan(R, prompt, os.path.basename(prompt_file), model)
     except hecheck.Stop as e: sys.exit(f'refused: {e}')
     print(f'AI check of the hand edit: {len(p["items"])} figure(s), {len(p["texts"])} page(s) of changed text · {model}')
@@ -112,15 +114,8 @@ def main(argv=None):
         try: ok = input(f'Send this to the AI now (up to ${worst:.2f})? [y/N] ')
         except EOFError: ok = 'n'
         if not ok.strip().lower().startswith('y'): print('not sent'); return 0
-    def send(body):
-        rq = urllib.request.Request('https://openrouter.ai/api/v1/chat/completions', data=json.dumps(body).encode(),
-                                    headers={'Authorization': f'Bearer {key}', 'Content-Type': 'application/json', 'X-Title': 'UH PDF remediation prototype'})
-        t0 = time.time()
-        try:
-            with urllib.request.urlopen(rq, timeout=600) as r: return {'resp': json.load(r), 'seconds': round(time.time() - t0, 1)}
-        except urllib.error.HTTPError as e: return {'resp': None, 'code': e.code, 'message': e.read().decode('utf-8', 'replace')[:300]}
-        except (urllib.error.URLError, TimeoutError) as e: return {'resp': None, 'code': 'no reply', 'message': str(e), 'timeout': True}
-    try: out = hecheck.execute(R, p, send)
+    send = aisend.openrouter(key, 600)                        # the other AI steps' sender: its one retry rule, a timeout counted at its worst case
+    try: out = hecheck.execute(R, p, send, worst=worst, limits={'check': (max_usd, 0.0), 'per-PDF': (book_max, spent)})
     except hecheck.Stop as e: sys.exit(f'failed: {e}')
     print(f'AI check of the hand edit: ${out.get("cost_usd") or 0:.4f} · {hecheck.words(out)}')
     refresh(R)

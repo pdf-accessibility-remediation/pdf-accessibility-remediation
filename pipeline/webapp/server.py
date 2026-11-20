@@ -426,7 +426,7 @@ def make(s, setup, code=None):
             HELD = ('ai-retry', 'ai-retry-estimate', 'review-without')          # #151: a waiting run held because AI suggestions are missing
             if not segs or len(segs) < 2 or segs[-1] not in ('review', 'apply', 'stop', 'stop-other', 'discard', 'ocr', 'remove-older-pdfs', 'ship', 'replay', 'clear', 'bring-back', 'ai-estimate', 'ai-check') + PEND + HELD:
                 return self.send(404, {'error': 'not found'})
-            hit = find_run(s['runs'], segs[:-1], waiting=segs[-1] in ('review', 'apply', 'stop') + HELD, pending=(lambda d: runs.pending(s, d)) if segs[-1] in PEND else None)
+            hit = find_run(s['runs'], segs[:-1], waiting=segs[-1] in ('review', 'apply', 'stop', 'ai-estimate', 'ai-check') + HELD, pending=(lambda d: runs.pending(s, d)) if segs[-1] in PEND else None)
             if not hit or hit[2]: return self.send(404, {'error': 'no such run'})
             run, R, _ = hit
             if segs[-1] in PEND:                                # a run started from the home page, before its result

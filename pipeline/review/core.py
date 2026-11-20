@@ -922,7 +922,7 @@ def hand_edit_ai(R, data):
         elif t['kind'] == 'alt' and t['target'] in ans['decoration']:
             t['ai_decoration'] = it['context']['ai_decoration'] = ans['decoration'][t['target']] or 'it says nothing'
     he.pop('ai_estimate', None)
-    he['ai_check'] = {'model': s.get('model'), 'cost_usd': s.get('cost_usd'), 'date': s.get('date'), 'outcome': s.get('outcome'), 'words': hecheck.words(s)}
+    he['ai_check'] = {'model': s.get('model'), 'cost_usd': hecheck.total(s), 'date': s.get('date'), 'outcome': s.get('outcome'), 'words': hecheck.words(s)}
     he['text_checks'] = [{'page': p, **v} for p, v in sorted(ans['text'].items())]
     return True
 

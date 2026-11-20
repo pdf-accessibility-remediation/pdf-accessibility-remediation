@@ -217,7 +217,8 @@ def check_paid(R):
 def _check_money(R, rec=None):
     """(paid, calls) of the check of a hand edit: from the record's hand_edit.ai_check once the run has one, else the working file."""
     ck = ((rec or {}).get('hand_edit') or {}).get('ai_check') if rec else None
-    paid = round((ck or {}).get('cost_usd') or 0, 6) if isinstance(ck, dict) else check_paid(R)
+    from lib import hecheck
+    paid = hecheck.total(ck) if isinstance(ck, dict) else check_paid(R)
     return paid, 1 if paid else 0
 
 def book_spent(R):

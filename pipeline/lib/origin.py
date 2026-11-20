@@ -79,8 +79,9 @@ def summary(rec, here=None):
         ck = (rec.get('hand_edit') or {}).get('ai_check')            # #100: the AI's check of the hand edit is the one call it made
         out = {'cost_usd': 0, 'cost_per_page_usd': 0, 'model': None, 'prompt_file': None, 'prompt_sha256': None,
                'date': None, 'reused': False, 'no_model': rec['run']['no_model']}
-        if isinstance(ck, dict) and ck.get('cost_usd'):
-            out.update(cost_usd=ck['cost_usd'], hand_edit_check={k: ck.get(k) for k in ('cost_usd', 'model', 'prompt_file', 'prompt_sha256', 'date')})
+        from lib import hecheck
+        if isinstance(ck, dict) and hecheck.total(ck):
+            out.update(cost_usd=hecheck.total(ck), hand_edit_check={**{k: ck.get(k) for k in ('model', 'prompt_file', 'prompt_sha256', 'date')}, 'cost_usd': hecheck.total(ck)})
         return out
     oc = of_record(rec, here) or {}
     pages = (rec.get('document') or {}).get('pages')
