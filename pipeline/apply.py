@@ -307,6 +307,9 @@ def op_artifacts(spec):
         if hit is None: reject(f'artifact {item["obj"]}', 'not in the structure tree'); continue
         take(*hit, pikepdf.Dictionary(Type=pikepdf.Name('/' + item.get('type', 'Layout'))), item.get('label', 'element'))
     owned_now = {pm for _, _, ms in elems for pm in ms}
+    elems_at = collections.defaultdict(list)        # (page, MCID) -> its owning entries of elems, in elems' order (once, not a scan per run)
+    for e_ in elems:
+        for pm in dict.fromkeys(e_[2]): elems_at[pm].append(e_)
     def in_band(band, top, pno):                      # measured from the visible page area (CropBox)
         vt, vb = PL.pages[pno - 1].vis[1], PL.pages[pno - 1].vis[3]; t = top - vt
         return not (band == 'top' and t >= 70 or band == 'bottom' and t <= (vb - vt) - 60)
@@ -364,7 +367,7 @@ def op_artifacts(spec):
                 if top >= rule.get('top_max', 1e9) or not any(r.fullmatch(x) for r in (rx, rxl) for x in cands): continue
                 if not in_band(band, top, pno): continue
                 if m in form_mcids[pno]: continue
-                hit = [] if orphans else [(n, par, ms) for n, par, ms in elems if (pno, m) in ms]
+                hit = [] if orphans else list(elems_at.get((pno, m), ()))
                 if band in ('top', 'bottom'):        # the rest of the line must be matched too (the run's own tag counts)
                     own = {p2 for _, _, ms_ in hit[:1] for p_, p2 in ms_ if p_ == pno and p2 in by        # its own tag's other runs count,
                            and in_band(band, min(c['top'] for c in by[p2]), pno)}                         # but only those in the band
