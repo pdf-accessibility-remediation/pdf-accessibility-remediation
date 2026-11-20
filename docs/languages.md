@@ -364,6 +364,35 @@ Sonnet 5.5 stays the language step's model (2026-11-14): Opus 5.5 was no more ac
 about 2.2 times as much. Sonnet 5.5, measured on the test books (2026-11-13): about $0.09 per 100 forms. A book with 2,800 forms (cadaverous)
 cost $2.53; one with 840 forms (ryukyu) $0.78. A book with no candidates costs nothing.
 
+## Dictionaries measured (#141)
+
+#141 (Language step: test downloaded dictionaries for deciding word forms locally) measured the sponsors' workflow
+("Latin Language & Species Name Vocabularies for ADA In-Text Tagging"): a species pass, a Latin phrase pass, a Latin word
+pass accepted only inside a multi-word Latin span, a stoplist and a review sheet, plus word lists for the books' other
+languages. **Nothing is adopted: no list decides a word form in the pipeline.** `pipeline/tools/dict_measure.py` runs the
+measurement (`build` makes plain word lists from each download; `run` applies the workflow to a set of books' candidate
+forms). The downloads stay outside the repository, one folder per source:
+
+| Source | For | Licence |
+|---|---|---|
+| LiLa Lemma Bank (`lemmaBank.ttl`, github.com/CIRCSE/LiLa_Lemma-Bank) | Latin lemmas | CC BY-SA 4.0 |
+| Whitaker's Words (data files, github.com/mk270/whitakers-words) | Latin stems and endings | free for any use (its LICENCE.txt) |
+| Wiktionary via kaikki.org (Latin, Hawaiian, Japanese, Korean, Tagalog) | words, forms, romanizations | CC BY-SA and GFDL |
+| Open Multilingual Wordnet 1.4 | Japanese and Chinese written forms (1.4 has no Latin, Hawaiian, Korean or Tagalog wordnet) | per wordnet (both used: free for any use, with the notice) |
+| Wikidata lexemes dump | lemmas and forms by language | CC0 |
+| GBIF Backbone Taxonomy (backbone.zip, August 2023 release) | genera and species | CC BY 4.0 |
+| GNfinder 1.3.0 (release binary, sha256 checked against the release) | scientific names in text; run offline, never with verification | MIT |
+| LatinCy `la_core_web_lg` 3.9.8 (its own environment) | Latin lemmas | MIT |
+
+**What it found** (2026-11-20; level 4's and round 10's answers, and #142's scored test set):
+- On a Latin-heavy book, the workflow decides most Latin forms the way the AI does (933 of 1,294 forms; 25 disagreements,
+  each one the dictionary's mistake: French, German and English words).
+- On every other book, the Latin lists take words of other languages as Latin (Hawaiian, romanized Japanese, Bikol,
+  Vietnamese, Sanskrit, IPA respellings, pieces of split words): 37–43% of the workflow's decisions on level 4's books
+  disagree with the AI, 96% on round 10's.
+- On the scored test set every list is wrong more often than the AI on the same items.
+- So the dictionaries would add review work rather than save it; the money they could save is about $1 a book at most.
+
 ## Scoring another model
 
 #142 (compare Google's current models with the one in use): any model OpenRouter lists can be scored on the language
