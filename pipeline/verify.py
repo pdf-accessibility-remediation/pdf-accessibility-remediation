@@ -520,14 +520,16 @@ def _raw(p):
     if c is None: return b''
     return b'\n'.join(x.read_bytes() for x in c) if isinstance(c, pikepdf.Array) else c.read_bytes()
 pf, uo_pages = [], []
+owners_on = collections.defaultdict(set)          # page -> the tags owning a run there, built once (not one scan of owner per page)
+for (pg_, m), og in owner.items(): owners_on[pg_].add(og)
 for i, p in enumerate(pages, 1):
     raw = _raw(p)
     if raw.lstrip().startswith(b'/Figure <</MCID 0>> BDC'):
-        figs_here = {og for (pg_, m), og in owner.items() if pg_ == i and el_type.get(og) == 'Figure'}
-        others = {og for (pg_, m), og in owner.items() if pg_ == i and el_type.get(og) != 'Figure'}
+        figs_here = {og for og in owners_on.get(i, ()) if el_type.get(og) == 'Figure'}
+        others = {og for og in owners_on.get(i, ()) if el_type.get(og) != 'Figure'}
         alt = any(str(pdf.get_object(og).get('/Alt', '')).strip() for og in figs_here)
         pf.append({'page': i, 'figures': len(figs_here), 'other_tags': len(others), 'alt': alt, 'untagged_left': sum(free_pages[i].values())})
-    elif free_pages.get(i) and not any(pg_ == i for pg_, _ in owner) and b'/Artifact' not in raw:
+    elif free_pages.get(i) and i not in owners_on and b'/Artifact' not in raw:
         uo_pages.append({'page': i, 'untagged': dict(free_pages[i]), 'same_as_source': raw == _raw(src.pages[i - 1])})
 out['page_figures'] = pf; out['untagged_only_pages'] = uo_pages
 # 7 WCAG 2.2 AA checks veraPDF does not make. Each finds something for a person to look at, not a proven failure.
