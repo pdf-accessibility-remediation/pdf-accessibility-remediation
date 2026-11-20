@@ -562,13 +562,20 @@ def existing(pdf, PL, doc_lang, limit=300):
             if c.get('mcid') is not None: runs[pno].setdefault(c['mcid'], []).append(c['text'])
     found = {}
     pidx = {p.obj.objgen: i for i, p in enumerate(pdf.pages, 1)}
-    for pno, page in enumerate(pdf.pages, 1):
-        try:
-            for x in pikepdf.parse_content_stream(page, 'BDC'):
-                pr = x.operands[1] if len(x.operands) > 1 else None
-                if isinstance(pr, pikepdf.Dictionary) and '/MCID' in pr and '/Lang' in pr and scripts.primary(str(pr.Lang)) != doc:
-                    found[(pno, int(pr.MCID))] = str(pr.Lang)
-        except Exception: pass
+    from lib import langjoin
+    forms_on = langjoin.single_use_forms(pdf)           # #165: a form drawn once, from this page, is read like the page;
+    for pno, page in enumerate(pdf.pages, 1):          # a form drawn in several places is not (its runs are never tagged)
+        page_ms = set()
+        for obj in [page] + forms_on.get(pno, []):
+            try:
+                for x in pikepdf.parse_content_stream(obj, 'BDC'):
+                    pr = x.operands[1] if len(x.operands) > 1 else None
+                    if not (isinstance(pr, pikepdf.Dictionary) and '/MCID' in pr): continue
+                    m = int(pr.MCID)
+                    if obj is page: page_ms.add(m)
+                    elif m in page_ms: continue        # a number the page itself draws: the page's run
+                    if '/Lang' in pr and scripts.primary(str(pr.Lang)) != doc: found.setdefault((pno, m), str(pr.Lang))
+            except Exception: pass
     st = pdf.Root.get('/StructTreeRoot')
     stack = [(k, None, ()) for k in (st.get('/K') if isinstance(st.get('/K'), pikepdf.Array) else [st.get('/K')])] if st is not None else []
     seen, chain = set(), {}                              # chain: (page, mcid) -> the /Lang of its owner and the owner's ancestors
@@ -585,8 +592,9 @@ def existing(pdf, PL, doc_lang, limit=300):
                 if pg: chain.setdefault((pg, kid), here)
                 if lang and scripts.primary(lang) != doc and pg: found.setdefault((pg, kid), lang)
             elif isinstance(kid, pikepdf.Dictionary):
-                if str(kid.get('/Type')) == '/MCR' and '/Stm' not in kid:
+                if str(kid.get('/Type')) == '/MCR' and '/MCID' in kid:   # a page MCR, or an /MCR … /Stm into a form (#165)
                     p_ = pidx.get(kid.Pg.objgen) if '/Pg' in kid else pg
+                    if '/Stm' in kid and not any(f.objgen == kid.Stm.objgen for f in forms_on.get(p_, [])): continue   # a shared form
                     if p_: chain.setdefault((p_, int(kid.MCID)), here)
                     if lang and scripts.primary(lang) != doc and p_: found.setdefault((p_, int(kid.MCID)), lang)
                 else: stack.append((kid, pg, here))

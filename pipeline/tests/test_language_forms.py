@@ -266,3 +266,28 @@ def test_verify_reads_a_lang_left_in_a_form_runs_marks(tmp_path):
     run('verify.py', src, out)
     lg = json.load(open(out + '.verify.json'))['language']
     assert not lg['all_match'] and lg['mismatch_examples'][0]['why'] == 'its marked content says fr', lg
+
+
+# ---------------------------------------------------------------- the finder (proposal 08 §3.4–3.5)
+def test_the_finder_lists_a_publishers_lang_in_a_form_and_counts_spoken_text_there(tmp_path):
+    """A /Lang in a single-use form's marks is listed as an existing tag (for a person to keep or remove); /ActualText in a
+    form's marks is seen by the finder's structure reader, so a word joined across runs there is counted not tagged
+    ("actualtext"), as on page text. (A single run under spoken text is refused by the executor: test 7.)"""
+    lines = [[{'text': 'The '}, {'text': 'oui ', 'lang': 'fr'}, {'text': 'velunka '}, {'text': 'toramio '}, {'text': 'here.'}]]
+    src = langpdf.build_in_form(str(tmp_path / 'f.pdf'), lines, at_marks=(3,))
+    with pikepdf.open(src) as pdf:
+        c = langcands.book(plpages.Pages(src), doc_lang='en', pdf=pdf)
+        ex = langcands.existing(pdf, plpages.Pages(src), 'en')        # the language step adds these (name_languages.py)
+    assert [(p['mcid'], p['current']) for p in ex] == [(1, 'fr')], ex
+    assert any(p['form'] == 'velunka' for p in c['places'])
+    from lib import langjoin
+    with pikepdf.open(src) as pdf:
+        mk = langjoin.Structure(pdf).marks(1)
+    assert mk[3] == (True, False) and mk[2] == (False, False), mk
+
+
+def test_the_finder_leaves_a_shared_forms_tags_alone(tmp_path):
+    """A form drawn in several places: its /Lang is neither listed nor removed (apply.py never tags its runs)."""
+    lines = [[{'text': 'The '}, {'text': 'oui ', 'lang': 'fr'}, {'text': 'here.'}]]
+    src = langpdf.build_in_form(str(tmp_path / 's.pdf'), lines, draws=2)
+    with pikepdf.open(src) as pdf: assert langcands.existing(pdf, plpages.Pages(src), 'en') == []

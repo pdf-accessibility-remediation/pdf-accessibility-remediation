@@ -45,6 +45,43 @@ def is_letter(ch): return ch.isalpha() or unicodedata.category(ch) in ('Mn', 'Mc
 
 
 # ---------------------------------------------------------------- the tag tree's facts
+_DO = re.compile(rb'/([^\s/\[\]<>(){}%]+)\s+Do\b')
+_SINGLE = {}
+def single_use_forms(pdf):
+    """{page: [form XObject]}: the forms holding marked content that the page's own content draws, each drawn once in the
+    whole document (from a page or another form). Their runs are tagged the way the page's are (#165); the marks of a form
+    drawn in several places are read as before: not at all (apply.py refuses its runs). Counted once per PDF."""
+    if id(pdf) in _SINGLE: return _SINGLE[id(pdf)]
+    def xforms(res): return {str(k): v for k, v in ((res or {}).get('/XObject') or {}).items() if isinstance(v, pikepdf.Stream) and str(v.get('/Subtype')) == '/Form'}
+    def raw(c):
+        try: return b'' if c is None else b'\n'.join(x.read_bytes() for x in (c if isinstance(c, pikepdf.Array) else [c]))
+        except Exception: return b''
+    def res_of(page):
+        n_ = page.obj
+        for _ in range(30):
+            if n_ is None: return {}
+            if '/Resources' in n_: return n_.Resources
+            n_ = n_.get('/Parent')
+        return {}
+    uses, direct = collections.Counter(), {}
+    def walk(b, res, depth, pno):
+        xs = xforms(res)
+        for nm in _DO.findall(b):
+            x = xs.get('/' + nm.decode('latin-1'))
+            if x is None: continue
+            uses[x.objgen] += 1
+            if depth == 0: direct.setdefault(pno, {})[x.objgen] = x
+            if depth < 4: walk(raw(x), x.get('/Resources') or res, depth + 1, pno)
+    for pno, page in enumerate(pdf.pages, 1):
+        walk(raw(page.obj.get('/Contents')), res_of(page), 0, pno)
+    out = {}
+    for pno, fs in direct.items():
+        keep = [x for og, x in fs.items() if uses[og] == 1 and b'/MCID' in raw(x)]
+        if keep: out[pno] = keep
+    _SINGLE.clear(); _SINGLE[id(pdf)] = out
+    return out
+
+
 class Structure:
     """Built once per book by walking the tag tree from the StructTreeRoot (as apply.py indexes it: an MCID's owner is the
     element whose /K holds it, its page the element's /Pg or an MCR's own), never from the ParentTree alone: some
@@ -100,28 +137,33 @@ class Structure:
     def _seq(self, og): return self._kids.get(og, (None, True, {}))
 
     def marks(self, pno):
-        """{mcid: (own ActualText, under an enclosing ActualText)} from the page's content stream (Form XObjects aside)."""
+        """{mcid: (own ActualText, under an enclosing ActualText)} from the page's content stream, and from the forms it
+        draws that are drawn nowhere else (#165: their runs are tagged like the page's, so spoken text there counts too)."""
         if pno not in self._marks:
-            out, stack = {}, []
+            out = {}
             try:
                 page = self.pdf.pages[pno - 1]
-                props = page.obj.get('/Resources', {}).get('/Properties', {}) or {}
-                c_ = page.obj.get('/Contents')
-                raw = b''.join(x.read_bytes() for x in (list(c_) if isinstance(c_, pikepdf.Array) else [c_]) if x is not None)
-                if b'ActualText' not in raw and not any(isinstance(v, pikepdf.Dictionary) and '/ActualText' in v for v in props.values()):
-                    self._marks[pno] = {}           # no spoken text in this page's marks: no need to parse its content (speed)
-                    return self._marks[pno]
-                for x in pikepdf.parse_content_stream(page, 'BDC BMC EMC'):
-                    op = str(x.operator)
-                    if op == 'BMC': stack.append(False); continue
-                    if op == 'EMC':
-                        if stack: stack.pop()
-                        continue
-                    pr = x.operands[1] if len(x.operands) > 1 else None
-                    if isinstance(pr, pikepdf.Name): pr = props.get(pr)
-                    own = isinstance(pr, pikepdf.Dictionary) and '/ActualText' in pr
-                    if isinstance(pr, pikepdf.Dictionary) and '/MCID' in pr: out.setdefault(int(pr.MCID), (own, any(stack)))
-                    stack.append(own)
+                srcs = [(page, page.obj.get('/Resources', {}).get('/Properties', {}) or {})]
+                srcs += [(f, (f.get('/Resources') or {}).get('/Properties', {}) or {}) for f in single_use_forms(self.pdf).get(pno, [])]
+                for obj, props in srcs:
+                    if obj is page:
+                        c_ = page.obj.get('/Contents')
+                        raw = b''.join(x.read_bytes() for x in (list(c_) if isinstance(c_, pikepdf.Array) else [c_]) if x is not None)
+                    else: raw = obj.read_bytes()
+                    if b'ActualText' not in raw and not any(isinstance(v, pikepdf.Dictionary) and '/ActualText' in v for v in props.values()):
+                        continue                    # no spoken text in these marks: no need to parse the content (speed)
+                    stack = []
+                    for x in pikepdf.parse_content_stream(obj, 'BDC BMC EMC'):
+                        op = str(x.operator)
+                        if op == 'BMC': stack.append(False); continue
+                        if op == 'EMC':
+                            if stack: stack.pop()
+                            continue
+                        pr = x.operands[1] if len(x.operands) > 1 else None
+                        if isinstance(pr, pikepdf.Name): pr = props.get(pr)
+                        own = isinstance(pr, pikepdf.Dictionary) and '/ActualText' in pr
+                        if isinstance(pr, pikepdf.Dictionary) and '/MCID' in pr: out.setdefault(int(pr.MCID), (own, any(stack)))
+                        stack.append(own)
             except Exception:
                 out = None
             self._marks[pno] = out
