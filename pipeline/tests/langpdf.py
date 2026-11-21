@@ -194,7 +194,8 @@ def build_across_pages(path, page1, page2, kids_a, kids_b, doc_lang='en'):
 
 
 def build_in_form(path, lines, doc_lang='en', page_lines=(), draws=1, second_page=False, do_inside=None, form_resources=True,
-                  page_refs=(), only_page_refs=(), page_mcid=None, at_marks=(), two_forms_share=None, no_structparents=False):
+                  page_refs=(), only_page_refs=(), page_mcid=None, at_marks=(), two_forms_share=None, no_structparents=False,
+                  form_rules=0, no_ref=()):
     """Text drawn inside one form XObject (#165), the way an auto-tagged OCR layer is: the page's content only draws the
     form; the form holds the runs, each its own marked content (MCID from 0, `/Lang (en-US)` in the marks unless a piece
     says otherwise); the tag tree names them with /MCR … /Stm and no /Pg (the element's /Pg gives the page); the form has
@@ -209,6 +210,8 @@ def build_in_form(path, lines, doc_lang='en', page_lines=(), draws=1, second_pag
       at_marks        form MCIDs whose marks carry /ActualText
       two_forms_share an MCID a second, single-use form on the page also draws
       no_structparents  the form has no /StructParents
+      form_rules      how many untagged rules (a stroked line each) the form draws after its text (fix_paths' case)
+      no_ref          form MCIDs no tree reference names at all (neither /Stm nor a page kid)
     Returns the path."""
     pdf = pikepdf.new()
     F = fonts(pdf)
@@ -227,6 +230,7 @@ def build_in_form(path, lines, doc_lang='en', page_lines=(), draws=1, second_pag
             kids[key].append(n); n += 1
         out.append('0 -30 Td'); y -= 30
     out.append('ET')
+    out += [f'{20 + 10 * k} 20 m 200 {20 + 10 * k} l S' for k in range(form_rules)]
     form = pdf.make_stream('\n'.join(out).encode('latin-1'))
     form.Type = pikepdf.Name.XObject; form.Subtype = pikepdf.Name.Form; form.BBox = [0, 0, 612, 792]
     if form_resources: form.Resources = pikepdf.Dictionary(Font=F)
@@ -258,10 +262,11 @@ def build_in_form(path, lines, doc_lang='en', page_lines=(), draws=1, second_pag
     def P(ks): return pdf.make_indirect(pikepdf.Dictionary(Type=pikepdf.Name.StructElem, S=pikepdf.Name.P, P=doc, Pg=pages_[0], K=pikepdf.Array(ks)))
     els, form_arr = [], [None] * nform
     for key in order:
-        ms = [m for m in kids[key] if m not in only_page_refs]
+        ms = [m for m in kids[key] if m not in only_page_refs and m not in no_ref]
         el = P([pikepdf.Dictionary(Type=pikepdf.Name.MCR, Stm=form, MCID=m) for m in ms] + [m for m in kids[key] if m in only_page_refs])
         els.append(el)
-        for m in kids[key]: form_arr[m] = el
+        for m in kids[key]:
+            if m not in no_ref: form_arr[m] = el
     page_arr = []
     if page_refs:
         el = P(list(page_refs)); els.append(el)

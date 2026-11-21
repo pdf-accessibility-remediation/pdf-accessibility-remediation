@@ -1349,7 +1349,10 @@ def remove_existing(lp):
         if not (f.get('current') and f.get('decided') in ('remove', 'kept')): continue
         for m, _a, _b in segs:                                  # an existing tag's place is one run; a row of several is read run by run
             el, _f, why = run_at(pno, m)                        # its stream: a form run's marks are edited in the form (#165)
-            if why == 'this text is not in the tag tree': el = None; _STREAM[(pno, m)] = None   # marks in the page, as before #165
+            if why == 'this text is not in the tag tree':
+                if m not in _page_forms(pno)['page_mcids']:     # not drawn in the page's own content: a removal there would do nothing
+                    lang_refuse(pno, m, why, {'text': mc_text(pno, m), 'lang': f.get('current')}); continue   # (review 11, L2)
+                el = None; _STREAM[(pno, m)] = None              # marks in the page, as before #165
             elif why: lang_refuse(pno, m, why, {'text': mc_text(pno, m), 'lang': f.get('current')}); continue
             carrier = None
             for _ in range(8):
@@ -3511,6 +3514,8 @@ def fix_language_parts():
     its pieces in the tree and the tag-tree index are written only in the last step, after the group passed (H3a)."""
     import time
     t0 = time.time()
+    _FINS.clear()          # each form is parsed again from its current content (review 11 §3): fix_paths may have marked rules in it
+                           # as artifacts since op_language read it; the cached counts and marks stay right (no MCID or text moved)
     jobs = collections.defaultdict(lambda: {'drop': set(), 'split': {}, 'groups': {}, 'of': {}})
     for pno, m in _LANG_WHOLE + _LANG_DROP: jobs[pno]['drop'].add(m)
     for (pno, m), parts in _LANG_SPLITS.items(): jobs[pno]['split'][m] = sorted(parts, key=lambda p: p['first'])
@@ -3647,8 +3652,10 @@ def fix_language_parts():
             else:
                 sp = elem_of(pno, m); ks = kids(o)
                 i = next((j for j, k in enumerate(ks) if is_elem(k) and sp is not None and same(k, sp)), None)
-                if i is None: continue                 # moved since (links, section moves): left as it is, and listed
-                ks[i] = x; set_kids(o, ks); pt_set(pno, m, o, f); index_set(pno, m, o, f)
+                if i is None:                          # moved since (links, section moves): it stays where it is, without its
+                    if sp is not None and '/Lang' in sp: del sp['/Lang']   # language, and is refused like the others (review 11, L1)
+                else:
+                    ks[i] = x; set_kids(o, ks); pt_set(pno, m, o, f); index_set(pno, m, o, f)
             for sp_ in [r for r in LANG['spans'] if r.get('whole') and r['page'] == pno and r['mcid'] == m]:
                 LANG['spans'].remove(sp_); LANG['whole'] -= 1; lang_refuse(pno, m, why, sp_)
             del _LANG_UNDO[(pg_, m)]
@@ -3685,34 +3692,50 @@ def fix_language_parts():
     page_hook = os.environ.get('APPLY_TEST_PIXEL_FAIL_PAGE', '')    # tests only: that page "looks different" whatever is on it (review 09, L3)
     thook = os.environ.get('APPLY_TEST_TEXT_FAIL_RUN', '')          # tests only: 'page:mcid', a split of that run "reads differently" (R7)
     thook = tuple(int(x) for x in thook.split(':')) if re.fullmatch(r'\d+:\d+', thook) else None
-    def looks_same(pno, img, plans, text=None, form_edit=False):
-        """The page draws the same, and, where a form was edited, reads the same: a form's text is often invisible (3 Tr),
-        so a broken split there draws nothing a pixel check can see (review 09, R7)."""
-        if page_hook == str(pno): return False
+    WHY = {'look': 'the page would look different', 'read': 'the page would read differently'}
+    def squash(t): return re.sub(r'\s+', '', t or '')
+    def check(pno, img, plans, text=None, form_edit=False):
+        """None when the page draws the same and, where a form was edited, reads the same; else 'look' or 'read'. A form's
+        text is often invisible (3 Tr), so a broken split there draws nothing a pixel check can see (review 09, R7). The text
+        is compared with all whitespace removed: pdfium may read a space or line break where a run was split, with nothing
+        added, lost or moved (review 11 §2; Patrick: counted in the log, never a refusal)."""
+        if page_hook == str(pno): return 'look'
         if form_edit:
-            if text != before_text.get(pno): return False
-            if thook and thook[0] == pno and any(m == thook[1] for m, _, _ in plans): return False
-        return _same_image(before[pno], img) and not (hook and hook[0] == pno and any(m == hook[1] for m, _, _ in plans))
+            if squash(text) != squash(before_text.get(pno)): return 'read'
+            if thook and thook[0] == pno and any(m == thook[1] for m, _, _ in plans): return 'read'
+        if not _same_image(before[pno], img) or (hook and hook[0] == pno and any(m == hook[1] for m, _, _ in plans)): return 'look'
+        return None
+    spacing = LANG.setdefault('text_whitespace_only', [])      # pages kept whose text differs only in whitespace (review 11 §2)
+    def note_spacing(pno, text, form_edit):
+        if form_edit and text is not None and text != before_text.get(pno) and squash(text) == squash(before_text.get(pno)):
+            spacing.append(pno)
     for pno in changed:
-        if looks_same(pno, after[pno], edited[pno][2], after_text[pno], formed(edited[pno][1])): continue
+        fe = formed(edited[pno][1])
+        why0 = check(pno, after[pno], edited[pno][2], after_text[pno], fe)
+        if why0 is None: note_spacing(pno, after_text[pno], fe); continue
         old, _, plans, _, act = edited[pno]
         LANG['retried_pages'].append(pno)                # tried again unit by unit
         us = sorted(act)
         trial = [edit(pno, {u}) for u in us]
         tt = []
         alone = _render_pages([item(pno, t[0], old) for t in trial], texts=tt)
-        good = {u for u, im, tx, t in zip(us, alone, tt, trial) if looks_same(pno, im, t[1], tx, formed(t[0]))}
+        why_of = {u: check(pno, im, t[1], tx, formed(t[0])) for u, im, tx, t in zip(us, alone, tt, trial)}
+        good = {u for u, w in why_of.items() if w is None}
+        last = why0
         for keep in (good, set()):
             new, plans2, dropped, refused2, act2 = settle(pno, keep)
             act2 = {u for u in act2 if u not in refused2}
             tx = []
             img = _render_pages([item(pno, new, old)], texts=tx)[0] if new is not None else before[pno]
-            if looks_same(pno, img, plans2, tx[0] if tx else before_text[pno], formed(new)):
+            w = check(pno, img, plans2, tx[0] if tx else before_text[pno], formed(new))
+            if w is None:
+                note_spacing(pno, tx[0] if tx else None, formed(new))
                 edited[pno] = (old, new, plans2, dropped, act2); break
+            last = w
         else:
             edited[pno] = (old, None, [], 0, set()); LANG['restored_pages'].append(pno)
-            take_back(pno, 'the page would look different')   # even the marks-only page differs: no tag on it may rely on its marks
-        for u in act - edited[pno][4]: refuse_unit(pno, u, 'the page would look different')
+            take_back(pno, WHY[last])                  # even the marks-only page differs: no tag on it may rely on its marks
+        for u in act - edited[pno][4]: refuse_unit(pno, u, WHY[why_of.get(u) or last])
     lose = {int(x) for x in os.environ.get('APPLY_TEST_LOSE_ENTRY', '').split(',') if x.strip().isdigit()}   # tests only (review 06, M6)
     def group_order_ok(job, g, pno):
         """Each phrase's runs still in its element's /K, in order, with only blank runs between (links, section moves and

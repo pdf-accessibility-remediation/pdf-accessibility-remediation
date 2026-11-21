@@ -51,7 +51,7 @@ def single_use_forms(pdf):
     """{page: [form XObject]}: the forms holding marked content that the page's own content draws, each drawn once in the
     whole document (from a page or another form). Their runs are tagged the way the page's are (#165); the marks of a form
     drawn in several places are read as before: not at all (apply.py refuses its runs). Counted once per PDF."""
-    if id(pdf) in _SINGLE: return _SINGLE[id(pdf)]
+    if _SINGLE.get('pdf') is pdf: return _SINGLE['out']   # one entry, holding the PDF itself: an id() can be reused (review 11, L3)
     def xforms(res): return {str(k): v for k, v in ((res or {}).get('/XObject') or {}).items() if isinstance(v, pikepdf.Stream) and str(v.get('/Subtype')) == '/Form'}
     def raw(c):
         try: return b'' if c is None else b'\n'.join(x.read_bytes() for x in (c if isinstance(c, pikepdf.Array) else [c]))
@@ -78,7 +78,7 @@ def single_use_forms(pdf):
     for pno, fs in direct.items():
         keep = [x for og, x in fs.items() if uses[og] == 1 and b'/MCID' in raw(x)]
         if keep: out[pno] = keep
-    _SINGLE.clear(); _SINGLE[id(pdf)] = out
+    _SINGLE.clear(); _SINGLE.update(pdf=pdf, out=out)
     return out
 
 

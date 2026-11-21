@@ -234,7 +234,7 @@ def test_a_split_whose_form_text_reads_differently_is_refused(tmp_path):
     """review 09, R7: form text is often invisible, so a page whose form was edited is also read before and after; a
     difference (here through a test hook) is treated as a pixel difference."""
     src, out, log, v = apply_verify(tmp_path, INRUN, wo_of(INRUN_WO), env={'APPLY_TEST_TEXT_FAIL_RUN': '1:0'})
-    assert spans(out) == [] and log['language_parts']['refused'] == {'the page would look different': 1}, log['language_parts']
+    assert spans(out) == [] and log['language_parts']['refused'] == {'the page would read differently': 1}, log['language_parts']   # its own reason (review 11 §2)
     assert form_bytes(out) == form_bytes(src) and clean(v)
 
 
@@ -291,3 +291,37 @@ def test_the_finder_leaves_a_shared_forms_tags_alone(tmp_path):
     lines = [[{'text': 'The '}, {'text': 'oui ', 'lang': 'fr'}, {'text': 'here.'}]]
     src = langpdf.build_in_form(str(tmp_path / 's.pdf'), lines, draws=2)
     with pikepdf.open(src) as pdf: assert langcands.existing(pdf, plpages.Pages(src), 'en') == []
+
+
+
+# ---------------------------------------------------------------- review 11
+def test_a_tag_in_a_form_keeps_the_artifact_marks_fix_paths_put_there(tmp_path):
+    """§3: fix_paths marks the form's untagged rule as an artifact after op_language first read the form; the late pass
+    reads the form again, so the tag and the /Artifact are both in it, and verify finds no untagged path."""
+    src, out, log, v = apply_verify(tmp_path, THREE, wo_of(WHOLE), form_rules=1)
+    assert spans(out) == [('haw', [1], 'P', ['stm'])], log['language_parts']
+    assert b'/Artifact' in form_bytes(out) and (log.get('fix_paths') or {}).get('artifacted', 1) >= 1
+    assert v['untagged_paths'] == 0 and v['language']['all_match'] and clean(v), (v['untagged_paths'], v['language'])
+
+
+def test_a_removal_on_text_no_tree_reference_names_is_refused(tmp_path):
+    """L2: a person's "Remove" of a /Lang in a form run that no tree reference names, and that the page doesn't draw, is
+    refused (not counted as removed while the form keeps its /Lang)."""
+    lines = [[{'text': 'The '}, {'text': 'oui ', 'lang': 'fr'}, {'text': 'here.'}]]
+    lp = {'version': 2, 'forms': [{'key': 'existing|oui|fr', 'form': 'oui', 'group': 'existing', 'class': ['existing'], 'current': 'fr',
+                                   'lang': None, 'tag': False, 'decided': 'remove', 'places': 1}], 'parts': [[1, 1, 0, 2, 0]]}
+    src, out, log, v = apply_verify(tmp_path, lines, {'language_parts': lp}, no_ref=(1,))
+    lp_ = log['language_parts']
+    assert lp_['refused'] == {'this text is not in the tag tree': 1} and not lp_.get('existing_removed'), lp_
+    assert form_marks(out)[1]['/Lang'] == 'fr'
+
+
+def test_the_single_use_form_list_belongs_to_the_pdf_it_was_asked_for(tmp_path):
+    """L3: the finder's cache of single-use forms answers only for the PDF it was made for."""
+    from lib import langjoin
+    a = langpdf.build_in_form(str(tmp_path / 'a.pdf'), THREE)
+    b = langpdf.build_in_form(str(tmp_path / 'b.pdf'), THREE, draws=2)       # its form is shared: no single-use form
+    with pikepdf.open(a) as pa, pikepdf.open(b) as pb:
+        assert len(langjoin.single_use_forms(pa).get(1, [])) == 1
+        assert langjoin.single_use_forms(pb) == {}
+        assert len(langjoin.single_use_forms(pa).get(1, [])) == 1

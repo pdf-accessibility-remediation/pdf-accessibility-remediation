@@ -134,7 +134,12 @@ approved.
    `/MCR … /Stm`. A place there is tagged the same way as on page text, whole runs, splits and places across runs alike:
    the form's own content is edited, its own tag-tree index (`/StructParents` on the form) names the new Span, and a page
    whose form changed is checked by drawing it and by reading its text before and after (the OCR text is invisible, so
-   only the reading shows a broken split). A run keeps its name (page and MCID); the executor finds the form that draws
+   only the reading shows a broken split). The reading is compared with spacing ignored: the PDF library the check uses
+   (pdfium, also the reader in Chrome's built-in viewer) may read a space or a line break where a run was split, with no
+   letter added, lost or moved. Such a page is kept, and counted in the log (`language_parts.text_whitespace_only`, its
+   pages); whether a screen reader says the word in two pieces there is checked by ear in the NVDA listening check
+   (Patrick, 2026-11-20). A real difference in the letters leaves the place out: "the page would read differently".
+   A run keeps its name (page and MCID); the executor finds the form that draws
    it, and tags it only when nothing about that is in doubt. Otherwise the place is left out with its reason:
    - "the text is drawn inside a form used in more than one place": one edit would change every place the form is drawn;
    - "the text's number is used twice on the page": the page's own content, or a second form, holds the same MCID, so
