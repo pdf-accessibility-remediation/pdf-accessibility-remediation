@@ -44,7 +44,7 @@ To apply a reviewed work order, rerun the same label without `REVIEW=1`.
 | `LANG_HELD_SHOWN=12` | Set by the app's Spend and by `batch_api.sh`, not by hand: how many word forms the estimate shown held back. With `AUTO=1`, more held back after the work order holds the review instead of sending (see [Word forms not sent](languages.md#word-forms-not-sent)). Unset in a terminal run, which compares with its own first estimate |
 | `LANGUAGE_MAX_FORMS=2000` | An override: send at most this many word forms to the language step. Off by default: the dollar limits alone decide (see [Word forms not sent](languages.md#word-forms-not-sent)) |
 | `LANG_FINDER_RULES=-inrun,-cross` | Testing only, in a terminal (the app never sets it): the language finder runs without the named rules (`join`: words across runs on OCR pages, #150; `inrun` and `cross`: letters set apart from their word, #161), or with only those listed; a list may also name #136's rules, off by default: `looser` (unknown words of 3+ letters, capitalized too), `italic` (italic words of 2+ letters not in the English list) and `continuation` (a hyphenated word whose second part touches the hyphen but is drawn elsewhere). review.md says "Read with testing settings" |
-| `LANG_GROW=on` | The language step tags a title's whole extent (romanized words around a candidate, inside quotes or italics, or before a Chinese-character gloss), so the voice switches once. Off by default, until the Windows screen-reader check of a title tagged in pieces (see [Language tags](#language-tags)) |
+| `LANG_GROW=off` | The language step tags only the candidate words of a title, not its whole extent. By default (on, since #136) it tags a title's whole extent (romanized words around a candidate, inside quotes or italics, or before a Chinese-character gloss), so the voice switches once (see [Language tags](#language-tags)) |
 | `LANG_GROUP=on` | Adjacent single Chinese characters become one word form for the language step and the review page (fewer rows). Off by default |
 | `LANG_READING_RULE=off` | Every word form in Chinese characters goes to the AI, even one with a reading printed beside every place (by default those are decided locally, #123; see [Language tags](#language-tags)) |
 | `LANG_REPLY=…` | A saved language reply (a `language_run.json`) to apply instead of a request; `FROM=` sets it per book. A relative path is taken from the folder you run the command in |
@@ -143,17 +143,18 @@ never sent (#123; `LANG_READING_RULE=off` sends them too). They are left out of 
 are all decided this way sends nothing: the step runs without asking, and the app runs it with a $0 limit. See
 [Language tags](languages.md#chinese-japanese-and-korean).
 
-Two options change what is sent, both off by default (`language_run.json` records them under `options`):
-- `LANG_GROW=on`: a title in another language is tagged whole. A capitalized word in the English list joins a title
+Two options change what is sent (`language_run.json` records them under `options`):
+- Title growth, on by default since #136 (Patrick, 2026-11-20; `LANG_GROW=off` turns it off): a title in another
+  language is tagged whole. A capitalized word in the English list joins a title
   only when it looks romanized and is not a common English word or an English name of a people (*Nihon* and *Kamakura*
   join; *China*, *King*, *Japanese* don't; `data/english-common-romanized.txt`). A word with marks (*Hō*, *Dō*) and a dynasty name (*Song*, *Tang*, *Ming*, *Qing* …) may join (it still needs the romanized shape); see [Language tags](languages.md).
-  Since #136 the audit grows titles itself when `LANG_GROW=on` (one pass of the finder per run, and the record's count
-  of word forms matches what is sent); the language step finds the words again only when its own setting differs from
-  the audit's. On a joined OCR page a title grows across the runs of its stretch, never past a stretch's break.
-  `LANG_GROW` is a terminal setting: the app can't set it, so what the app does is the code's default.
+  Since #136 the audit grows titles itself (one pass of the finder per run, and the record's count of word forms
+  matches what is sent); the language step finds the words again only when its own setting differs from the audit's.
+  On a joined OCR page a title grows across the runs of its stretch, never past a stretch's break.
+  `LANG_GROW` is a terminal setting: the app can't set it, so the app always grows titles (the code's default).
   English function words (*of*, *or*, *and*, *the*, *by*, *for*, *with*, *from*, *at*) never join a title, nor does a
   word that joins its neighbour into an English word (an English word the PDF draws in pieces: "Se lections").
-- `LANG_GROUP=on`: adjacent single Chinese characters are one word form.
+- `LANG_GROUP=on` (off by default): adjacent single Chinese characters are one word form.
 
 ### OCR languages
 

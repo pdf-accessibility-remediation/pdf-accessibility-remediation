@@ -29,9 +29,10 @@ decisions carry `rule: "reading"` and the reading as evidence; a person approves
 Every Han-only form's reading (#124: bibliographies left out) is kept in its language_parts entry as `reading`, for the
 review page's "Approve Characters with Matching Readings". LANG_READING_RULE=off turns the rule off (every form to the AI).
 
-Two options, both off by default (review 08, M6): LANG_GROW=on (--grow) finds the candidates again with a title's whole
-extent (lib/langcands.book grow=True), and LANG_GROUP=on (--group) makes adjacent one-character Han places one form
-(lib/langreq.forms group=True). language_run.json records them under `options`.
+Two options (review 08, M6): title growth, on by default since #136 (Patrick, 2026-11-20; LANG_GROW=off turns it off),
+finds the candidates with a title's whole extent (lib/langcands.book grow=True), and LANG_GROUP=on (--group, off by
+default) makes adjacent one-character Han places one form (lib/langreq.forms group=True). language_run.json records them
+under `options`.
 """
 import sys, os, re, json, time, hashlib, argparse, urllib.request, urllib.error, collections
 HERE = os.path.dirname(os.path.abspath(__file__)); sys.path.insert(0, HERE)
@@ -325,8 +326,9 @@ def main():
                     help='at most this many word forms sent (LANGUAGE_MAX_FORMS; off by default: the dollar limits decide, #159)')
     ap.add_argument('--book-max-usd', type=float, default=float(os.environ.get('BOOK_MAX_USD') or costs.DEFAULT_LIMITS['per_book_usd']),
                     help="the PDF's limit, shared with the work order and the page readings (review 06, M2)")
-    on = lambda k: os.environ.get(k, 'off').lower() in ('1', 'on', 'yes', 'true')
-    ap.add_argument('--grow', action='store_true', default=on('LANG_GROW'), help="a title's whole extent (LANG_GROW=on; off by default, review 08 M6)")
+    on = lambda k, d='off': os.environ.get(k, d).lower() in ('1', 'on', 'yes', 'true')
+    ap.add_argument('--grow', action='store_true', default=on('LANG_GROW', 'on'),
+                    help="a title's whole extent (on by default since #136, Patrick 2026-11-20; LANG_GROW=off turns it off)")
     ap.add_argument('--group', action='store_true', default=on('LANG_GROUP'), help='adjacent one-character Han places as one form (LANG_GROUP=on; off by default)')
     g = ap.add_mutually_exclusive_group(); g.add_argument('--response-file'); g.add_argument('--reuse', action='store_true')
     ap.add_argument('--outcome', action='store_true', help="record how the step ended in ai_outcome.json (#151; run_api.sh's own calls)")

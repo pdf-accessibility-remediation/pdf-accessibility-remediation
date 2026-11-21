@@ -223,9 +223,18 @@ See [OCR words](ocr-words.md#pages-read-whole).
 
 ## Running it
 
-Two options are off by default: `LANG_GROW=on` tags a title in another language whole (the voice switches once, not
-mid-title), and `LANG_GROUP=on` makes adjacent single Chinese characters one word form. Title growth stays off until a
-screen-reader check of a title tagged in pieces (see [Options](options.md#language-tags)).
+**Title growth is on by default** (#136, Patrick, 2026-11-20): a title in another language is tagged whole, so the voice
+switches once, not mid-title. `LANG_GROW=off` turns it off.
+- **What is ours, and what is the reader's:**
+  - The tags' correctness is the pipeline's: verify checks each one, and the AI's answers are approved by a person. On the
+    test books, 3 of 1,819 grown titles took in an English word.
+  - How a screen reader voices a romanized Japanese tag (`ja-Latn`) is the reader's.
+- **The Windows listening check** of a title is a note, not a condition.
+- **What wasn't measured:** the finder's misses (words in another language that the English word list removes) were not
+  measured against a person.
+
+`LANG_GROUP=on` (off by default) makes adjacent single Chinese characters one word form. See
+[Options](options.md#language-tags).
 
 The step is on by default (`LANG_TAGS=on`, see [Options](options.md#language-tags)). It has its own model
 (`LANGUAGE_MODEL`, default Sonnet 5.5, whatever model the work order uses) and limit (`LANGUAGE_MAX_USD`). The PDF's limit
@@ -370,15 +379,6 @@ Sonnet 5.5 stays the language step's model (2026-11-14): Opus 5.5 was no more ac
 about 2.2 times as much. Sonnet 5.5, measured on the test books (2026-11-13): about $0.09 per 100 forms. A book with 2,800 forms (cadaverous)
 cost $2.53; one with 840 forms (ryukyu) $0.78. A book with no candidates costs nothing.
 
-## Dictionaries measured (#141)
-
-#141 (Language step: test downloaded dictionaries for deciding word forms locally) measured the sponsors' workflow
-("Latin Language & Species Name Vocabularies for ADA In-Text Tagging"): a species pass, a Latin phrase pass, a Latin word
-pass accepted only inside a multi-word Latin span, a stoplist and a review sheet, plus word lists for the books' other
-languages. **Nothing is adopted: no list decides a word form in the pipeline.** `pipeline/tools/dict_measure.py` runs the
-measurement (`build` makes plain word lists from each download; `run` applies the workflow to a set of books' candidate
-forms). The downloads stay outside the repository, one folder per source:
-
 ## Dictionary Marks
 
 From #141's measurement (proposal 14), the review page's "Languages" rows may show one of two lines. **Both are facts
@@ -409,6 +409,15 @@ to the AI.** Latin only: no line appears for any other language.
 
   See `pipeline/data/README.md` for the sources, checksums and how to build them again.
 - **Runs whose audit predates this change** have neither fact, so no line shows.
+
+## Dictionaries measured (#141)
+
+#141 (Language step: test downloaded dictionaries for deciding word forms locally) measured the sponsors' workflow
+("Latin Language & Species Name Vocabularies for ADA In-Text Tagging"): a species pass, a Latin phrase pass, a Latin word
+pass accepted only inside a multi-word Latin span, a stoplist and a review sheet, plus word lists for the books' other
+languages. **Nothing is adopted: no list decides a word form in the pipeline.** `pipeline/tools/dict_measure.py` runs the
+measurement (`build` makes plain word lists from each download; `run` applies the workflow to a set of books' candidate
+forms). The downloads stay outside the repository, one folder per source:
 
 | Source | For | Licence |
 |---|---|---|
