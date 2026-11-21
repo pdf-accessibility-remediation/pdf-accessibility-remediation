@@ -9,6 +9,7 @@ import dict_measure as dm  # noqa: E402
 def test_latin_words_are_matched_without_marks_and_with_u_for_v():
     assert dm.latin_norm('Dīvīsa') == 'diuisa' and dm.latin_norm('Iūlius') == 'iulius' and dm.latin_norm('jam,') == 'iam'
     assert dm.plain('“Kenkyū,”') == 'kenkyū'
+    assert dm.latin_norm('Cæsar') == 'caesar' and dm.latin_norm('diŋ') == '' and dm.latin_norm('láɪ') == ''
 
 
 def test_whitaker_stem_and_ending_of_one_class():
@@ -68,3 +69,41 @@ def test_answers_agree_by_language_with_or_without_a_script():
 def test_tally_counts_right_and_wrong_by_language():
     t = dm.tally([('la', 'la'), ('la', 'English'), ('haw', 'haw')])
     assert t['decided'] == 3 and t['right'] == 2 and t['wrong'] == 1 and t['by_lang'] == {'la': [1, 1], 'haw': [1, 0]}
+
+
+def test_lewis_short_headwords_are_read_from_the_latin_orth_lines(tmp_path):
+    (tmp_path / 'lewis-short').mkdir()
+    (tmp_path / 'lewis-short' / 'lat.ls.perseus-eng2.xml').write_text(
+        '<entryFree><orth lang="la" extent="full">Dīvīsus</orth>, a, um</entryFree>\n'
+        '<entryFree><orth extent="full" lang="la">jam</orth> <orth lang="greek">nai</orth></entryFree>\n', encoding='utf-8')
+    assert dm.build_lewis_short(str(tmp_path)) == {'headwords': 2}
+    assert dm._read(str(tmp_path / 'lewis-short' / '_lists' / 'latin.txt')) == {'diuisus', 'iam'}
+
+
+def test_ncbi_names_keep_genera_and_binomials_of_scientific_names_only(tmp_path):
+    import io, tarfile
+    (tmp_path / 'ncbi').mkdir()
+    nodes = '1\t|\t1\t|\tgenus\t|\n2\t|\t1\t|\tspecies\t|\n3\t|\t1\t|\tspecies\t|\n'
+    names = ('1\t|\tMetrosideros\t|\t\t|\tscientific name\t|\n2\t|\tMetrosideros polymorpha\t|\t\t|\tscientific name\t|\n'
+             '2\t|\tohia lehua\t|\t\t|\tcommon name\t|\n3\t|\tuncultured bacterium\t|\t\t|\tscientific name\t|\n')
+    with tarfile.open(tmp_path / 'ncbi' / 'taxdump.tar.gz', 'w:gz') as t:
+        for n, s in (('nodes.dmp', nodes), ('names.dmp', names)):
+            b = s.encode(); i = tarfile.TarInfo(n); i.size = len(b); t.addfile(i, io.BytesIO(b))
+    assert dm.build_ncbi(str(tmp_path)) == {'genera': 1, 'species': 1}
+
+
+def test_catalogue_of_life_reads_genus_and_epithet_by_rank(tmp_path):
+    import zipfile
+    (tmp_path / 'col').mkdir()
+    rows = ['dwc:taxonID\tdwc:scientificName\tdwc:taxonRank\tdwc:genericName\tdwc:specificEpithet',
+            '1\tHomo\tgenus\tHomo\t', '2\tHomo sapiens Linnaeus\tspecies\tHomo\tsapiens', '3\tHominidae\tfamily\t\t']
+    with zipfile.ZipFile(tmp_path / 'col' / 'latest_dwca.zip', 'w') as z: z.writestr('Taxon.tsv', '\n'.join(rows) + '\n')
+    assert dm.build_col(str(tmp_path)) == {'genera': 1, 'species': 1}
+    assert dm._read(str(tmp_path / 'col' / '_lists' / 'species.txt')) == {'Homo sapiens'}
+
+
+def test_a_name_is_checked_in_each_list_on_its_own():
+    genera, species = {'Homo'}, {'Homo sapiens'}
+    ep = {'sapiens': {'Homo sapiens'}}
+    assert dm.name_checked('Homo sapiens', 2, genera, species, ep) and dm.name_checked('H. sapiens', 2, genera, species, ep)
+    assert dm.name_checked('Homo', 1, genera, species, ep) and not dm.name_checked('Homo erectus', 2, genera, species, ep)

@@ -386,15 +386,21 @@ forms). The downloads stay outside the repository, one folder per source:
 | Open Multilingual Wordnet 1.4 | Japanese and Chinese written forms (1.4 has no Latin, Hawaiian, Korean or Tagalog wordnet) | per wordnet (both used: free for any use, with the notice) |
 | Wikidata lexemes dump | lemmas and forms by language | CC0 |
 | GBIF Backbone Taxonomy (backbone.zip, August 2023 release) | genera and species | CC BY 4.0 |
+| Catalogue of Life (`latest_dwca.zip`, 2026-11-11 release) | genera and species, a name check beside GBIF | CC BY 4.0 |
+| NCBI Taxonomy (`taxdump.tar.gz`) | genera and species (scientific names), a name check beside GBIF | public domain (US government information) |
+| Lewis & Short (Perseus Digital Library TEI XML) | Latin headwords (no inflected forms) | CC BY-SA 4.0, crediting the Perseus Digital Library |
 | GNfinder 1.3.0 (release binary, sha256 checked against the release) | scientific names in text; run offline, never with verification | MIT |
 | LatinCy `la_core_web_lg` 3.9.8 (its own environment) | Latin lemmas | MIT |
 
 **What it found** (2026-11-20; level 4's and round 10's answers, and #142's scored test set):
-- On a Latin-heavy book, the workflow decides most Latin forms the way the AI does (933 of 1,294 forms; 25 disagreements,
+- On a Latin-heavy book, the workflow decides most Latin forms the way the AI does (934 of 1,294 forms; 25 disagreements,
   each one the dictionary's mistake: French, German and English words).
 - On every other book, the Latin lists take words of other languages as Latin (Hawaiian, romanized Japanese, Bikol,
-  Vietnamese, Sanskrit, IPA respellings, pieces of split words): 37–43% of the workflow's decisions on level 4's books
-  disagree with the AI, 96% on round 10's.
+  Vietnamese, Sanskrit, pieces of split words): 36–42% of the workflow's decisions on level 4's books disagree with the
+  AI, 96% on round 10's. (Figures from the second measurement, 2026-11-20, which also stopped words written with letters
+  Latin doesn't use, such as IPA respellings, from matching shorter Latin words.)
+- The three species checklists agree: Catalogue of Life finds about what GBIF finds, NCBI Taxonomy fewer names. All three
+  match Hawaiian, Japanese and Bikol words that are also genus names ("lehua", "hala", "kita").
 - On the scored test set every list is wrong more often than the AI on the same items.
 - So the dictionaries would add review work rather than save it; the money they could save is about $1 a book at most.
 

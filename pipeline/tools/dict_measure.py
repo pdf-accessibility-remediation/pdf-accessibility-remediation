@@ -36,10 +36,12 @@ LANGS_OTHER = ('haw', 'ja-Latn', 'ko-Latn', 'zh-Latn', 'tl', 'ja', 'zh', 'ko')
 
 def latin_norm(w):
     """A word as Latin lists are matched: letters only, no marks (macrons, breves), lower case, v as u and j as i
-    (LatinCy and many lists write uitro, iam)."""
+    (LatinCy and many lists write uitro, iam), æ and œ as ae and oe. '' (no match) for a word with any other letter outside
+    a-z: report 12 dropped such letters, so IPA forms ("diŋ", "æs") matched short Latin words ("di", "s")."""
     w = unicodedata.normalize('NFD', w or '')
-    w = ''.join(ch for ch in w if not unicodedata.combining(ch)).lower()
-    w = re.sub(r"[^a-z]", '', w)
+    w = ''.join(ch for ch in w if not unicodedata.combining(ch)).lower().replace('æ', 'ae').replace('œ', 'oe')
+    if any(ch.isalpha() and not 'a' <= ch <= 'z' for ch in w): return ''   # a letter Latin doesn't write (ŋ, ɪ, ǝ, ø):
+    w = re.sub(r"[^a-z]", '', w)                                         # not Latin; never folded onto a shorter word
     return w.replace('v', 'u').replace('j', 'i')
 
 
@@ -241,7 +243,56 @@ def build_gbif(d):
     return {'genera': len(gen), 'species': len(spe)}
 
 
-BUILDERS = {'lila': build_lila, 'whitaker': build_whitaker, 'kaikki': build_kaikki, 'omw': build_omw, 'wikidata': build_wikidata, 'gbif': build_gbif}
+def build_lewis_short(d):
+    """Lewis & Short (Perseus TEI XML, the Unicode file): every Latin headword and its alternative forms (lemmas only)."""
+    ws = set()
+    for l in open(os.path.join(d, 'lewis-short', 'lat.ls.perseus-eng2.xml'), encoding='utf-8'):
+        for m in re.finditer(r'<orth[^>]*lang="la"[^>]*>([^<]+)</orth>', l): ws.add(latin_norm(m.group(1)))
+    ws.discard(''); _write(os.path.join(_lists(d, 'lewis-short'), 'latin.txt'), ws)
+    return {'headwords': len(ws)}
+
+
+def build_col(d):
+    """Catalogue of Life (Darwin Core archive): genera, and species and lower ranks as "Genus epithet"."""
+    gen, spe = set(), set()
+    with zipfile.ZipFile(os.path.join(d, 'col', 'latest_dwca.zip')) as z:
+        name = next(n for n in z.namelist() if n.lower().endswith('taxon.tsv') or n.lower().endswith('taxon.txt'))
+        with z.open(name) as f:
+            head = [h.split(':')[-1] for h in f.readline().decode('utf-8').rstrip('\r\n').split('\t')]
+            ri, gi, ei = head.index('taxonRank'), head.index('genericName'), head.index('specificEpithet')
+            ci = head.index('scientificName')
+            for raw in f:
+                c = raw.decode('utf-8', 'replace').rstrip('\r\n').split('\t')
+                if len(c) <= max(ri, gi, ei, ci): continue
+                rank = c[ri].lower()
+                if rank == 'genus' and c[gi]: gen.add(c[gi])
+                elif rank == 'genus' and c[ci]: gen.add(c[ci].split()[0])
+                elif c[gi] and c[ei] and rank in ('species', 'subspecies', 'variety', 'form'): spe.add(f'{c[gi]} {c[ei]}'); gen.add(c[gi])
+    _write(os.path.join(_lists(d, 'col'), 'genera.txt'), gen); _write(os.path.join(_lists(d, 'col'), 'species.txt'), spe)
+    return {'genera': len(gen), 'species': len(spe)}
+
+
+def build_ncbi(d):
+    """NCBI Taxonomy (taxdump): genera, and the scientific names of species and lower ranks, as "Genus epithet"."""
+    rank = {}
+    with tarfile.open(os.path.join(d, 'ncbi', 'taxdump.tar.gz')) as t:
+        for l in t.extractfile('nodes.dmp'):
+            f = l.decode('utf-8').rstrip('\t|\n').split('\t|\t')
+            rank[f[0].strip()] = f[2].strip()
+        gen, spe = set(), set()
+        for l in t.extractfile('names.dmp'):
+            f = [x.strip() for x in l.decode('utf-8').rstrip('\t|\n').split('\t|\t')]
+            if len(f) < 4 or f[3] != 'scientific name': continue
+            r, nm = rank.get(f[0]), f[1].split()
+            if r == 'genus' and nm: gen.add(nm[0])
+            elif r in ('species', 'subspecies', 'varietas', 'forma') and len(nm) >= 2 and nm[0][:1].isupper() and nm[1][:1].islower():
+                spe.add(f'{nm[0]} {nm[1]}'); gen.add(nm[0])
+    _write(os.path.join(_lists(d, 'ncbi'), 'genera.txt'), gen); _write(os.path.join(_lists(d, 'ncbi'), 'species.txt'), spe)
+    return {'genera': len(gen), 'species': len(spe)}
+
+
+BUILDERS = {'lila': build_lila, 'whitaker': build_whitaker, 'kaikki': build_kaikki, 'omw': build_omw, 'wikidata': build_wikidata, 'gbif': build_gbif,
+            'lewis-short': build_lewis_short, 'col': build_col, 'ncbi': build_ncbi}
 
 
 def build(d, which=None):
@@ -267,6 +318,11 @@ def load(d):
     for c in ('ja', 'zh'): L[f'omw_{c}'] = _read(os.path.join(d, 'omw', '_lists', f'{c}.txt'))
     for f in os.listdir(os.path.join(d, 'wikidata', '_lists')): L['wd_' + f[:-4]] = _read(os.path.join(d, 'wikidata', '_lists', f))
     L['genera'] = _read(os.path.join(d, 'gbif', '_lists', 'genera.txt')); L['species'] = _read(os.path.join(d, 'gbif', '_lists', 'species.txt'))
+    L['ls'] = _read(os.path.join(d, 'lewis-short', '_lists', 'latin.txt'))
+    L['checklists'] = {'GBIF': (L['genera'], L['species'])}
+    for name, sub in (('Catalogue of Life', 'col'), ('NCBI Taxonomy', 'ncbi')):
+        g, sp = _read(os.path.join(d, sub, '_lists', 'genera.txt')), _read(os.path.join(d, sub, '_lists', 'species.txt'))
+        if g or sp: L['checklists'][name] = (g, sp)
     L['_secs'] = round(time.time() - t0, 1)
     return L
 
@@ -276,7 +332,8 @@ def latin_sources(L):
     return {'LiLa': lambda w: latin_norm(w) in L['lila'],
             "Whitaker's Words": lambda w: whitaker_match(w, L['wh_stems'], L['wh_ends'], L['wh_uni']),
             'Wiktionary (kaikki)': lambda w: latin_norm(w) in L['kk_la'],
-            'Wikidata lexemes': lambda w: latin_norm(w) in L.get('wd_la', set())}
+            'Wikidata lexemes': lambda w: latin_norm(w) in L.get('wd_la', set()),
+            **({'Lewis & Short': lambda w: latin_norm(w) in L['ls']} if L.get('ls') else {})}
 
 
 def other_sources(L):
@@ -339,6 +396,16 @@ def gnfinder(d, texts, work):
     return out
 
 
+def name_checked(name, card, genera, species, ep):
+    """A GNfinder name found in a checklist (as gbif_checked, for any list: its genera, its species, its epithet index)."""
+    w = name.split()
+    if card == 1: return w[0] in genera
+    if len(w) >= 2:
+        if f'{w[0]} {w[1]}' in species: return True
+        if re.fullmatch(r'[A-Z]\.', w[0]): return any(x.startswith(w[0][0]) for x in ep.get(w[1], ()))
+    return False
+
+
 def gbif_checked(name, card, L):
     """A GNfinder name found in the GBIF list: a binomial (or the binomial part of a trinomial) in its species, a uninomial
     in its genera; an abbreviated genus ("M. polymorpha") when some genus with that initial has that epithet."""
@@ -374,6 +441,12 @@ def run(d, out, books):
     for s in L['species']:
         g, e = s.split(' ', 1); ep[e].add(s)
     L['_ep'] = ep
+    L['_eps'] = {}
+    for k, (g, sp) in L['checklists'].items():
+        e = collections.defaultdict(set)
+        for x in sp:
+            a_, b_ = x.split(' ', 1); e[b_].add(x)
+        L['_eps'][k] = e
     LS, OS = latin_sources(L), other_sources(L)
     memo = {}
     def is_latin_any(w):                                    # any Latin source, cached per word (the span rule asks often)
@@ -399,11 +472,16 @@ def run(d, out, books):
         # 1. species
         t1 = time.time(); names = gnfinder(d, texts, work); B['gnfinder_seconds'] = round(time.time() - t1, 1)
         sp_words = collections.defaultdict(set); B['gnfinder_names'] = len(names); B['gnfinder_in_gbif'] = 0
+        by_list = {k: collections.defaultdict(set) for k in L['checklists']}; B['gnfinder_in'] = collections.Counter()
         for pg, nm, card, verb in names:
             ok = gbif_checked(nm, card, L)
             B['gnfinder_in_gbif'] += ok
             if ok:
                 for w in re.findall(r'[A-Za-z]+', verb): sp_words[pg].add(w.lower())
+            for k, (g, sp) in L['checklists'].items():           # each checklist on its own (report 12's addendum)
+                if name_checked(nm, card, g, sp, L['_eps'][k]):
+                    B['gnfinder_in'][k] += 1
+                    for w in re.findall(r'[A-Za-z]+', verb): by_list[k][pg].add(w.lower())
         pairs = 0; pair_words = collections.defaultdict(set)
         for i, t in enumerate(texts, 1):
             toks = book_tokens(t)
@@ -429,6 +507,9 @@ def run(d, out, books):
             if spc: decided[form] = ('la', 'species'); continue
             if any(all(w.lower() in ph_words[p['page']] for w in words) for p in ps): decided[form] = ('la', 'phrase'); continue
         for form, ps in forms.items():
+            for k, words_ in by_list.items():
+                if any(all(w.lower().strip('.,;:()') in words_[p['page']] for w in form.split()) for p in ps):
+                    per_src['Species: ' + k][form] = 'la'
             for sname, f in LS.items():
                 if all(f(w) for w in form.split()): per_src['Latin: ' + sname][form] = 'la'
             for sname, langs in OS.items():
