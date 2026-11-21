@@ -3652,9 +3652,12 @@ def fix_language_parts():
             else:
                 old, sp = x; ks = kids(o)              # sp: the Span tag_run wrote, not the run's owner now (review 15, L1)
                 i = next((j for j, k in enumerate(ks) if is_elem(k) and same(k, sp)), None)
-                if i is None:                          # moved since (links, section moves): it stays where it is, without its
-                    if '/Lang' in sp: del sp['/Lang']  # language, and is refused like the others (review 11, L1)
-                else:
+                sk = kids(sp)                          # still only the run's kid (its MCID, or an MCR naming it)? A link
+                only = len(sk) == 1 and ((isinstance(sk[0], int) and sk[0] == m) or   # wrapped inside it holds the Link instead,
+                       (isinstance(sk[0], pikepdf.Dictionary) and str(sk[0].get('/Type')) == '/MCR' and sk[0].get('/MCID') == m))
+                if i is None or not only:              # moved since (links, section moves), or holding more than the run: it
+                    if '/Lang' in sp: del sp['/Lang']  # stays, without its language, and is refused like the others (review 11
+                else:                                  # L1; review 17 L1-b: unwrapping would drop the Link and name the run twice)
                     ks[i] = old; set_kids(o, ks); pt_set(pno, m, o, f); index_set(pno, m, o, f)
             for sp_ in [r for r in LANG['spans'] if r.get('whole') and r['page'] == pno and r['mcid'] == m]:
                 LANG['spans'].remove(sp_); LANG['whole'] -= 1; lang_refuse(pno, m, why, sp_)

@@ -499,7 +499,7 @@ def book(PL, pages=None, doc_lang=None, spoken=None, grow=False, pdf=None, rules
     only the pages with a removed spelling the book prints whole. With pages=…, the whole spellings come from those pages
     only. Places from a joined reading carry `source` (join, inrun, cross) and, when they span runs, `segments`."""
     from lib import langjoin, gaptext, latinlist
-    asked =sorted(set(RULES if rules is None else rules) | ({'grow'} if grow else set()))
+    asked = sorted(set(RULES if rules is None else rules) | ({'grow'} if grow else set()))
     rules = set(RULES if rules is None else rules)
     grow = grow or 'grow' in rules
     extra = rules & {'looser', 'italic', 'continuation'}
