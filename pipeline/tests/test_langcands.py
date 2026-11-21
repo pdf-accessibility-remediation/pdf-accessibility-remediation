@@ -213,3 +213,15 @@ def test_title_growth_leaves_common_english_words_out(tmp_path):
     assert 'Kamakura bukkyo' in on and not any('King' in f or 'Japanese' in f for f in on)
     assert langcands.common_romanized('China') and langcands.common_romanized('Kongō') is False and langcands.common_romanized('Japanese')
     assert not langcands.common_romanized('Hō') and not langcands.common_romanized('Tang') and not langcands.common_romanized('Song')   # review 10, L4
+
+
+def test_shin_joins_a_title_but_not_english_beyond_it(tmp_path):
+    """Proposal 20 (b): "shin" is off data/english-common-romanized.txt, so the Japanese title prefix 新 grows with its
+    title ("Shin kokin wakashu", italic); "Shin" followed by an English word stays out ("Shin splints"). F6: oblique."""
+    def places(name, text):
+        src = langpdf.build(str(tmp_path / name), [{'body': [f'/F1 11 Tf ' + langpdf.show('F1', 'See the anthology '),
+                                                             f'/F6 11 Tf ' + langpdf.show('F6', text), f'/F1 11 Tf ' + langpdf.show('F1', ' for more.')]}])
+        return [(p['form'], p['text']) for p in langcands.book(plpages.Pages(src), doc_lang='en', grow=True)['places']]
+    assert not langcands.common_romanized('Shin') and langcands.common_romanized('King')
+    assert places('a.pdf', 'Shin kokin wakashu') == [('Shin kokin wakashu', 'Shin kokin wakashu')]
+    assert places('b.pdf', 'Shin splints, kokin wakashu') == [('kokin wakashu', 'kokin wakashu')]

@@ -29,7 +29,10 @@ The common English words that look like romanized Japanese or Chinese (review 08
 - **Source:** the same SCOWL 2020.12.07 release and lists as `english-words.txt`, sizes 10 to 35 only (SCOWL's common
   words), decoded and normalised the same way, kept when `lib/langcands.romanized_shape` accepts them.
 - **Builder:** `runs/118-language-tagging/m6/build_common.py` (local only).
-- **Result:** 3,788 words, sha256 `fd316845694c859e413efcb42b45236fb0bce3d6113d7bb072a0ee706e8d37c6`.
+- **Removed by hand, 2026-11-21:** "shin" (proposal 20 (b), Patrick). On the test books it is the Japanese title prefix 新
+  ("Shin kokin wakashū", "Shin sekai"): 163 places, all titles. A build from SCOWL puts it back, so remove it again.
+- **Result:** 3,787 words, sha256 `0e058e2306f1d52ff5e73819ce1371fb116e075c9207212d5d10f962bbbea15c` (3,788 as built,
+  `fd316845694c859e413efcb42b45236fb0bce3d6113d7bb072a0ee706e8d37c6`, before "shin" was removed).
 - **Licence:** as above (`english-words.COPYRIGHT`).
 
 ## latin-whitaker.json

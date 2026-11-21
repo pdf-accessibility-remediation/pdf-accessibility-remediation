@@ -147,7 +147,8 @@ Two options change what is sent (`language_run.json` records them under `options
 - Title growth, on by default since #136 (Patrick, 2026-11-20; `LANG_GROW=off` turns it off): a title in another
   language is tagged whole. A capitalized word in the English list joins a title
   only when it looks romanized and is not a common English word or an English name of a people (*Nihon* and *Kamakura*
-  join; *China*, *King*, *Japanese* don't; `data/english-common-romanized.txt`). A word with marks (*Hō*, *Dō*) and a dynasty name (*Song*, *Tang*, *Ming*, *Qing* …) may join (it still needs the romanized shape); see [Language tags](languages.md).
+  join; *China*, *King*, *Japanese* don't; `data/english-common-romanized.txt`). *Shin*, the Japanese title prefix
+  ("Shin kokin wakashū"), is off that list (2026-11-21), so it joins. A word with marks (*Hō*, *Dō*) and a dynasty name (*Song*, *Tang*, *Ming*, *Qing* …) may join (it still needs the romanized shape); see [Language tags](languages.md).
   Since #136 the audit grows titles itself (one pass of the finder per run, and the record's count of word forms
   matches what is sent); the language step finds the words again only when its own setting differs from the audit's.
   On a joined OCR page a title grows across the runs of its stretch, never past a stretch's break.
