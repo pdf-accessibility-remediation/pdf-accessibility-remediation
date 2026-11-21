@@ -55,3 +55,32 @@ in absentia
 pro bono
 in extremis
 a fortiori
+# Added 2026-11-21 (proposal 20 (c)): seven with evidence on the test books, then common ones like them.
+materia medica
+locus classicus
+reductio ad absurdum
+summum bonum
+dramatis personae
+sub specie aeternitatis
+per diem
+ad libitum
+alter ego
+bona fides
+caveat emptor
+de novo
+in loco parentis
+in medias res
+memento mori
+mirabile dictu
+ne plus ultra
+obiter dictum
+post hoc
+pro rata
+sine die
+status quo ante
+sub rosa
+terra firma
+vade mecum
+via media
+viva voce
+vox populi

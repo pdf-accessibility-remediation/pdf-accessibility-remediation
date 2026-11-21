@@ -62,5 +62,10 @@ form the AI left untagged shows the line when one of its places sits inside a wh
 
 - **Source:** written for #141's measurement (`tools/dict_measure.PHRASES`), not taken from a source. Its one French entry
   ("raison d'") is left out: 55 phrases.
-- **Result:** sha256 `387f199928575cd7938a2a3ba9cdbfb689b45239c343abdcdd482cfefbc98584`. Lines starting with `#` are
-  notes.
+- **Added 2026-11-21** (proposal 20 (c), Patrick): 28 more.
+  - Seven with evidence on the test books: "materia medica", "locus classicus", "reductio ad absurdum", "summum bonum",
+    "dramatis personae", "sub specie aeternitatis", "per diem".
+  - 21 common ones like them ("ad libitum", "alter ego", … "vox populi").
+  - Measured in `runs/150-language-finder-recall/m20/phrases.py` (local only).
+- **Result:** 83 phrases, sha256 `14f5aec8455570bd91739c854690bf6b7df91da0738013329a1a659364f92704`. Lines starting with
+  `#` are notes.

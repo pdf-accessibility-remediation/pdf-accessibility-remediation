@@ -411,7 +411,8 @@ to the AI.** Latin only: no line appears for any other language.
 - **The data:**
   - `pipeline/data/latin-whitaker.json`: Whitaker's Words, upstream commit `fb7fb6f`, under its own permissive notice in
     `latin-whitaker.LICENCE`;
-  - `pipeline/data/latin-phrases.txt`: 55 phrases written for the measurement.
+  - `pipeline/data/latin-phrases.txt`: 83 phrases. 55 were written for the measurement; 28 were added on 2026-11-21
+    ("materia medica", "locus classicus", "summum bonum" and the like).
 
   See `pipeline/data/README.md` for the sources, checksums and how to build them again.
 - **Runs whose audit predates this change** have neither fact, so no line shows.

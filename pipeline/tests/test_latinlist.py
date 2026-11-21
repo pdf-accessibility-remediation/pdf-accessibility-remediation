@@ -50,7 +50,14 @@ def test_the_shipped_files_match_the_readme_and_load_quickly():
     latinlist._W.clear(); t = time.time(); latinlist.in_latin('dicta')
     assert time.time() - t < 1.0
     ps = [l.strip() for l in open(latinlist.PHRASES, encoding='utf-8') if l.strip() and not l.startswith('#')]
-    assert len(ps) == 55 and 'raison d' not in ps and 'prima facie' in ps
+    assert len(ps) == 83 and len(set(ps)) == 83 and 'raison d' not in ps and 'prima facie' in ps and 'materia medica' in ps
+
+
+def test_an_added_phrase_marks_its_words_on_a_page(tmp_path):
+    """Proposal 20 (c): "materia medica" (cadaverous) is on the list; its places carry the phrase as printed."""
+    src = langpdf.build(str(tmp_path / 'mm.pdf'), [{'font': 'F3', 'text': 'He studied the Materia medica of the Song period.'}])
+    c = langcands.book(plpages.Pages(src), doc_lang='en')
+    assert any(p.get('latin_phrase') == 'Materia medica' for p in c['places']), [(p['form'], p.get('latin_phrase')) for p in c['places']]
 
 
 # ---------------------------------------------------------------- the finder, the step, the work order
