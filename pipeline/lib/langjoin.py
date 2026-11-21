@@ -134,6 +134,14 @@ class Structure:
 
     def parent(self, pno, m): return self.par.get((pno, m))
 
+    def adjacent(self, pno, m1, m2):
+        """Runs m1 and m2 of page pno belong to the same element and sit next to each other among its kids (an MCID or an
+        MCR each): a title broken at a line end, each line its own run (proposal 20 (b), growth into the adjacent run)."""
+        a = self.par.get((pno, m1))
+        if a is None or a != self.par.get((pno, m2)): return False
+        ix = (self._kids.get(a) or ((), False, {}))[2]
+        return (pno, m1) in ix and (pno, m2) in ix and abs(ix[(pno, m1)] - ix[(pno, m2)]) == 1
+
     def _seq(self, og): return self._kids.get(og, (None, True, {}))
 
     def marks(self, pno):

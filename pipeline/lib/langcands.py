@@ -58,6 +58,8 @@ SCRIPTS = [(n, re.compile(p)) for n, p in SCRIPTS]
 CUT = set('—–/“”"…«»„‚()[]{}')
 HYPHENS = '-‐‑'
 GROW_STOP = {'of', 'or', 'and', 'the', 'by', 'for', 'with', 'from', 'at'}   # English function words never join a title (#136)
+RUN_END = re.compile(r'[.,;:!?)\]}”"’»]\s*$')   # growth into the next run (proposal 20 (b)): a word ending a phrase stops it,
+RUN_OPEN = re.compile(r'^\s*[(\[{“"‘«]')          # and so does one opening a bracket or quote at the start of the next run
 ITALIC = re.compile(r'(?i)ital|oblique|-it$|-it[A-Z]|It$')
 NUMERAL = re.compile(r'(?i)[ivxlcdm]+|\d[\d,.]*\w{0,3}')
 
@@ -225,7 +227,8 @@ def _core_span(cs):
     if i1 - i0 >= 2 and cs[i1]['text'] in ('s', 'S') and cs[i1 - 1]['text'] in "’'": i1 -= 2
     return i0, i1
 
-def page_places(pno, chars, page_chars=None, italic=None, doc_lang=None, spoken=None, grow=False, keep=None, removed=None, info=None, words0=None, extra=()):
+def page_places(pno, chars, page_chars=None, italic=None, doc_lang=None, spoken=None, grow=False, keep=None, removed=None, info=None, words0=None, extra=(),
+                adjacent=None):
     """chars: one page's pdfplumber characters in content order (plpages). Returns (places, words): the page's candidate
     places, and the page's words in reading order (for context: each place names its words by index). keep: joined
     spellings (lower case) the hyphen check must not take for English, because the book prints them whole (#140, book());
@@ -389,6 +392,21 @@ def page_places(pno, chars, page_chars=None, italic=None, doc_lang=None, spoken=
         if grow:                                     # a title's whole extent (review 06, M4): the voice switches once, not mid-title
             m0 = w['mcid']
             def slash(i): return 0 <= i < len(words) and words[i]['all'].strip() == '/'
+            def in_run(i, step):
+                """Word i is in the title's run, or growth may go on into its run (proposal 20 (b)): the next run of the
+                same element (`adjacent`, from the tag tree; italic titles only, step ≠ 0), entered at a clean break: the
+                earlier word doesn't end a phrase (. , ; : ! ? or a closing bracket or quote) and the later one doesn't
+                open one. Two titles one after the other ("Kokinshū, Shinkokinshū") stay two."""
+                m = words[i]['mcid']
+                if m == m0: return True
+                if adjacent is None or m is None or step == 0 or not adjacent(m0, m): return False
+                p = i - step
+                while slash(p): p -= step
+                if not 0 <= p < len(words): return False
+                if words[p]['mcid'] == m: return True               # already inside the next run
+                if words[p]['mcid'] != m0: return False
+                a, b = (words[p], words[i]) if step > 0 else (words[i], words[p])   # a: the earlier in reading order
+                return not RUN_END.search(a['all']) and not RUN_OPEN.match(b['all'])
             def same(i, step=0):
                 """Word i may join the title: Latin script, in this run, after the last place, and not English (a short
                 particle such as no, to, wa only with a word that is not English beyond it: "Nihon no kenkyū", never "of the").
@@ -396,7 +414,7 @@ def page_places(pno, chars, page_chars=None, italic=None, doc_lang=None, spoken=
                 word beyond it joins, and a particle before it looks past it (#136, report 16 §5)."""
                 if 0 <= i < len(words) and i > last_end and slash(i):   # a lone slash may carry no run of its own: the
                     return True if step == 0 else same(i + step, step)   # word beyond it must be in this run
-                if not (0 <= i < len(words) and i > last_end and words[i]['mcid'] == m0 and latin_word(words[i])): return False
+                if not (0 <= i < len(words) and i > last_end and in_run(i, step) and latin_word(words[i])): return False
                 t = words[i]['text']
                 if t.lower() in GROW_STOP: return False                  # #136's narrower rule: "Tsurezuregusa of Kenkō", "… or …"
                 for n_ in (i - 1, i + 1):                               # a piece of an English word the PDF draws apart ("Se lections",
@@ -432,6 +450,18 @@ def page_places(pno, chars, page_chars=None, italic=None, doc_lang=None, spoken=
         first_m = None
         if grp[0].get('half_cls'): form, cls, first_m = grp[0]['phrase']   # a second half in its own run: its first half's
         if grp[-1].get('hy_to', {}).get('half_cls'): grp[-1]['hy_to']['phrase'] = (form, cls, grp[-1]['mcid'])    # form and classes (#140): one form, two places
+        segs = []                                    # [run, first, last] per run, in reading order: two when growth went on
+        for x in grp:                                # into the next run of the element (proposal 20 (b)), else one
+            for c in x['chars']:
+                m_, k_ = idx[id(c)]
+                if segs and segs[-1][0] == m_: segs[-1][2] = k_
+                elif not segs or m_ not in {s[0] for s in segs}: segs.append([m_, k_, k_])
+        if len(segs) > 1:
+            place(segs[0][0], segs[0][1], segs[0][2], cls, form, all(x.get('italic') for x in grp if x['text']), (k, j))
+            places[-1].update(segments=segs, text=''.join(c['text'] for s in segs for c in runs[s[0]][s[1]:s[2] + 1]), whole=False,
+                              source=sorted(set(places[-1].get('source') or []) | {'grow'}))
+            if first_m is not None: places[-1].update(_first_mcid=first_m, half=True)
+            k = j + 1; continue
         place(w['mcid'], f, l, cls, form, all(x.get('italic') for x in grp if x['text']), (k, j))
         if first_m is not None: places[-1].update(_first_mcid=first_m, half=True)   # step 5: its first half's run may become a passage;
                                                                                 # half: lib/langreq.forms numbers forms by their other places
@@ -460,6 +490,7 @@ def page_places(pno, chars, page_chars=None, italic=None, doc_lang=None, spoken=
     for p in places:
         fm = p.pop('_first_mcid', None)
         if p['mcid'] in passage and not p['class'][0].startswith('cjk:'): continue
+        if any(s[0] in passage for s in p.get('segments') or []): continue    # a title grown into a passage's run: the passage holds it
         if fm in pas: p['form'], p['class'] = pas[fm]['form'], list(pas[fm]['class'])   # #140: a second half of a passage's last word
         out.append(p)
     out += [pas[m] for m in sorted(pas)]
@@ -515,7 +546,7 @@ def book(PL, pages=None, doc_lang=None, spoken=None, grow=False, pdf=None, rules
     grow = grow or 'grow' in rules
     extra = rules & {'looser', 'italic', 'continuation'}
     rules -= {'grow', 'looser', 'italic', 'continuation'}
-    struct = langjoin.Structure(pdf if rules & {'join', 'cross'} else None)
+    struct = langjoin.Structure(pdf if rules & {'join', 'cross'} or grow else None)   # growth reads it too (proposal 20 (b))
     if not struct.ok: rules -= {'join', 'cross'}
     C = collections.Counter()
     unplaced = []
@@ -523,8 +554,9 @@ def book(PL, pages=None, doc_lang=None, spoken=None, grow=False, pdf=None, rules
         R = langjoin.reading(pno, pg.chars, struct, rules) if rules else None
         chars = R.chars if R else pg.chars
         info = {}
+        adj = (lambda a, b, _p=pno: struct.adjacent(_p, a, b)) if grow and R is None and struct.ok else None   # proposal 20 (b): on a
         places, words_ = page_places(pno, chars, lambda p, _c=chars: _c, doc_lang=doc_lang, grow=grow, keep=keep, removed=removed, info=info,
-                                     words0=R.words if R else None, extra=extra,
+                                     words0=R.words if R else None, extra=extra, adjacent=adj,       # page read as its runs only
                                      spoken={'forms': (spoken or {}).get('forms') or {}, 'reading': ((spoken or {}).get('pages') or {}).get(pno)} if spoken else None)
         if R:
             gaptext._LINES.pop(id(chars), None)

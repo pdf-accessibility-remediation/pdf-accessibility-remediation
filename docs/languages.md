@@ -231,6 +231,12 @@ switches once, not mid-title. `LANG_GROW=off` turns it off.
   - Growth crosses a slash only when the word beyond it is not on the English list, and never crosses into another run.
   - A slash with no spaces ("and/or", "1/2", "http://"), a double slash, and a slash before a number or an English word
     change nothing.
+- **Titles broken at a line end:** when an italic title reaches the end of its run, and the next run belongs to the same
+  tag and sits next to it there (each line its own run), growth goes on into it.
+  - The title is one tag across both runs, so the voice switches once.
+  - It needs a clean break: a word ending a phrase (". , ; :" or a closing bracket or quote) or a word opening one stops
+    it, and so do English words, so two titles one after the other stay two.
+  - Pages read through a join of OCR runs are left as they are.
 - **What is ours, and what is the reader's:**
   - The tags' correctness is the pipeline's: verify checks each one, and the AI's answers are approved by a person. On the
     test books, 3 of 1,819 grown titles took in an English word.
