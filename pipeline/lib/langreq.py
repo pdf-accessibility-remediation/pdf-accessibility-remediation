@@ -80,6 +80,8 @@ def forms(places, skip=LOCAL, unknown_italic_only=False, group=False):
         f = by.setdefault(key, {'form': p['form'], 'group': g, 'class': sorted(set(p['class'])), 'places': [], 'italic_any': False, 'roman_any': False,
                                 **({'current': p['current']} if p.get('current') else {})})
         f['places'].append(p); f['italic_any'] |= bool(p.get('italic')); f['roman_any'] |= not p.get('italic')
+        if p.get('latin_list'): f['latin_list'] = True                          # proposal 14: the dictionary marks, from
+        if p.get('latin_phrase') and not f.get('latin_phrase'): f['latin_phrase'] = p['latin_phrase']   # any place (the first phrase)
         if p.get('carried'): f['carried'] = p['carried'] if f.get('carried') in (None, p['carried']) else 'mixed'   # review 12, C
     out = list(by.values())
     out.sort(key=lambda f: (ORDER.index(f['group']) if f['group'] in ORDER else 99, f['places'][0]['page']))
@@ -438,7 +440,9 @@ def to_rows(fs, decisions, tag_conf=('high', 'medium'), readings=None, reasons=N
              **({'carried': f['carried']} if f.get('carried') else {}),
              **({'no_answer': (reasons or {})[f['id']]} if not d and (reasons or {}).get(f['id']) in NO_ANSWER else {}),
              'tag': bool(f['group'] != 'existing' and d.get('lang') and d.get('confidence') in tag_conf),
-             **({'person': True} if needs_person(f, d) else {}), 'places': len(f['places'])}
+             **({'person': True} if needs_person(f, d) else {}), 'places': len(f['places']),
+             **({'latin_list': True} if f.get('latin_list') else {}),                        # proposal 14 (review 15, M1):
+             **({'latin_phrase': f['latin_phrase']} if f.get('latin_phrase') else {})}       # shown by the review page only
         i = len(forms); forms.append(e)
         for p in f['places']:
             rows.append([p['page'], [list(x) for x in p['segments']], i] if p.get('segments') else [p['page'], p['mcid'], p['first'], p['last'], i])
@@ -447,10 +451,13 @@ def to_rows(fs, decisions, tag_conf=('high', 'medium'), readings=None, reasons=N
 def to_decide(forms):
     """The indexes of the version-2 forms a person decides on the review page: those the AI tagged or left to a person;
     when the AI proposed no tag at all, every form, so a person confirms what it left untagged (Patrick, 2026-11-14:
-    never Not Applicable after the step ran). One rule for the review page's rows and the Language Tags line."""
+    never Not Applicable after the step ran). One rule for the review page's rows and the Language Tags line.
+    A form inside a whole known Latin phrase (`latin_phrase`, proposal 14 option A) is added to the tagged-or-person list,
+    so a person decides it; it never shrinks the every-form fallback (review 15, M2)."""
     fs = [f if isinstance(f, dict) else {} for f in forms or []]
     pick = [i for i, f in enumerate(fs) if f.get('tag') or f.get('person')]
-    return pick if pick else list(range(len(fs)))
+    if not pick: return list(range(len(fs)))
+    return sorted(set(pick) | {i for i, f in enumerate(fs) if f.get('latin_phrase')})
 
 def expand(lp):
     """language_parts of any version → the parts to tag, as dicts {page, mcid, first, last, lang, form, text?}: version 1

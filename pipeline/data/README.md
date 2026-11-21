@@ -31,3 +31,36 @@ The common English words that look like romanized Japanese or Chinese (review 08
 - **Builder:** `runs/118-language-tagging/m6/build_common.py` (local only).
 - **Result:** 3,788 words, sha256 `fd316845694c859e413efcb42b45236fb0bce3d6113d7bb072a0ee706e8d37c6`.
 - **Licence:** as above (`english-words.COPYRIGHT`).
+
+## latin-whitaker.json
+
+The Latin forms behind the review page's "Also found in a Latin dictionary." line (#141, proposal 14; `lib/latinlist.py`).
+A row the AI tagged Latin shows the line when every word of its form is a form this data recognizes: a unique form, or
+a stem followed by an ending of the same inflection class. The data decides nothing.
+
+- **Source:** Whitaker's Words by William A. Whitaker, the data files of the mk270/whitakers-words repository on GitHub
+  (`DICTLINE.GEN`, `INFLECTS.LAT`, `UNIQUES.LAT`). The repository's zip of master was downloaded on 2026-11-20:
+  - upstream commit `fb7fb6f04c0c05b68d496a521d8c32abe823e57b` (the zip's comment);
+  - zip sha256 `239ed0a351774489b651688b51ba144df9d604b22cd270f028abf639070efcc8`.
+
+  master moves, so fetch that commit to build again.
+- **How it was built:** `python3 tools/dict_measure.py build DICT_DIR whitaker`, with the zip unpacked in
+  `DICT_DIR/whitaker/src/`. It writes `DICT_DIR/whitaker/_lists/whitaker.json`, copied here unchanged.
+  - The data files are read as plain text; no Whitaker program is run.
+  - Every stem, ending and unique form is normalized by `lib/latinlist.latin_norm` (compatibility forms folded, marks
+    removed, lower case, æ/œ as ae/oe, v as u, j as i).
+  - Participle and supine endings use the verb's stems.
+- **Result:** 55,437 stems, 955 endings and 61 unique forms; 655,121 bytes, sha256
+  `7ef11a6655133771168bb7bfd21a6298de6a9c1f6c1cfabb4900ece14ad109aa`.
+- **Licence:** Whitaker's own notice, in `latin-whitaker.LICENCE` beside this file (the repository's `LICENCE.txt`,
+  copied unchanged): "Permission is hereby freely given for any and all use of program and data."
+
+## latin-phrases.txt
+
+The Latin phrases behind the review page's "Part of the Latin phrase …" line (#141, proposal 14; `lib/latinlist.py`). A
+form the AI left untagged shows the line when one of its places sits inside a whole phrase of this list.
+
+- **Source:** written for #141's measurement (`tools/dict_measure.PHRASES`), not taken from a source. Its one French entry
+  ("raison d'") is left out: 55 phrases.
+- **Result:** sha256 `387f199928575cd7938a2a3ba9cdbfb689b45239c343abdcdd482cfefbc98584`. Lines starting with `#` are
+  notes.

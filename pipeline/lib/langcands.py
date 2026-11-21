@@ -498,8 +498,8 @@ def book(PL, pages=None, doc_lang=None, spoken=None, grow=False, pdf=None, rules
     pages' words that don't end in a hyphen (whole_spellings: URLs and bibliography entries count); pass 2 reads again
     only the pages with a removed spelling the book prints whole. With pages=…, the whole spellings come from those pages
     only. Places from a joined reading carry `source` (join, inrun, cross) and, when they span runs, `segments`."""
-    from lib import langjoin, gaptext
-    asked = sorted(set(RULES if rules is None else rules) | ({'grow'} if grow else set()))
+    from lib import langjoin, gaptext, latinlist
+    asked =sorted(set(RULES if rules is None else rules) | ({'grow'} if grow else set()))
     rules = set(RULES if rules is None else rules)
     grow = grow or 'grow' in rules
     extra = rules & {'looser', 'italic', 'continuation'}
@@ -527,6 +527,7 @@ def book(PL, pages=None, doc_lang=None, spoken=None, grow=False, pdf=None, rules
                     unplaced.append({'page': pno, 'form': w.get('form') or w['text'], 'reason': why, 'mcids': ms})
         for p in places:
             if grow and 'title' in p['class']: p['source'] = sorted(set(p.get('source') or []) | {'grow'})
+            p.update(latinlist.mark(p, words_))   # the review page's dictionary marks, from the words this reading made (review 15, M1)
         return places, words_
     by_page, words, gone = {}, {}, {}
     for pno, pg in enumerate(PL.pages, 1):

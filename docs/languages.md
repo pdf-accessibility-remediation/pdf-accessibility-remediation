@@ -334,7 +334,8 @@ counted here: it is in "Not placed by the executor".
 - **Not Reviewed (N word forms to decide on the review page)** until a person has decided every form;
 - **Not Reviewed (N word forms the AI left untagged to confirm on the review page)** when the step ran but the AI
   proposed no tag at all: every form is then a row under "Left Untagged by the AI", for a person to confirm or tag,
-  so the line never reads Not Applicable after the step ran;
+  so the line never reads Not Applicable after the step ran. A form inside a whole known Latin phrase that the AI left
+  untagged is also a row, and counts here (see [Dictionary Marks](#dictionary-marks));
 - **Approved (reviewer on date)** when none is left.
 - Words the finder could not place (see "Words not tagged") add "· N words not tagged" to the details of any of these,
   without changing the value. A book with no word forms to decide but some words not tagged reads **Not Applicable (no
@@ -377,6 +378,37 @@ pass accepted only inside a multi-word Latin span, a stoplist and a review sheet
 languages. **Nothing is adopted: no list decides a word form in the pipeline.** `pipeline/tools/dict_measure.py` runs the
 measurement (`build` makes plain word lists from each download; `run` applies the workflow to a set of books' candidate
 forms). The downloads stay outside the repository, one folder per source:
+
+## Dictionary Marks
+
+From #141's measurement (proposal 14), the review page's "Languages" rows may show one of two lines. **Both are facts
+beside the AI's answer. Neither changes the answer, the default choice or "Approve All Shown"; nothing about them is sent
+to the AI.** Latin only: no line appears for any other language.
+
+| Line | Shown when | What a person does |
+|---|---|---|
+| "Also found in a Latin dictionary." | the AI tagged the form Latin, and every word of it is a Latin form in Whitaker's Words | decides the row as usual; the line is a second source agreeing |
+| "Part of the Latin phrase "prima facie", used in English text. Decide whether it should be tagged as Latin." | the AI left the form untagged (English, a name, or no answer), and one of its places sits inside a whole phrase of the list | decides: "Leave Untagged" (the default) or "Change Language" to Latin |
+
+- **A Latin row the list doesn't hold shows nothing.** These are mostly titles and names; a missing line is not a warning.
+- **Option A (Patrick, 2026-11-20):** a phrase form the AI left untagged becomes a row under "Left Untagged by the AI"
+  and counts in "Language Tags" until it is decided. When the AI tagged nothing at all, every form is a row anyway.
+- **Only phrases whose words the finder already sends can be marked.** "per se", "vice versa", "ad hoc" and "status quo"
+  are English-list words, so they are never candidates.
+- **Whether a Latin phrase in English text is tagged is a person's call:** WCAG 3.1.2 exempts phrases that have become
+  part of the vernacular. The line shows the fact; the person decides.
+- **Where it comes from:**
+  - The finder (`lib/langcands.book`) records `latin_list` and `latin_phrase` on each place, from the same page words it
+    reads; `lib/latinlist.py` does the matching.
+  - The language step carries both onto the work order's forms.
+  - The review page decides which line to show from them and the AI's answer.
+- **The data:**
+  - `pipeline/data/latin-whitaker.json`: Whitaker's Words, upstream commit `fb7fb6f`, under its own permissive notice in
+    `latin-whitaker.LICENCE`;
+  - `pipeline/data/latin-phrases.txt`: 55 phrases written for the measurement.
+
+  See `pipeline/data/README.md` for the sources, checksums and how to build them again.
+- **Runs whose audit predates this change** have neither fact, so no line shows.
 
 | Source | For | Licence |
 |---|---|---|

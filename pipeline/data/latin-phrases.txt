@@ -1,0 +1,57 @@
+# Latin phrases used in English text, one per line, matched whole (lib/latinlist.phrase_at). Written for #141's
+# measurement (tools/dict_measure.PHRASES, less its one French entry), not taken from a source. See README.md.
+in vitro
+in vivo
+in situ
+a priori
+a posteriori
+per se
+ad hoc
+magna cum laude
+summa cum laude
+cum laude
+et cetera
+inter alia
+bona fide
+de facto
+de jure
+ad infinitum
+ad nauseam
+ex post facto
+ex officio
+in toto
+in memoriam
+mutatis mutandis
+pro forma
+quid pro quo
+sine qua non
+status quo
+vice versa
+terra nullius
+terra incognita
+ipso facto
+prima facie
+sui generis
+per capita
+per annum
+post mortem
+ante bellum
+non sequitur
+alma mater
+curriculum vitae
+modus operandi
+modus vivendi
+tabula rasa
+lingua franca
+magnum opus
+deus ex machina
+persona non grata
+habeas corpus
+ad hominem
+mea culpa
+carpe diem
+nota bene
+in absentia
+pro bono
+in extremis
+a fortiori

@@ -34,15 +34,8 @@ ABBREVIATIONS = {'et al.': r'\bet al\.', 'ibid.': r'\bibid\.', 'op. cit.': r'\bo
 LANGS_OTHER = ('haw', 'ja-Latn', 'ko-Latn', 'zh-Latn', 'tl', 'ja', 'zh', 'ko')
 
 
-def latin_norm(w):
-    """A word as Latin lists are matched: letters only, no marks (macrons, breves), lower case, v as u and j as i
-    (LatinCy and many lists write uitro, iam), æ and œ as ae and oe. '' (no match) for a word with any other letter outside
-    a-z: report 12 dropped such letters, so IPA forms ("diŋ", "æs") matched short Latin words ("di", "s")."""
-    w = unicodedata.normalize('NFD', w or '')
-    w = ''.join(ch for ch in w if not unicodedata.combining(ch)).lower().replace('æ', 'ae').replace('œ', 'oe')
-    if any(ch.isalpha() and not 'a' <= ch <= 'z' for ch in w): return ''   # a letter Latin doesn't write (ŋ, ɪ, ǝ, ø):
-    w = re.sub(r"[^a-z]", '', w)                                         # not Latin; never folded onto a shorter word
-    return w.replace('v', 'u').replace('j', 'i')
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from lib.latinlist import latin_norm, whitaker_match  # noqa: E402  one copy, shared with the review page's marks (review 15, L2)
 
 
 def plain(w):
@@ -73,23 +66,6 @@ def whitaker_parse(dictline_lines, inflect_lines):
         end = '' if f[k + 1] == '0' else (f[k + 2] if k + 2 < len(f) else '')
         ends[(pos, cls)].add(latin_norm(end))
     return stems, ends
-
-
-def whitaker_match(word, stems, ends, uniques=frozenset()):
-    """A Latin form Whitaker's data recognizes: a unique form, or a stem of some class followed by an ending of that class."""
-    w = latin_norm(word)
-    if not w: return False
-    if w in uniques: return True
-    for key, es in ends.items():
-        if key[1] == '0':                                   # class 0: every class of that part of speech
-            if (key[0], '*') not in stems: stems[(key[0], '*')] = set().union(*[v for k_, v in stems.items() if k_[0] == key[0] and k_[1] != '*'])
-            ss = stems[(key[0], '*')]
-        else: ss = stems.get(key)
-        if not ss: continue
-        for e in es:
-            if w.endswith(e) and len(w) > len(e) and w[:len(w) - len(e)] in ss: return True
-            if e == '' and w in ss: return True
-    return False
 
 
 # ---------------------------------------------------------------- the sponsors' span rule and phrase pass
