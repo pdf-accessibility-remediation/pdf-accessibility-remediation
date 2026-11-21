@@ -240,6 +240,7 @@ def check_language_parts(wo, pages, places=None):
 
 FORM_KEYS = {'key', 'form', 'group', 'class', 'lang', 'confidence', 'why', 'evidence', 'current', 'tag', 'person', 'places', 'context',
              'decided', 'note', 'rule', 'reading', 'group_approval', 'no_answer',
+             'carried',                         # where a publisher's tag sits (review 12, C of #118): to_rows writes it (review 17 §4)
              'latin_list', 'latin_phrase'}      # proposal 14: the review page's dictionary marks (review 15, M1)
 RULES = {'reading'}                                    # lib/hanreading.RULE: the one local rule (#123)
 from lib.langreq import NO_ANSWER   # why a form has no AI answer (#137); one list, so a new reason is never dropped here (#151, review 22 M3)
