@@ -154,6 +154,8 @@ Two options change what is sent (`language_run.json` records them under `options
   `LANG_GROW` is a terminal setting: the app can't set it, so the app always grows titles (the code's default).
   English function words (*of*, *or*, *and*, *the*, *by*, *for*, *with*, *from*, *at*) never join a title, nor does a
   word that joins its neighbour into an English word (an English word the PDF draws in pieces: "Se lections").
+  A spaced " / " between romanized pieces of a verse line doesn't stop a title, when the word beyond it isn't English
+  (see [Language tags](languages.md#running-it)).
 - `LANG_GROUP=on` (off by default): adjacent single Chinese characters are one word form.
 
 ### OCR languages

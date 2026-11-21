@@ -225,6 +225,12 @@ See [OCR words](ocr-words.md#pages-read-whole).
 
 **Title growth is on by default** (#136, Patrick, 2026-11-20): a title in another language is tagged whole, so the voice
 switches once, not mid-title. `LANG_GROW=off` turns it off.
+- **Verse with slashes:** a spaced " / " between romanized pieces of a verse line ("tamayura no / tsuyu mo namida mo /
+  todomarazu") doesn't stop growth.
+  - The line is one tag, slashes inside, and a particle before a slash ("no /") is inside it rather than read in English.
+  - Growth crosses a slash only when the word beyond it is not on the English list, and never crosses into another run.
+  - A slash with no spaces ("and/or", "1/2", "http://"), a double slash, and a slash before a number or an English word
+    change nothing.
 - **What is ours, and what is the reader's:**
   - The tags' correctness is the pipeline's: verify checks each one, and the AI's answers are approved by a person. On the
     test books, 3 of 1,819 grown titles took in an English word.

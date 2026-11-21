@@ -388,9 +388,14 @@ def page_places(pno, chars, page_chars=None, italic=None, doc_lang=None, spoken=
             j += 1                                   # a phrase ends at the second half of a broken word (#140): its form stays the first half's
         if grow:                                     # a title's whole extent (review 06, M4): the voice switches once, not mid-title
             m0 = w['mcid']
+            def slash(i): return 0 <= i < len(words) and words[i]['all'].strip() == '/'
             def same(i, step=0):
                 """Word i may join the title: Latin script, in this run, after the last place, and not English (a short
-                particle such as no, to, wa only with a word that is not English beyond it: "Nihon no kenkyū", never "of the")."""
+                particle such as no, to, wa only with a word that is not English beyond it: "Nihon no kenkyū", never "of the").
+                A spaced " / " (a verse line's break: "tamayura no / tsuyu mo namida mo") is transparent: it joins when the
+                word beyond it joins, and a particle before it looks past it (#136, report 16 §5)."""
+                if 0 <= i < len(words) and i > last_end and slash(i):   # a lone slash may carry no run of its own: the
+                    return True if step == 0 else same(i + step, step)   # word beyond it must be in this run
                 if not (0 <= i < len(words) and i > last_end and words[i]['mcid'] == m0 and latin_word(words[i])): return False
                 t = words[i]['text']
                 if t.lower() in GROW_STOP: return False                  # #136's narrower rule: "Tsurezuregusa of Kenkō", "… or …"
@@ -398,10 +403,12 @@ def page_places(pno, chars, page_chars=None, italic=None, doc_lang=None, spoken=
                     if 0 <= n_ < len(words) and words[n_]['text'] and t.isalpha() and words[n_]['text'].isalpha():   # "Japa nese")
                         if in_english(words[n_]['text'] + t if n_ < i else t + words[n_]['text']) and not (in_english(t) and in_english(words[n_]['text'])): return False
                 if not in_english(t) or (t[:1].isupper() and romanized_shape(t) and not common_romanized(t)): return True
-                return step != 0 and len(t) <= 2 and t.islower() and same(i + step, step) and not in_english(words[i + step]['text'])
+                nx = i + step                                           # the word beyond, past any slash
+                while slash(nx): nx += step
+                return step != 0 and len(t) <= 2 and t.islower() and 0 <= nx < len(words) and same(nx, step) and not in_english(words[nx]['text'])
             if all(is_italic(x) for x in words[k:j + 1]):                    # the italic run
-                while same(k - 1, -1) and is_italic(words[k - 1]): k -= 1
-                while same(j + 1, 1) and is_italic(words[j + 1]): j += 1
+                while same(k - 1, -1) and (is_italic(words[k - 1]) or slash(k - 1)): k -= 1   # a slash is often set in roman
+                while same(j + 1, 1) and (is_italic(words[j + 1]) or slash(j + 1)): j += 1
             else:
                 a = next((i for i in range(k, max(last_end, k - 10), -1) if words[i]['all'].lstrip()[:1] in '“"«'), None)   # inside quotes
                 b = next((i for i in range(j, min(len(words), j + 10)) if words[i]['all'].rstrip(' ,.;:')[-1:] in '”"»'), None)
@@ -409,19 +416,23 @@ def page_places(pno, chars, page_chars=None, italic=None, doc_lang=None, spoken=
                 elif j + 1 < len(words) and words[j + 1]['text'] and _is_cjk(words[j + 1]['text']):    # the romanized words before a Han gloss
                     while same(k - 1, -1) and len(words[k:j + 1]) < 8 and words[k - 1]['all'].rstrip()[-1:] not in '.;:,)':
                         k -= 1
-            for x in words[k:j + 1]:
-                if not x.get('cls'): x['cls'] = ['title']; x.setdefault('form', x['text']); x.setdefault('italic', is_italic(x))
+            while k < j and slash(j): j -= 1                             # a title never starts or ends on a slash
+            while k < j and slash(k): k += 1
+            for n_ in range(k, j + 1):
+                x = words[n_]
+                if not x.get('cls') and not slash(n_): x['cls'] = ['title']; x.setdefault('form', x['text']); x.setdefault('italic', is_italic(x))
         last_end = j
         grp = words[k:j + 1]
         f = idx[id(grp[0]['chars'][0])][1]; l = idx[id(grp[-1]['chars'][-1])][1]
-        form = ' '.join(x.get('form', x['text']) for n_, x in enumerate(grp) if n_ == 0 or 'joined_from' not in x)   # a rejoined half once
+        form = ' '.join(x.get('form', x['text']) for n_, x in enumerate(grp)
+                        if (n_ == 0 or 'joined_from' not in x) and (x.get('form') or x['text']))   # a rejoined half once; a slash never
         cls = [c for x in grp for c in x['cls']]
         if grp[0].get('half_cls') and not grp[0].get('phrase'):     # its first half has no place (drawn across two runs: no mcid):
             k = j + 1; continue                                     # neither has, as before #140, never half a word tagged
         first_m = None
         if grp[0].get('half_cls'): form, cls, first_m = grp[0]['phrase']   # a second half in its own run: its first half's
         if grp[-1].get('hy_to', {}).get('half_cls'): grp[-1]['hy_to']['phrase'] = (form, cls, grp[-1]['mcid'])    # form and classes (#140): one form, two places
-        place(w['mcid'], f, l, cls, form, all(x.get('italic') for x in grp), (k, j))
+        place(w['mcid'], f, l, cls, form, all(x.get('italic') for x in grp if x['text']), (k, j))
         if first_m is not None: places[-1].update(_first_mcid=first_m, half=True)   # step 5: its first half's run may become a passage;
                                                                                 # half: lib/langreq.forms numbers forms by their other places
         k = j + 1
