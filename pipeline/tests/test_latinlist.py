@@ -162,7 +162,9 @@ def test_the_page_shows_each_line_only_where_it_belongs():
              {'ai': None, 'latin_phrase': 'Prima <Facie>'},                           # the phrase note, quoted as printed (escaped)
              {'ai': 'la', 'latin_phrase': 'prima facie'},                             # tagged Latin: the phrase note is not shown
              {'ai': None, 'current': 'fr', 'latin_phrase': 'prima facie'},           # a publisher's tag: not shown
-             {'ai': None, 'latin_list': True}]                                        # untagged, no phrase: nothing
+             {'ai': None, 'latin_list': True},                                        # untagged, no phrase: nothing
+             {'ai': None, 'confidence': 'low', 'guess': 'la', 'latin_phrase': 'bona fide'},    # the AI's low guess is Latin (review 17)
+             {'ai': None, 'confidence': 'low', 'guess': 'it', 'latin_phrase': 'bona fide'}]    # a low guess of another language
     code = (chunk('const esc = ', '\n') + '\n' + chunk('function langDict(', 'function langRowHtml(')
             + '\nconst cases = ' + json.dumps(cases) + ';\n(typeof print === "function" ? print : console.log)(JSON.stringify(cases.map(langDict)));')
     out = subprocess.run(run + [code], capture_output=True, text=True, timeout=30)
@@ -170,5 +172,7 @@ def test_the_page_shows_each_line_only_where_it_belongs():
     got = [re.sub(r'<[^>]+>', '', x) for x in json.loads(out.stdout)]
     assert got == ['Also found in a Latin dictionary.', '', '',
                    'Part of the Latin phrase "Prima &lt;Facie&gt;", used in English text. Decide whether it should be tagged as Latin.',
-                   '', '', '']
+                   '', '', '',
+                   'Part of the Latin phrase "bona fide". Decide whether it should be tagged as Latin.',
+                   'Part of the Latin phrase "bona fide", used in English text. Decide whether it should be tagged as Latin.']
     assert "langDict(r) + (r.snippet ?" in page                                          # drawn under the AI's line in every row

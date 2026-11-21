@@ -388,7 +388,7 @@ to the AI.** Latin only: no line appears for any other language.
 | Line | Shown when | What a person does |
 |---|---|---|
 | "Also found in a Latin dictionary." | the AI tagged the form Latin, and every word of it is a Latin form in Whitaker's Words | decides the row as usual; the line is a second source agreeing |
-| "Part of the Latin phrase "prima facie", used in English text. Decide whether it should be tagged as Latin." | the AI left the form untagged (English, a name, or no answer), and one of its places sits inside a whole phrase of the list | decides: "Leave Untagged" (the default) or "Change Language" to Latin |
+| "Part of the Latin phrase "prima facie", used in English text. Decide whether it should be tagged as Latin." | the AI left the form untagged (English, a name, or no answer), and one of its places sits inside a whole phrase of the list. Where the AI's own low-confidence guess is Latin, the line leaves out "used in English text" | decides: "Leave Untagged" (the default) or "Change Language" to Latin |
 
 - **A Latin row the list doesn't hold shows nothing.** These are mostly titles and names; a missing line is not a warning.
 - **Option A (Patrick, 2026-11-20):** a phrase form the AI left untagged becomes a row under "Left Untagged by the AI"

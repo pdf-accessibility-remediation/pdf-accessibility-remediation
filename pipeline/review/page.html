@@ -1783,8 +1783,10 @@ function langUntagged(r) {
 function langDict(r) {
   const latin = !!r.ai && String(r.ai).split('-')[0].toLowerCase() === 'la';
   if (latin && r.latin_list) return '<div class="lang-meta lang-dict">Also found in a Latin dictionary.</div>';
+  // the AI's own low-confidence guess is Latin: "used in English text" would pull the other way (review 17; Patrick, 2026-11-20)
+  const guessLatin = r.confidence === 'low' && !!r.guess && String(r.guess).split('-')[0].toLowerCase() === 'la';
   if (!r.ai && !r.current && r.latin_phrase) return '<div class="lang-meta lang-dict">Part of the Latin phrase "' + esc(r.latin_phrase) +
-    '", used in English text. Decide whether it should be tagged as Latin.</div>';
+    '"' + (guessLatin ? '' : ', used in English text') + '. Decide whether it should be tagged as Latin.</div>';
   return '';
 }
 function langRowHtml(r) {
