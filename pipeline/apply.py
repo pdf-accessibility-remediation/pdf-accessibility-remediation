@@ -1167,14 +1167,14 @@ def tag_run(pno, m, lang, text=None):
     else:
         i = mc_entry_index(o, pno, m, stream_key(f))
         if i is None: reject(f'lang {PG(pno)} m{m}', 'entry not found'); return
-        ks = kids(o)
-        _LANG_UNDO[(pno, m)] = ('wrap', o, ks[i], f)
+        ks = kids(o); old = ks[i]
         if f is None:
             sp = new_elem('Span', o, [m if isinstance(ks[i], int) else ks[i]], pg=pno if isinstance(ks[i], int) else None, Lang=pikepdf.String(lang))
             if isinstance(ks[i], int) and eff_pg.get(o.objgen) != pno: tree_set(sp, '/K', pikepdf.Array([mcr(pno, m)]))
         else:                                       # an /MCR … /Stm kid moves under the Span, which names the page (#165)
             sp = new_elem('Span', o, [ks[i]], pg=pno, Lang=pikepdf.String(lang))
         ks[i] = sp; set_kids(o, ks); pt_set(pno, m, sp, f); index_set(pno, m, sp, f); eff_pg[sp.objgen] = pno
+        _LANG_UNDO[(pno, m)] = ('wrap', o, (old, sp), f)  # the Span itself: links may since own the run inside it (review 15, L1)
         ok(f'language: {lang} Span')
     _LANG_WHOLE.append((pno, m)); LANG['whole'] += 1
     LANG['spans'].append({'page': pno, 'mcid': m, 'lang': lang, 'text': text if text is not None else mc_text(pno, m), 'whole': True})
@@ -3650,12 +3650,12 @@ def fix_language_parts():
                 if x is None: del o['/Lang']
                 else: o.Lang = pikepdf.String(x)
             else:
-                sp = elem_of(pno, m); ks = kids(o)
-                i = next((j for j, k in enumerate(ks) if is_elem(k) and sp is not None and same(k, sp)), None)
+                old, sp = x; ks = kids(o)              # sp: the Span tag_run wrote, not the run's owner now (review 15, L1)
+                i = next((j for j, k in enumerate(ks) if is_elem(k) and same(k, sp)), None)
                 if i is None:                          # moved since (links, section moves): it stays where it is, without its
-                    if sp is not None and '/Lang' in sp: del sp['/Lang']   # language, and is refused like the others (review 11, L1)
+                    if '/Lang' in sp: del sp['/Lang']  # language, and is refused like the others (review 11, L1)
                 else:
-                    ks[i] = x; set_kids(o, ks); pt_set(pno, m, o, f); index_set(pno, m, o, f)
+                    ks[i] = old; set_kids(o, ks); pt_set(pno, m, o, f); index_set(pno, m, o, f)
             for sp_ in [r for r in LANG['spans'] if r.get('whole') and r['page'] == pno and r['mcid'] == m]:
                 LANG['spans'].remove(sp_); LANG['whole'] -= 1; lang_refuse(pno, m, why, sp_)
             del _LANG_UNDO[(pg_, m)]

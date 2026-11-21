@@ -325,3 +325,6 @@ def test_the_single_use_form_list_belongs_to_the_pdf_it_was_asked_for(tmp_path):
         assert len(langjoin.single_use_forms(pa).get(1, [])) == 1
         assert langjoin.single_use_forms(pb) == {}
         assert len(langjoin.single_use_forms(pa).get(1, [])) == 1
+        # the cache holds the PDF object itself, so a later PDF given a closed one's id() is never answered from it
+        # (review 15: with both PDFs open their ids differ, so the lines above passed on the id-keyed cache too)
+        assert langjoin._SINGLE.get('pdf') is pa
