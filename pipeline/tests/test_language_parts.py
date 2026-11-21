@@ -480,3 +480,19 @@ def test_the_new_language_tags_are_written_and_checked(tmp_path):
     assert not lp['refused'] and sorted(s['lang'] for s in lp['spans']) == ['ban', 'bcl', 'jv-Latn'], lp
     assert lg['spans_written'] == 3 and lg['all_match'], lg
     assert [langtag.name(t) for t in ('bcl', 'ban', 'jv-Latn')] == ['Central Bikol', 'Balinese', 'Javanese (Latin script)']
+
+def test_a_one_byte_curly_quote_before_the_split_counts_as_one_character(tmp_path):
+    """Review 19 §5 (cadaverous PDF 260): a single-byte font whose code 0x93 draws one glyph that reads as one character
+    ("“", WinAnsi), before the split points. The code count matches the characters (split_run's expect_n accepted), both
+    places are tagged, and verify matches them. (PDF 260's two refusals came from pdfium placing one glyph on another
+    sub-pixel once a Tj is cut into several, at verify's scale: not from the count, and not testable with a stock font.)"""
+    runs = [{'body': ['(Yamamoto, \\223Kokawadera engi emaki\\224 to ky\\363setsu, 480.) Tj']}]
+    text = 'Yamamoto, “Kokawadera engi emaki” to kyósetsu, 480.'
+    a, b = text.index('engi emaki'), text.index('kyósetsu')
+    parts = [part(1, 0, a, a + len('engi emaki') - 1, 'ja-Latn'), part(1, 0, b, b + len('kyósetsu') - 1, 'ja-Latn')]
+    src, out, log, v = apply_verify(tmp_path, runs, parts)
+    lp = log['language_parts']
+    assert lp['split'] == 2 and not lp['refused'], lp
+    assert sorted(s['text'] for s in lp['spans']) == ['engi emaki', 'kyósetsu']
+    assert v['language']['all_match'] and v['language']['spans_written'] == 2
+    assert v['pixel_pages_differing'] == [] and v['text_pages_changed'] == []
