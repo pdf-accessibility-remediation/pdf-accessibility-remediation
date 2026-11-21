@@ -269,3 +269,15 @@ def test_a_first_page_kid_between_the_phrase_runs_refuses_the_phrase_only(tmp_pa
 
 
 def LANG_RESTORED(log): return log['language_parts'].get('restored_pages')
+
+
+def test_a_span_over_whole_runs_with_nothing_to_edit_in_the_marks_is_written(tmp_path):
+    """Proposal 20 (b), found by its test 6: three whole runs whose marks carry no /Lang need only the tag tree's edit, so
+    no page's content changes. The late pass rendered an empty list of pages and pdfium failed to open it, so the step
+    failed and nothing was tagged. Now the Span is written and verify matches."""
+    plain = [{k: v for k, v in r.items() if k != 'lang'} for r in OCR]
+    src, out, log, v = apply_verify(tmp_path, [plain], wo_of(PHRASE))
+    assert not log.get('failed'), log.get('failed')
+    assert log['language_parts']['phrases'] == 1 and spans(out) == [('haw', [1, 2, 3], 'P')]
+    assert v['language']['all_match'] and v['language']['spans_written'] == 1
+    assert v['pixel_pages_differing'] == [] and v['text_pages_changed'] == [] and v['index']['dangling'] == 0

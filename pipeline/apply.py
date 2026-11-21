@@ -3459,7 +3459,8 @@ def _render_pages(items, texts=None):
     is replaced in the scratch page's resources only (#165): the real file is untouched. texts: a list to fill with each
     page's text as pdfium reads it, invisible text included (review 09, R7)."""
     import io, pypdfium2 as pdfium
-    scratch = pikepdf.new()
+    if not items: return []                       # no page's content changes (a Span over whole runs, nothing in the marks to
+    scratch = pikepdf.new()                       # edit): pdfium can't open a PDF with no pages (proposal 20 (b)'s test 6)
     for it in items:
         page, contents = it[0], it[1]
         forms = it[2] if len(it) > 2 and it[2] else {}
