@@ -200,6 +200,14 @@ def sent_contexts(reqs, ctx=None):
                 out[fid] = ' '.join(keep(left, size, True) + ['[' + m.group(2) + ']'] + keep(right, size, False))
     return out
 
+def mark_text(p, pw):
+    """A place's text inside its [[id|…]] mark: its page words joined by spaces, as place_text shows it (review 22, L2: a
+    place across runs, or words drawn with no space character, read "LaMaisonChinoise" from p['text'], which stays the
+    characters verify checks). p['text'] when the words aren't there or hold a mark's own brackets or bar."""
+    if p.get('w0') is None or p.get('w1') is None or not 0 <= p['w0'] <= p['w1'] < len(pw): return p['text']
+    t = ' '.join(pw[p['w0']:p['w1'] + 1]).strip()
+    return t if t and not re.search(r'[\[\]|]', t) else p['text']
+
 def _snippets(items, words, ctx=None):
     """Snippets for these (form, place) pairs: the context (span()) around each shown place, merged where they meet on a
     page when ctx['join'], each candidate inside marked [[id|text]] (every candidate of this request found in it, not only
@@ -209,10 +217,9 @@ def _snippets(items, words, ctx=None):
     marks = collections.defaultdict(list)
     for fid, p, shown in items:
         if p.get('w0') is None: continue
-        marks[p['page']].append((p['w0'], p['w1'], fid, p['text']))
-        if shown:
-            pw = words.get(str(p['page'])) or []
-            if p['w0'] < len(pw): win[p['page']].append(span(pw, p['w0'], p['w1'], c))
+        pw = words.get(str(p['page'])) or []
+        marks[p['page']].append((p['w0'], p['w1'], fid, mark_text(p, pw)))
+        if shown and p['w0'] < len(pw): win[p['page']].append(span(pw, p['w0'], p['w1'], c))
     out = []
     for page, ws in sorted(win.items()):
         ws.sort(); merged = []
