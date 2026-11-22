@@ -1567,6 +1567,7 @@ def language_parts(parts):
             lang_refuse(pno, m, 'rotated or vertical text: whole pieces of text only', p); continue
         _LANG_SPLITS[(pno, m)].append({**p, 'text': text})
     return done
+_REWRITTEN_PAGES = {}
 def plan_phrase(p, explicit, doc_lang, spec):
     """A place across several runs (#150, #161; language_parts version 3), checked before any edit. Nothing is written into
     the tree here (review 04 H3a): the place is recorded in _LANG_PHRASES, its partial first or last segment queued for a
@@ -1581,7 +1582,9 @@ def plan_phrase(p, explicit, doc_lang, spec):
         lang_refuse(pno, m0, why, {'text': p.get('form'), 'lang': lang}); LANG['phrases_refused'] = LANG.get('phrases_refused', 0) + 1
         return None
     if not (1 <= pno <= len(pages)): return no('page not in the book')
-    if pno in {pidx[k] for k, v in _REWRITES.items() if v and k in pidx}: return no('page text rewritten from OCR: whole pieces of text only')
+    if 'pages' not in _REWRITTEN_PAGES:            # #167: once (the OCR rewrites are all made before the language step), not per phrase
+        _REWRITTEN_PAGES['pages'] = {pidx[k] for k, v in _REWRITES.items() if v and k in pidx}
+    if pno in _REWRITTEN_PAGES['pages']: return no('page text rewritten from OCR: whole pieces of text only')
     os_, texts, fs_ = [], [], {}
     for m, a, b in segs:
         cs = run_chars(pno, m)
