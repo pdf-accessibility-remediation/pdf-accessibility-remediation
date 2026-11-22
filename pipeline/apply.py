@@ -484,6 +484,7 @@ def form_run_why(r):
     if sk == plumb_fix.DIRECT: return 'text inside a form that was not read'
     f = form_of(pno, sk)
     if f is None: return 'the text is drawn inside a nested form'
+    if '/BBox' not in f: return 'text inside a form that was not read'      # pdfminer skips a form with no /BBox (review 02, stage A)
     return _form_check(pno, m, f)
 def op_artifacts(spec):
     elems = []
@@ -4041,7 +4042,7 @@ def fix_language_parts():
     before = dict(zip(changed, _render_pages([(pages[p - 1], edited[p][0]) for p in changed], texts=bt)))
     after = dict(zip(changed, _render_pages([item(p, edited[p][1], edited[p][0]) for p in changed], texts=at)))
     before_text, after_text = dict(zip(changed, bt)), dict(zip(changed, at))
-    LANG['pages_checked'] = len(changed)
+    LANG['pages_checked'] = LANG.get('pages_checked', 0) + len(changed)   # summed over #172's second, smaller pass
     hook = os.environ.get('APPLY_TEST_PIXEL_FAIL_RUN', '')          # tests only: 'page:mcid', a split of that run "looks different"
     hook = tuple(int(x) for x in hook.split(':')) if re.fullmatch(r'\d+:\d+', hook) else None
     page_hook = os.environ.get('APPLY_TEST_PIXEL_FAIL_PAGE', '')    # tests only: that page "looks different" whatever is on it (review 09, L3)

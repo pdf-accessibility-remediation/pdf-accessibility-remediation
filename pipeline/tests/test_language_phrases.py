@@ -331,6 +331,7 @@ def test_172_a_grown_place_refused_at_the_late_check_is_tried_again_as_its_piece
     lp = log['language_parts']
     assert sorted(m for _l, ms, _p in spans(out) for m in ms) == [1, 2], (spans(out), lp)
     assert lp['refused'] == {'the page would look different': 1} and [x['when'] for x in lp['fallback']] == ['late check']
+    assert lp['pages_checked'] == 2                     # the page checked in each pass, summed (not the second pass's alone)
     assert v['language']['all_match'] and v['pixel_pages_differing'] == [] and v['text_pages_changed'] == []
 
 
