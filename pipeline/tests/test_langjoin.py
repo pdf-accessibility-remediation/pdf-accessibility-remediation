@@ -22,7 +22,7 @@ def test_a_phrase_across_runs_on_an_ocr_page_is_one_place_with_segments(tmp_path
     p = place(c, 'velunka toramio pasquet')
     assert p['segments'] == [[1, 0, 7], [2, 0, 7], [3, 0, 6]] and p['mcid'] == 1 and p['first'] == 0
     assert p['source'] == ['join'] and p['text'].split() == ['velunka', 'toramio', 'pasquet']
-    assert c['reading'] == {'rules': ['cross', 'inrun', 'join'], 'asked': ['cross', 'inrun', 'join'], 'parents': 'ok'} and c['version'] == 2
+    assert c['reading'] == {'rules': ['cross', 'inrun', 'italic', 'join'], 'asked': ['cross', 'inrun', 'italic', 'join'], 'parents': 'ok'} and c['version'] == 2
     today = find(tmp_path, [OCR], rules=set(), name='t.pdf')
     assert forms(today) == ['pasquet', 'toramio', 'velunka'] and not any(p.get('segments') for p in today['places'])
 
@@ -115,9 +115,9 @@ def test_a_drop_cap_is_read_whole_and_never_placed(tmp_path):
 
 
 def test_rules_from_the_environment():
-    assert langcands.rules_from_env('')[0] == {'join', 'inrun', 'cross'} and langcands.rules_from_env('')[1] == ''
+    assert langcands.rules_from_env('')[0] == {'join', 'inrun', 'cross', 'italic'} and langcands.rules_from_env('')[1] == ''
     r, note = langcands.rules_from_env('-inrun,-cross')
-    assert r == {'join'} and note == 'LANG_FINDER_RULES=-inrun,-cross'
+    assert r == {'join', 'italic'} and note == 'LANG_FINDER_RULES=-inrun,-cross'
     assert langcands.rules_from_env('join,cross', grow=True)[0] == {'join', 'cross', 'grow'}
 
 
@@ -143,7 +143,7 @@ def test_growth_reads_a_romanized_title_whole_and_no_common_word_joins_it(tmp_pa
     long_ = [[{'text': 'These are made up words from a book: ', 'font': 'F1'}, {'text': 'Dai Nihon kokiroku', 'font': 'F6'}, {'text': ' in China', 'font': 'F6'},
               {'text': ' and more words come here.', 'font': 'F1'}]]
     off = find(tmp_path, long_, name='o.pdf')
-    assert forms(off) == ['kokiroku']
+    assert forms(off) == ['Dai', 'kokiroku']          # "Dai" from the italics rule, on by default (2026-11-21)
     on = find(tmp_path, long_, rules={'join', 'inrun', 'cross', 'grow'}, name='g.pdf')
     p = place(on, 'Dai Nihon kokiroku')
     assert 'grow' in p['source'] and 'China' not in ' '.join(forms(on))
@@ -156,11 +156,33 @@ def test_the_looser_rule_takes_three_letters_and_capitals(tmp_path):
     assert forms(got) == ['Velk', 'kwo', 'vel'] and all(p['source'] == ['looser'] for p in got['places'])
 
 
+ITALIC_LINE = [[{'text': 'The made up reading ', 'font': 'F1'}, {'text': 'ri', 'font': 'F6'}, {'text': ' and also ri and the ', 'font': 'F1'},
+                {'text': 'house', 'font': 'F6'}, {'text': ' words are here today.', 'font': 'F1'}]]
+
+
 def test_the_italics_rule_takes_short_italic_words_only(tmp_path):
-    line = [[{'text': 'The made up reading ', 'font': 'F1'}, {'text': 'ri', 'font': 'F6'}, {'text': ' and also ri and the ', 'font': 'F1'},
-             {'text': 'house', 'font': 'F6'}, {'text': ' words are here today.', 'font': 'F1'}]]
-    got = find(tmp_path, line, rules={'join', 'inrun', 'cross', 'italic'})
+    got = find(tmp_path, ITALIC_LINE, rules={'join', 'inrun', 'cross', 'italic'})
     assert [(p['form'], p['source']) for p in got['places']] == [('ri', ['italic'])]
+
+
+def test_the_italics_rule_is_on_by_default(tmp_path, monkeypatch):
+    """Patrick, 2026-11-21 (report 21 §4): the audit's rules (rules_from_env with nothing set) and book(rules=None)
+    both take the italic word, and record the rule in `reading`."""
+    monkeypatch.delenv('LANG_FINDER_RULES', raising=False)
+    rules, note = langcands.rules_from_env()
+    assert 'italic' in rules and note == ''
+    for got in (find(tmp_path, ITALIC_LINE, rules=rules, name='a.pdf'), find(tmp_path, ITALIC_LINE, name='b.pdf')):
+        assert [(p['form'], p['source']) for p in got['places']] == [('ri', ['italic'])]
+        assert 'italic' in got['reading']['rules'] and 'italic' in got['reading']['asked']
+
+
+def test_the_italics_rule_turned_off_for_a_measurement(tmp_path, monkeypatch):
+    """LANG_FINDER_RULES=-italic (measurement only) turns it off; the joins stay on and the note says so."""
+    monkeypatch.setenv('LANG_FINDER_RULES', '-italic')
+    rules, note = langcands.rules_from_env()
+    assert rules == {'join', 'inrun', 'cross'} and note == 'LANG_FINDER_RULES=-italic'
+    got = find(tmp_path, ITALIC_LINE, rules=rules)
+    assert got['places'] == [] and 'italic' not in got['reading']['rules']
 
 
 def test_growth_grows_across_a_joined_stretch_and_stops_at_a_parent_change(tmp_path):

@@ -497,7 +497,7 @@ json.dump({'rule': f'every scanned page with {pagereads.WORDS_MIN}+ words of {pa
 # ---- words and passages that may be in another language (#118, language tagging; WCAG 3.1.2): found locally, written
 #      beside the digest, never into it (the work-order call doesn't see them). Places are character positions within
 #      their marked-content run (lib/langcands.py), so apply.py can find them without reading the text again.
-_lc_rules, _lc_note = langcands.rules_from_env(grow=os.environ.get('LANG_GROW', 'on').lower() in ('on', '1', 'yes', 'true'))   # LANG_FINDER_RULES: measurement only (never set by the app); LANG_GROW: titles grown here, once (#136, L4), on by default (Patrick, 2026-11-20)
+_lc_rules, _lc_note = langcands.rules_from_env(grow=os.environ.get('LANG_GROW', 'on').lower() in ('on', '1', 'yes', 'true'))   # LANG_FINDER_RULES: measurement only (never set by the app); LANG_GROW: titles grown here, once (#136, L4), on by default (Patrick, 2026-11-20); the italics rule on by default (langcands.DEFAULT_RULES, Patrick, 2026-11-21)
 if _lc_note: print(f'language candidates: read with testing settings ({_lc_note})')
 _lc = langcands.book(PL, doc_lang=str(pdf.Root.get('/Lang', '') or ''), pdf=pdf, rules=_lc_rules)
 if _lc_note: _lc['reading']['note'] = _lc_note

@@ -512,13 +512,15 @@ def whole_spellings(words):
     return out
 
 RULES = ('join', 'inrun', 'cross')              # lib/langjoin: #150's join, #161's in-run and cross-run joins (all on)
-RULE_NAMES = RULES + ('grow', 'looser', 'italic', 'continuation')   # #136's three: measured, off unless named
+RULE_NAMES = RULES + ('grow', 'looser', 'italic', 'continuation')   # #136's three, measured; italic is on by default
+DEFAULT_RULES = RULES + ('italic',)             # the finder's default (audit.py, the language step, book(rules=None)):
+                                                # italic on by default (Patrick, 2026-11-21; report 21 §4: 46% tagged)
 
 def rules_from_env(value=None, grow=None):
-    """LANG_FINDER_RULES (measurement only, never from the app): '-inrun,-cross' turns rules off, 'join' alone lists them.
-    grow: LANG_GROW's answer (None: off). Returns (rules, note) where note names a non-default setting, else ''."""
+    """LANG_FINDER_RULES (measurement only, never from the app): '-inrun,-italic' turns rules off, 'join' alone lists
+    them. grow: LANG_GROW's answer (None: off). Returns (rules, note) where note names a non-default setting, else ''."""
     v = (os.environ.get('LANG_FINDER_RULES', '') if value is None else value).strip()
-    rules = set(RULES)
+    rules = set(DEFAULT_RULES)
     if v:
         items = [x.strip() for x in v.split(',') if x.strip()]
         if all(x.startswith('-') for x in items): rules -= {x[1:] for x in items}
@@ -533,7 +535,7 @@ def book(PL, pages=None, doc_lang=None, spoken=None, grow=False, pdf=None, rules
     'pages': {page: reading}} for a scanned book's readings (M5), else None.
     pdf: the open pikepdf.Pdf, for the tag tree the joins need (#150, #161; lib/langjoin). Without it, or with a ParentTree
     that can't be read, no run is joined to another (today's reading); the in-run join (#161 A) still runs. rules: the
-    set of rules on (RULES; None: all, as audit.py runs them). `reading` in the result records what was applied.
+    set of rules on (DEFAULT_RULES; None: the default, as audit.py runs them). `reading` in the result records what was applied.
     Two passes (#140, the printed-whole check): a word broken at a line end that the hyphen check would take for English
     ("mad-" + "joe") stays a candidate when the book prints the joined spelling whole elsewhere (madjoe). Pass 1 reads
     every page and collects the spellings the check removed; the book's whole spellings are the word-shaped tokens of its
@@ -541,8 +543,8 @@ def book(PL, pages=None, doc_lang=None, spoken=None, grow=False, pdf=None, rules
     only the pages with a removed spelling the book prints whole. With pages=…, the whole spellings come from those pages
     only. Places from a joined reading carry `source` (join, inrun, cross) and, when they span runs, `segments`."""
     from lib import langjoin, gaptext, latinlist
-    asked = sorted(set(RULES if rules is None else rules) | ({'grow'} if grow else set()))
-    rules = set(RULES if rules is None else rules)
+    asked = sorted(set(DEFAULT_RULES if rules is None else rules) | ({'grow'} if grow else set()))
+    rules = set(DEFAULT_RULES if rules is None else rules)
     grow = grow or 'grow' in rules
     extra = rules & {'looser', 'italic', 'continuation'}
     rules -= {'grow', 'looser', 'italic', 'continuation'}

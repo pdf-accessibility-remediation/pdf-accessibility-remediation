@@ -43,7 +43,7 @@ To apply a reviewed work order, rerun the same label without `REVIEW=1`.
 | `LANGUAGE_MAX_USD=30` | The limit on what the language step could cost, in dollars (default 25) |
 | `LANG_HELD_SHOWN=12` | Set by the app's Spend and by `batch_api.sh`, not by hand: how many word forms the estimate shown held back. With `AUTO=1`, more held back after the work order holds the review instead of sending (see [Word forms not sent](languages.md#word-forms-not-sent)). Unset in a terminal run, which compares with its own first estimate |
 | `LANGUAGE_MAX_FORMS=2000` | An override: send at most this many word forms to the language step. Off by default: the dollar limits alone decide (see [Word forms not sent](languages.md#word-forms-not-sent)) |
-| `LANG_FINDER_RULES=-inrun,-cross` | Testing only, in a terminal (the app never sets it): the language finder runs without the named rules (`join`: words across runs on OCR pages, #150; `inrun` and `cross`: letters set apart from their word, #161), or with only those listed; a list may also name #136's rules, off by default: `looser` (unknown words of 3+ letters, capitalized too), `italic` (italic words of 2+ letters not in the English list) and `continuation` (a hyphenated word whose second part touches the hyphen but is drawn elsewhere). review.md says "Read with testing settings" |
+| `LANG_FINDER_RULES=-inrun,-cross` | Testing only, in a terminal (the app never sets it): the language finder runs without the named rules (`join`: words across runs on OCR pages, #150; `inrun` and `cross`: letters set apart from their word, #161), or with only those listed. `italic` (italic words of 2+ letters not in the English list, #136) is on by default since 2026-11-21: on four test books 46% of the forms it adds were tagged (80%, 65%, 18% and 1% by book); its names and English cost money in the language step but add no rows; `-italic` turns it off. A list may also name #136's two rules that stay off by default: `looser` (unknown words of 3+ letters, capitalized too) and `continuation` (a hyphenated word whose second part touches the hyphen but is drawn elsewhere). review.md says "Read with testing settings" |
 | `LANG_GROW=off` | The language step tags only the candidate words of a title, not its whole extent. By default (on, since #136) it tags a title's whole extent (romanized words around a candidate, inside quotes or italics, or before a Chinese-character gloss), so the voice switches once (see [Language tags](#language-tags)) |
 | `LANG_GROUP=on` | Adjacent single Chinese characters become one word form for the language step and the review page (fewer rows). Off by default |
 | `LANG_READING_RULE=off` | Every word form in Chinese characters goes to the AI, even one with a reading printed beside every place (by default those are decided locally, #123; see [Language tags](#language-tags)) |
@@ -158,6 +158,12 @@ Two options change what is sent (`language_run.json` records them under `options
   A spaced " / " between romanized pieces of a verse line doesn't stop a title, when the word beyond it isn't English
   (see [Language tags](languages.md#running-it)).
 - `LANG_GROUP=on` (off by default): adjacent single Chinese characters are one word form.
+
+The italics rule (on by default since 2026-11-21, #136) also adds to what is sent: an italic word of two or more letters
+not in the English list is a candidate. Measured on four test books, 46% of the forms it adds were tagged; the names and
+English among the rest cost money but add no rows. Across 34 test books it adds about $0.23 a book at worst. It has no
+setting of its own; `LANG_FINDER_RULES=-italic` turns it off for a measurement (see
+[Language tags](languages.md#how-it-works)).
 
 ### OCR languages
 

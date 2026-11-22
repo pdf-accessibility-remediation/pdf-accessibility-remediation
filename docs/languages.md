@@ -14,6 +14,18 @@ approved.
      line-end test below), or when the joined word is English (a real break the test misjudges, beside a drop cap or a
      narrow gutter: "prac-" + "tices"). A hyphen inside its line ("homes-abroad", whose second part some PDFs draw
      after the next line's first word) is no join: each part is a word of its own, as an unbroken word is.
+   - **Italic words (#136; on by default since 2026-11-21).** An italic word of two or more letters, in Latin script,
+     not a number or a URL, and not in the English word list, is a candidate even when it is short or capitalized:
+     "gu" in "gu poisoning", "du" in "Ch. du", the first word of a foreign title in a bibliography.
+     - **What it gives** (measured 2026-11-21 on four test books, the forms the rule adds: 643): 295 (46%) were tagged
+       with a language. By book: 80% on dwellings (Chinese architecture terms and titles), 65% on cadaverous, 18% on
+       translation (mostly names of people and peoples), 1% on an English-language book with italic English titles.
+       No tagged form was English; about 29 were pieces of longer titles tagged one by one, 3 joined two things that
+       don't belong together, and 1 had the wrong language, for the reviewer to catch as with any AI decision.
+     - **What it costs:** the other forms come back as names (161), English (106) or "not a word" (69). Those are paid
+       for in the language step's requests but add no rows to the review page: a person decides only the tagged ones.
+       Across 34 test books the rule adds about 5,200 word forms, worst about $0.23 a book to send (most $0.94).
+     - `LANG_FINDER_RULES=-italic` turns it off for a measurement (testing only, see [Options](options.md)).
    - **A word broken by a hyphen at a line end** is checked joined, both without its hyphen ("infor-" + "mation") and
      with it ("long-" + "standing"); English either way, it is no candidate. The form with the hyphen counts only when
      each half has three or more plain letters and the joined word does not have the shape of romanized Japanese or

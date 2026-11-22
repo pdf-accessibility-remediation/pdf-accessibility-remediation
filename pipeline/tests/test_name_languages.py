@@ -444,7 +444,7 @@ def test_an_audit_from_before_the_joined_reading_is_found_again(tmp_path, monkey
     est = load(R / 'language_estimate.json')
     assert est['forms'] == 3                                      # ryōgen found again, not the old audit's two
     same = load(A / 'lang_candidates.json'); same['version'] = 2
-    json.dump(old | {'version': 2, 'reading': {'rules': ['inrun'], 'asked': ['cross', 'grow', 'inrun', 'join'], 'parents': 'not given'}},   # grow: on by default (#136)
+    json.dump(old | {'version': 2, 'reading': {'rules': ['inrun'], 'asked': ['cross', 'grow', 'inrun', 'italic', 'join'], 'parents': 'not given'}},   # grow and italic: on by default (#136)
               open(A / 'lang_candidates.json', 'w', encoding='utf-8'), ensure_ascii=False)
     os.remove(R / 'language_estimate.json')
     assert run(src, A, R, monkeypatch, '--dry-run') == [] and load(R / 'language_estimate.json')['forms'] == 2   # today's: kept as saved
