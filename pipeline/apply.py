@@ -2184,6 +2184,8 @@ def fix_root():
     else:
         DOC = roots[0]
         for extra_doc in roots[1:]:                 # a second Document root: fold its content into the first
+            why = stm_refusal(kids(extra_doc))      # #166: never half-moved: its form runs' entries must follow
+            if why: reject(f'document root {extra_doc.objgen}', f'second Document root not merged: {why}'); continue
             reindex(); dpg = eff_pg.get(extra_doc.objgen); moved = []
             for k in kids(extra_doc):
                 if isinstance(k, int): moved.append(mcr(dpg, k)); pt_set_mcid(dpg, k, DOC)
@@ -2407,6 +2409,8 @@ def op_tables(spec):
         if any(eff_pg.get(c.objgen) is None and any(isinstance(k, int) or (is_mcr(k) and '/Pg' not in k and '/Stm' not in k) for k in kids(c))
                for r in leaving for c in grid[r]):
             reject(what, 'a title or note row\'s text has no page in the tag tree, so it stays in the table'); continue
+        why = stm_refusal([k for r in leaving for c in grid[r] for k in kids(c)])   # #166: the moved text's form entry must follow
+        if why: reject(what, f'a title or note row stays in the table: {why}'); continue
         page0 = cell_page(t); n = demoted = linked = unlinked = 0
         for (r, j), info in plan['cells'].items():
             c = grid[r][j]

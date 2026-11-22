@@ -19,6 +19,7 @@ def run(script, *args):
 
 def apply_verify(tmp_path, b, wo, name='src.pdf'):
     src = b.save(str(tmp_path / name))
+    if callable(wo): wo = wo(src)                     # objects are renumbered on save: the work order names them after it
     w = tmp_path / ('wo-' + name + '.json'); w.write_text(json.dumps(wo))
     out = tmp_path / ('out-' + name)
     run('apply.py', src, w, out); run('verify.py', src, out)
@@ -31,6 +32,15 @@ def five(v):
 
 
 def og(e): return f'{e.objgen[0]} {e.objgen[1]}'
+
+
+def table_wo(**reading):
+    """A work order naming the saved file's one Table."""
+    def make(src):
+        with pikepdf.open(src) as pdf:
+            t = next(e for e in pdf.Root.StructTreeRoot.K[0].K if str(e.S) == '/Table')
+            return {'tables': [{'obj': og(t), **reading}]}
+    return make
 
 
 def test_a_page_run_and_a_form_run_with_the_same_number_are_told_apart(tmp_path):
@@ -68,7 +78,7 @@ def test_a_table_inside_a_form_gets_header_cells(tmp_path):
             td = b.pdf.make_indirect(pikepdf.Dictionary(Type=pikepdf.Name.StructElem, S=pikepdf.Name.TD, P=tr, Pg=b.pdf.pages[0].obj, K=pikepdf.Array([b.stm(1, m)])))
             tr.K.append(td); b.index(100, m, td)
         t.K.append(tr); rows.append(tr)
-    src, out, log, v = apply_verify(tmp_path, b, {'tables': [{'obj': og(t), 'header_rows': 1}]})
+    src, out, log, v = apply_verify(tmp_path, b, table_wo(header_rows=1))
     with pikepdf.open(out) as pdf:
         tt = next(e for e in pdf.Root.StructTreeRoot.K[0].K if str(e.S) == '/Table')
         assert [str(c.S) for r in tt.K for c in r.K] == ['/TH', '/TH', '/TD', '/TD']
@@ -118,3 +128,23 @@ def test_a_merge_of_a_run_inside_a_shared_form_is_refused(tmp_path):
     b.index(100, 0, lab); b.index(100, 1, h); b.index(1, 0, p)
     src, out, log, v = apply_verify(tmp_path, b, {'merges': [{'style': 'Label', 'direction': 'next', 'with': ['H1']}]})
     assert [r['why'] for r in log['rejected'] if r['op'].startswith('merge')] == ['the text is drawn inside a form used in more than one place']
+
+
+def test_a_table_title_row_inside_a_shared_form_stays_with_the_reason(tmp_path):
+    """review 02 item 5, never half-applied: a title row's text would move to the table's Caption, but its form is drawn
+    on two pages, so its form index entry can't follow: the reading is rejected and nothing moves."""
+    b = Book([{'form': text_ops([0, 1, 2])}, {'content': text_ops([0], y=100)}])
+    b.pdf.pages[1].obj.Resources.XObject = pikepdf.Dictionary(Fm0=b.forms[0])
+    b.pdf.pages[1].obj.Contents = b.pdf.make_stream(text_ops([0], y=100).encode() + b'\nq /Fm0 Do Q')
+    t = b.el('Table', 1, []); p = b.el('P', 2, [0]); b.index(1, 0, p)
+    for r, ms in enumerate([[0], [1, 2]]):
+        tr = b.pdf.make_indirect(pikepdf.Dictionary(Type=pikepdf.Name.StructElem, S=pikepdf.Name.TR, P=t, Pg=b.pdf.pages[0].obj, K=pikepdf.Array()))
+        for m in ms:
+            td = b.pdf.make_indirect(pikepdf.Dictionary(Type=pikepdf.Name.StructElem, S=pikepdf.Name.TD, P=tr, Pg=b.pdf.pages[0].obj,
+                                                        K=pikepdf.Array([b.stm(1, m)]), A=pikepdf.Dictionary(O=pikepdf.Name('/Table'), ColSpan=2) if len(ms) == 1 else pikepdf.Dictionary()))
+            if len(ms) == 1: del td['/A']; td.A = pikepdf.Dictionary(O=pikepdf.Name('/Table'), ColSpan=2)
+            tr.K.append(td); b.index(100, m, td)
+        t.K.append(tr)
+    src, out, log, v = apply_verify(tmp_path, b, table_wo(title_rows=1))
+    assert [r['why'] for r in log['rejected'] if r['op'].startswith('tables')] == ['a title or note row stays in the table: the text is drawn inside a form used in more than one place']
+    with pikepdf.open(out) as pdf: assert slot(pdf, 100, 0) == 'TD'
