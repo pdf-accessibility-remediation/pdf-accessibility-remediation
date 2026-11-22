@@ -70,5 +70,11 @@ form the AI left untagged shows the line when one of its places sits inside a wh
     "dramatis personae", "sub specie aeternitatis", "per diem".
   - 21 common ones like them ("ad libitum", "alter ego", … "vox populi").
   - Measured in `runs/150-language-finder-recall/m20/phrases.py` (local only).
+  - **Ten of the 28 are inert under today's finder** (review 22, L1; kept on Patrick's decision, 2026-11-21): "alter
+    ego", "bona fides", "caveat emptor", "ne plus ultra", "post hoc", "pro rata", "sine die", "status quo ante", "sub
+    rosa", "via media". Every word of each is in `english-words.txt`, and a phrase marks only a place the finder already
+    made, so no rule (the italics rule included, which leaves English-list words out too) gives them one. They would
+    mark something only if a finder rule came to take English-list words. Twelve of the first 55 are the same ("ad hoc",
+    "per se", "status quo", "vice versa", "magnum opus" …).
 - **Result:** 83 phrases, sha256 `14f5aec8455570bd91739c854690bf6b7df91da0738013329a1a659364f92704`. Lines starting with
   `#` are notes.
