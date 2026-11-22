@@ -226,6 +226,72 @@ def all_elems():
     _elems[:] = _elems_walk(); _kept['elems'] = TREE_V
     if TREE_CHECK: _check_direct(_elems)
     return list(_elems)
+# #167: the kept index updated for one change, instead of a whole walk after every item (2.8 s a walk on a 430-page form
+# book). A step that changes the tree inside its loop removes the subtrees it moves or drops from the index, adds them back
+# under their new parents, then calls index_fresh(). The check mode (APPLY_TREE_CHECK=1) still walks again and compares
+# whenever the kept index is used, so a wrong update stops the run in tests. The element list (all_elems) is walked again
+# when next asked for.
+def _index_drop(n):
+    """Removes element n and everything under it from the kept index. Called before the tree changes, so the runs it reads
+    are the ones the index holds for that subtree."""
+    pr, fr = [k for ks in _subtree_runs(n) for k in ks], [k for ks in _subtree_runs(n, stm=True) for k in ks]
+    gone, stack = set(), [n]
+    while stack:
+        e = stack.pop()
+        if not is_elem(e) or e.objgen in gone: continue
+        gone.add(e.objgen); eff_pg.pop(e.objgen, None); parent_of.pop(e.objgen, None)
+        stack += [k for k in kids(e) if is_elem(k)]
+    for key in pr:
+        if key in owner and owner[key].objgen in gone: owner.pop(key)
+    for key in fr:
+        v = [x for x in fowner.get(key, []) if x[0].objgen not in gone]
+        if v: fowner[key] = v
+        else: fowner.pop(key, None)
+def _subtree_runs(n, stm=False):
+    """The (page, MCID) keys under element n, as _index_into reads them: page runs, or with stm the /MCR … /Stm runs."""
+    out, stack = [], [(n, eff_pg.get(n.objgen))]
+    while stack:
+        e, pg = stack.pop()
+        if not is_elem(e): continue
+        pg = pidx[e.Pg.objgen] if '/Pg' in e else pg
+        ks = []
+        for k in kids(e):
+            if not stm and isinstance(k, int): ks.append((pg, k))
+            elif not stm and is_pmcr(k): ks.append((pidx[k.Pg.objgen] if '/Pg' in k else pg, int(k.MCID)))
+            elif stm and is_mcr(k) and isinstance(k.get('/Stm'), pikepdf.Stream) and '/MCID' in k:
+                ks.append((pidx[k.Pg.objgen] if '/Pg' in k and k.Pg.objgen in pidx else pg, int(k.MCID)))
+            elif is_elem(k): stack.append((k, pg))
+        out.append(ks)
+    return out
+def _index_add(n, par):
+    """Adds element n and everything under it to the kept index under parent par, as _index_into would walk them."""
+    stack = [(n, par, eff_pg.get(par.objgen) if par is not None and par.objgen in eff_pg else None)]
+    while stack:
+        e, p_, pg = stack.pop()
+        if not is_elem(e): continue
+        pg = pidx[e.Pg.objgen] if '/Pg' in e else pg
+        eff_pg[e.objgen] = pg; parent_of[e.objgen] = p_
+        for k in kids(e):
+            if isinstance(k, int): owner[(pg, k)] = e
+            elif is_pmcr(k): owner[(pidx[k.Pg.objgen] if '/Pg' in k else pg, int(k.MCID))] = e
+            elif is_mcr(k) and isinstance(k.get('/Stm'), pikepdf.Stream) and '/MCID' in k:
+                fowner.setdefault((pidx[k.Pg.objgen] if '/Pg' in k and k.Pg.objgen in pidx else pg, int(k.MCID)), []).append((e, k.Stm))
+            elif is_elem(k): stack.append((k, e, pg))
+def index_fresh():
+    """The kept index now matches the tree (after _index_drop / _index_add); the element list is walked again when asked."""
+    _kept['index'] = TREE_V; _kept['elems'] = None
+def last_on_pages():
+    """{page: the last element in tree order that owns a page run there}: one walk, for the anchors of a whole step."""
+    out = {}
+    for e, _ in all_elems():
+        for p_, _m in own_mcids(e, eff_pg.get(e.objgen)): out[p_] = e
+    return out
+def block_of(last):
+    """The block holding element last (climbing out of inline elements), or None: anchor_for's climb."""
+    if last is None: return None
+    while last.objgen in parent_of and not (is_container(parent_of[last.objgen]) or S(parent_of[last.objgen]) in BLOCK_PARENTS):
+        last = parent_of[last.objgen]
+    return last if last.objgen in parent_of else None
 def own_mcids(n, pg):
     out = []
     for k in kids(n):
@@ -746,14 +812,11 @@ def op_adopt_orphans(spec):
     (or on an earlier page) that already holds tagged content. Lines are joined into one P until a line ends short
     of the right margin, which is where a paragraph ends."""
     reindex()
+    LAST = {}                                     # #167: the last element on each page, one walk for the step, not one per page
     def anchor_for(pno):
-        last = None
-        for e, par in all_elems():
-            if any(p == pno for p, _ in own_mcids(e, eff_pg.get(e.objgen))): last = e
-        if last is None: return None
-        while last.objgen in parent_of and not (is_container(parent_of[last.objgen]) or S(parent_of[last.objgen]) in BLOCK_PARENTS):
-            last = parent_of[last.objgen]
-        return last if last.objgen in parent_of else None
+        if 'map' not in LAST: LAST['map'] = last_on_pages()
+        if TREE_CHECK and _og(LAST['map'].get(pno)) != _og(last_on_pages().get(pno)): _stale(f'the kept last-on-page map differs (page {pno})')
+        return block_of(LAST['map'].get(pno))
     for rule in spec:
         label = rule.get('label', 'orphan content')
         for pno in range(rule['pages'][0], rule['pages'][1] + 1):
@@ -785,7 +848,9 @@ def op_adopt_orphans(spec):
             set_kids(host, ks[:j + 1] + new + ks[j + 1:])
             for el, ms in zip(new, paras):
                 for m in ms: owner[(pno, m)] = el
-            reindex()
+            for el in new: _index_add(el, host)               # #167: the new paragraphs indexed, not the whole tree walked again
+            index_fresh()
+            if 'map' in LAST and new: LAST['map'][pno] = new[-1]  # they are the last on their page (inserted after its anchor)
             ok(f'orphans: adopted as paragraphs ("{label}")', len(paras))
             log.setdefault('adopted', []).append({'page': pno, 'label': label, 'runs': len(order), 'paragraphs': len(paras),
                                                   'first': norm_ws(''.join(c['text'] for c in by[order[0]]))})
@@ -847,6 +912,8 @@ def merge(el, direction, allowed):
     if not (is_elem(other) and S(other) in allowed):
         reject(f'merge {S(el)} {el.objgen}', f'{direction} sibling is not one of {allowed}'); return
     spg = eff_pg[el.objgen]; moved = []
+    opar = parent_of[other.objgen]
+    _kept['index'] = None; _index_drop(el); _index_drop(other)      # #167: no whole walk per merged element (index_fresh below)
     for k in kids(el):
         if isinstance(k, int): moved.append(mcr(spg, k)); pt_set_mcid(spg, k, other)
         elif is_pmcr(k):
@@ -856,7 +923,8 @@ def merge(el, direction, allowed):
             if is_elem(k): tree_set(k, '/P', other)
             moved.append(k)
     set_kids(other, moved + kids(other) if direction == 'next' else kids(other) + moved)
-    detach(el); reindex(); ok(f'heading: merged into {direction}')
+    set_kids(par, [k for k in kids(par) if not same(k, el)])
+    _index_add(other, opar); index_fresh(); ok(f'heading: merged into {direction}')
 def op_merges(spec):
     for rule in spec:
         for el, par in all_elems():
@@ -1003,15 +1071,19 @@ def tie_caption(cap, wrapper_style):
     par = parent_of[cap.objgen]; ks = kids(par); i = next(j for j, k in enumerate(ks) if same(k, cap))
     prv = ks[i - 1] if i > 0 else None
     if is_elem(prv) and wrapper_style and S(prv) == wrapper_style:
-        prv.S = pikepdf.Name('/Div'); detach(cap); tree_set(cap, '/P', prv); set_kids(prv, kids(prv) + [cap]); reindex()
+        _kept['index'] = None; _index_drop(cap)                           # #167: the index updated, not walked again
+        prv.S = pikepdf.Name('/Div'); detach_from(par, cap); tree_set(cap, '/P', prv); set_kids(prv, kids(prv) + [cap])
+        _index_add(cap, prv); index_fresh(); FIGS.moved(cap)
         ok('figure: caption tied (existing wrapper → Div)'); return
     if figure_holder_for(prv, cap, cpg):
-        prv.S = pikepdf.Name('/Div'); detach(cap); tree_set(cap, '/P', prv); set_kids(prv, kids(prv) + [cap]); reindex()
+        _kept['index'] = None; _index_drop(cap)
+        prv.S = pikepdf.Name('/Div'); detach_from(par, cap); tree_set(cap, '/P', prv); set_kids(prv, kids(prv) + [cap])
+        _index_add(cap, prv); index_fresh(); FIGS.moved(cap)
         ok('figure: caption tied (figure holder just before it → Div)')
         if len(kids(prv)) > 2: log.setdefault('captions_grouped', []).append({'page': cpg, 'figures': len(kids(prv)) - 1,
                                                                             'caption': norm_ws(elem_text(cap))})
         return
-    fig = [e for e, _ in all_elems() if S(e) == 'Figure' and eff_pg.get(e.objgen) == cpg]
+    fig = FIGS.on(cpg)
     if len(fig) == 1: f = fig[0]
     else:
         f = pick_figure(cap, cpg, fig) if fig else None
@@ -1024,8 +1096,9 @@ def tie_caption(cap, wrapper_style):
     blk = fpar if not (is_container(fpar) or S(fpar) == 'Document') else f
     bpar = parent_of[blk.objgen]
     anchor = next((j for j, k in enumerate(kids(bpar)) if same(k, blk)), len(kids(bpar)))
-    detach(f); detach(cap)
-    if is_container(par) and not kids(par): detach(par)
+    _kept['index'] = None; _index_drop(f); _index_drop(cap)              # #167: the index updated, not walked again
+    detach_from(fpar, f); detach_from(par, cap)
+    if is_container(par) and not kids(par): gp = parent_of[par.objgen]; _index_drop(par); detach_from(gp, par)
     div = new_elem('Div', bpar, [f, cap], pg=cpg); tree_set(f, '/P', div); tree_set(cap, '/P', div)
     ks2 = kids(bpar)
     if same(blk, f): j = None
@@ -1033,11 +1106,13 @@ def tie_caption(cap, wrapper_style):
         j = next((j for j, k in enumerate(ks2) if same(k, blk)), -1)
         if j == -1: j = min(anchor, len(ks2)) - 1     # the figure sat inside the caption itself: the pair takes the caption's place
     set_kids(bpar, ks2 + [div] if j is None else ks2[:j + 1] + [div] + ks2[j + 1:])
-    reindex(); ok('figure: caption tied (figure moved out of its paragraph)')
+    _index_add(div, bpar); index_fresh(); FIGS.moved(div)
+    ok('figure: caption tied (figure moved out of its paragraph)')
     if not same(blk, f) and blk.objgen in parent_of:             # the paragraph that held the figure may now be empty
         if 'refs' not in REFS: REFS['refs'] = struct_refs()
         if provably_empty(blk, REFS['refs']):
-            set_kids(bpar, [k for k in kids(bpar) if not same(k, blk)]); reindex()
+            _kept['index'] = None; _index_drop(blk)
+            set_kids(bpar, [k for k in kids(bpar) if not same(k, blk)]); index_fresh(); FIGS.moved(blk, gone=True)
             ok('figure: empty figure-holder paragraph removed (proven empty)')
             log.setdefault('empty_holders_removed', []).append({'page': cpg, 'tag': S(blk)})
 REFS = {}
@@ -1052,8 +1127,38 @@ def figure_holder_for(prv, cap, cpg):
     cb = box_of(cap, cpg); fbs = [box_of(k, cpg) for k in ks]
     if cb is None or any(b is None for b in fbs): return False
     return cb[1] >= max(b[3] for b in fbs) - 2
+class FigureMap:
+    """#167: {page: the Figures on it, in tree order}, made once per op_captions instead of a walk of every element per
+    caption. A tie moves a figure (and its caption) under a new Div: moved() re-reads the pages of the Figures in that
+    subtree from the kept index, and keeps the order they had (a figure moves only next to the block it sat in)."""
+    def __init__(self): self.by, self.page = None, {}
+    def build(self):
+        self.by, self.page = collections.defaultdict(list), {}
+        for e, _ in all_elems():
+            if S(e) == 'Figure': self.by[eff_pg.get(e.objgen)].append(e); self.page[e.objgen] = eff_pg.get(e.objgen)
+    def on(self, pg):
+        if self.by is None: self.build()
+        out = list(self.by.get(pg, ()))
+        if TREE_CHECK and [x.objgen for x in out] != [e.objgen for e, _ in all_elems() if S(e) == 'Figure' and eff_pg.get(e.objgen) == pg]:
+            _stale(f'the kept figure map differs from a new walk (page {pg})')
+        return out
+    def moved(self, n, gone=False):
+        if self.by is None: return
+        stack = [n]
+        while stack:
+            e = stack.pop()
+            if not is_elem(e): continue
+            if S(e) == 'Figure' and e.objgen in self.page:
+                old, new = self.page[e.objgen], (None if gone else eff_pg.get(e.objgen))
+                if old != new or gone:
+                    self.by[old] = [x for x in self.by[old] if x.objgen != e.objgen]
+                    if not gone: self.by[new].append(e); self.page[e.objgen] = new
+                    else: self.page.pop(e.objgen, None)
+            stack += [k for k in kids(e) if is_elem(k)]
+FIGS = FigureMap()
+def detach_from(par, el): set_kids(par, [k for k in kids(par) if not same(k, el)])
 def op_captions(spec):
-    reindex()
+    reindex(); FIGS.build()
     for cap in [e for e, _ in all_elems() if S(e) == spec['style']]: tie_caption(cap, spec.get('wrapper_style'))
 
 # ================================================================== 5. lists, contents, notes
@@ -1855,17 +1960,22 @@ def walk_blocks():
         else: out.append((n, par))
     return out
 def op_fix_figure_order(_spec):
+    PPC = {}                                  # #167: a block's pages, once per step (moving a Div changes no block's content)
+    def ppb(b):
+        if b.objgen not in PPC: PPC[b.objgen] = pp(b)
+        if TREE_CHECK and PPC[b.objgen] != pp(b): _stale(f'the kept block pages differ ({S(b)} {b.objgen})')
+        return PPC[b.objgen]
     for div, par in list(walk_blocks()):
         if S(div) != 'Div' or not any(is_elem(k) and S(k) == 'Figure' for k in kids(div)): continue
         fps = pages_of(div, pidx.get(div.Pg.objgen) if '/Pg' in div else None) - {None}
         if not fps: continue
         fp = min(fps); blocks = walk_blocks()
         pos = next(i for i, (b, _) in enumerate(blocks) if same(b, div))
-        prev_pages = next((pp(b) for b, _ in reversed(blocks[:pos]) if pp(b)), {fp})
+        prev_pages = next((ppb(b) for b, _ in reversed(blocks[:pos]) if ppb(b)), {fp})
         if max(prev_pages) <= fp + 1: continue
         target = None
         for b, bp in blocks:
-            ps = pp(b)
+            ps = ppb(b)
             if same(b, div) or not ps: continue
             if min(ps) <= fp and not any(is_elem(k) and S(k) == 'Figure' for k in kids(b)): target = (b, bp)
             if min(ps) > fp: break
@@ -1874,7 +1984,7 @@ def op_fix_figure_order(_spec):
         tb, tp = target; tk = kids(tp); j = next(x for x, k in enumerate(tk) if same(k, tb))
         set_kids(tp, tk[:j + 1] + [div] + tk[j + 1:]); tree_set(div, '/P', tp)
         log.setdefault('figure_moves', []).append({'page': fp, 'label': labels.get(fp), 'was_after_page': max(prev_pages),
-                                                   'now_after_page': max(pp(tb)) if pp(tb) else None})
+                                                   'now_after_page': max(ppb(tb)) if ppb(tb) else None})
         c = par
         while c is not None and is_container(c) and not kids(c):
             gp = c.P; set_kids(gp, [k for k in kids(gp) if not same(k, c)]); c = gp
@@ -2561,15 +2671,13 @@ def _page_inventory(page):
                 elif str(x.get('/Subtype')) == '/Form': walk(x, x.get('/Resources') or res, tr, depth + 1)
     walk(page, page.obj.get('/Resources'), 0)
     return inv
+PF_LAST = {}
 def _anchor_for(pno):
-    """The block holding the last tagged content on this page (climbing out of inline elements), or None."""
-    last = None
-    for e, par in all_elems():
-        if any(p == pno for p, _ in own_mcids(e, eff_pg.get(e.objgen))): last = e
-    if last is None: return None
-    while last.objgen in parent_of and not (is_container(parent_of[last.objgen]) or S(parent_of[last.objgen]) in BLOCK_PARENTS):
-        last = parent_of[last.objgen]
-    return last if last.objgen in parent_of else None
+    """The block holding the last tagged content on this page (climbing out of inline elements), or None. #167: from one
+    map of the last element on each page, made once for fix_page_figures and updated as it wraps pages."""
+    if 'map' not in PF_LAST: PF_LAST['map'] = last_on_pages()
+    if TREE_CHECK and _og(PF_LAST['map'].get(pno)) != _og(last_on_pages().get(pno)): _stale(f'the kept last-on-page map differs (page {pno})')
+    return block_of(PF_LAST['map'].get(pno))
 def fix_page_figures():
     """A page on which nothing is tagged and nothing is marked as decoration, with no annotations, no hidden text layer,
     and at least one image or painted path (a full-page map, plate or cover) is wrapped whole in one Figure: one
@@ -2622,7 +2730,8 @@ def fix_page_figures():
             j = next(i for i, k in enumerate(ks) if same(k, anc)); set_kids(host, ks[:j + 1] + [fig] + ks[j + 1:])
         for o in pc.chars + pc.images: o['mcid'] = 0
         RI.touch(pno)
-        reindex()
+        _index_add(fig, host); index_fresh()                  # #167: the new Figure indexed, not the whole tree walked again
+        if 'map' in PF_LAST: PF_LAST['map'][pno] = fig     # nothing else on its page was tagged
         res['wrapped'].append({'page': pno, 'label': labels.get(pno), 'alt': bool(alts.get(pno)),
                                'after': 'start of the document' if anc is None else f'"{norm_ws(elem_text(anc))[-50:]}" ' + (f'on {PG(max(pp(anc)))}' if pp(anc) else '(page: not on this tag)'),
                                'objects': {k: inv[k] for k in ('images', 'paths', 'text')}})
