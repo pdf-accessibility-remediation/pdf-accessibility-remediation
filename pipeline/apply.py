@@ -1625,6 +1625,36 @@ def language_parts(parts):
         _LANG_SPLITS[(pno, m)].append({**p, 'text': text})
     return done
 _REWRITTEN_PAGES = {}
+# #172: a grown place (title growth joined words across runs) that apply.py refuses is not lost whole: it is split at its
+# "word" breaks (the finder's `breaks`, review 02 M6) and each group goes on as a place of its own, one run through the
+# single-run path (language_parts: its own rules still refuse what applies to a piece), several joined inside a word all
+# or nothing. A word joined across runs ("inside") is never split. An old row without breaks has no fallback.
+FB = {'parts': [], 'phrases': [], 'late': [], 'ctx': None, 'second': False}
+def fallback_groups(p):
+    segs, brk = p['segments'], p.get('breaks') or []
+    if 'word' not in brk or len(brk) != len(segs) - 1: return None
+    groups = [[segs[0]]]
+    for i, b in enumerate(brk):
+        if b == 'word': groups.append([segs[i + 1]])
+        else: groups[-1].append(segs[i + 1])
+    return groups
+def queue_fallback(p, why, when):
+    """Queues the groups of refused place p; True when it had "word" breaks (and so was not refused whole)."""
+    groups = fallback_groups(p)
+    if groups is None: return False
+    explicit, doc_lang, spec = FB['ctx']
+    pno = p['page']; kept = []
+    for g in groups:
+        if len(g) == 1:
+            m, a, b = g[0]
+            t = ''.join(c['text'] for c in run_chars(pno, m)); k = scripts.kind(t)
+            what = 'tag' if (pno, m) in explicit else (scripts.action(k, t, doc_lang, spec.get('kana_runs'))[0] if k else None)
+            if what == 'tag': continue                   # a fixed rule (kana, hangul, an explicit run) tags that run itself
+            FB['parts'].append({k_: v for k_, v in p.items() if k_ not in ('segments', 'breaks')} | {'mcid': m, 'first': a, 'last': b, 'fallback': True})
+        else: FB['phrases'].append(dict(p, segments=g, breaks=['inside'] * (len(g) - 1), mcid=g[0][0], first=g[0][1], last=g[0][2]))
+        kept.append(len(g))
+    LANG.setdefault('fallback', []).append({'page': pno, 'text': p.get('form'), 'lang': p.get('lang'), 'why': why, 'when': when, 'groups': kept})
+    return True
 def plan_phrase(p, explicit, doc_lang, spec):
     """A place across several runs (#150, #161; language_parts version 3), checked before any edit. Nothing is written into
     the tree here (review 04 H3a): the place is recorded in _LANG_PHRASES, its partial first or last segment queued for a
@@ -1636,6 +1666,7 @@ def plan_phrase(p, explicit, doc_lang, spec):
     pno, segs, lang = p['page'], p['segments'], p['lang']
     m0 = segs[0][0]
     def no(why):
+        if why != 'page not in the book' and FB['ctx'] is not None and queue_fallback(p, why, 'planning'): return None   # #172
         lang_refuse(pno, m0, why, {'text': p.get('form'), 'lang': lang}); LANG['phrases_refused'] = LANG.get('phrases_refused', 0) + 1
         return None
     if not (1 <= pno <= len(pages)): return no('page not in the book')
@@ -1679,12 +1710,23 @@ def plan_phrase(p, explicit, doc_lang, spec):
         whole = not re.search(r'[^\W_]', before) and not re.search(r'[^\W_]', after)
         plan.append((m, a, b, whole)); texts.append(''.join(c['text'] for c in (cs if whole else cs[a:b + 1])))
     ph = {'gid': len(_LANG_PHRASES), 'page': pno, 'owner': o, 'segs': plan, 'blank': blank, 'lang': lang, 'form': p.get('form'),
-          'text': ''.join(texts), 'stream': sk, 'fx': fx}
+          'text': ''.join(texts), 'stream': sk, 'fx': fx, 'place': p}
     for m, a, b, whole in plan:
         if not whole: _LANG_SPLITS[(pno, m)].append({**{k: v for k, v in p.items() if k != 'segments'}, 'mcid': m, 'first': a, 'last': b,
                                                      'text': ''.join(c['text'] for c in run_chars(pno, m)[a:b + 1]), 'phrase': ph['gid']})
     _LANG_PHRASES.append(ph)
     return ph
+def run_fallbacks():
+    """Plans the queued fallback groups (#172): several runs joined inside a word as one place (never split again), one run
+    through language_parts. Returns the (page, MCID) runs they touch."""
+    touched = set()
+    explicit, doc_lang, spec = FB['ctx']
+    while FB['phrases']:
+        ph = plan_phrase(FB['phrases'].pop(0), explicit, doc_lang, spec)
+        if ph: touched |= {(ph['page'], m) for m, _, _, _ in ph['segs']} | {(ph['page'], m) for m in ph['blank']}
+    parts, FB['parts'] = FB['parts'], []
+    if parts: touched |= language_parts(parts)
+    return touched
 def op_language(spec):
     """CJK runs (lib/scripts.py): a run in the document's own language needs no tag (Han-only text in a Chinese, Japanese
     or Korean document; hangul in a Korean one; kana in a Japanese one). Otherwise hangul runs get ko, kana runs the AI's
@@ -1734,9 +1776,11 @@ def op_language(spec):
         tag_run(pno, m, val)
     language_parts(keep)
     phrase_runs = set()
+    FB['ctx'] = (explicit, doc_lang, spec)
     for p in phrases:                                             # after tag_run and the splits of single runs: a run either touched is refused
         ph = plan_phrase(p, explicit, doc_lang, spec)
         if ph: phrase_runs |= {(ph['page'], m) for m, _, _, _ in ph['segs']} | {(ph['page'], m) for m in ph['blank']}
+    phrase_runs |= run_fallbacks()                                # #172: the groups of refused grown places
     queued = {(pno, m): [(p['first'], p['last']) for p in ps] for (pno, m), ps in _LANG_SPLITS.items()}
     tagged_whole = {(sp['page'], sp['mcid']) for sp in LANG['spans'] if sp.get('whole')}
     for (pno, m), (k, val, t, ps) in sorted(local_defer.items()):
@@ -3859,6 +3903,8 @@ def fix_language_parts():
         if u[0] == 'g':
             grp = job['groups'][u[1]]
             for ph in grp['phrases']:
+                if not FB['second'] and fallback_groups(ph['place']) is not None:   # #172: tried again as its groups, after this pass
+                    FB['late'].append((ph['place'], why)); continue
                 lang_refuse(pno, ph['segs'][0][0], why, {'text': ph['form'], 'lang': ph['lang']}); LANG['phrases_refused'] = LANG.get('phrases_refused', 0) + 1
             for m in grp['runs']:                       # a single-run place split in the same run goes with the group
                 for p in job['split'].get(m, []):
@@ -4139,7 +4185,14 @@ def fix_language_parts():
             LANG['spans'].append({'page': pno, 'mcid': inside[0], 'mcids': list(inside), 'lang': ph['lang'], 'text': ph['text'], 'whole': False,
                                   'segments': len(ph['segs']), 'parent_type': S(o)})
             LANG['phrases'] = LANG.get('phrases', 0) + 1; ok(f'language: {ph["lang"]} Span (a place across {len(ph["segs"])} runs)')
-    LANG['render_check_seconds'] = round(time.time() - t0, 2)
+    LANG['render_check_seconds'] = round(LANG.get('render_check_seconds', 0) + time.time() - t0, 2)
+    if FB['late'] and not FB['second'] and FB['ctx'] is not None:  # #172: the late refusals' groups, in one more, smaller pass
+        late, FB['late'], FB['second'] = FB['late'], [], True
+        _LANG_WHOLE.clear(); _LANG_DROP.clear(); _LANG_SPLITS.clear(); _LANG_PHRASES.clear()
+        for p, why in late:
+            if not queue_fallback(p, why, 'late check'): lang_refuse(p['page'], p['segments'][0][0], why, {'text': p.get('form'), 'lang': p.get('lang')})
+        run_fallbacks()
+        fix_language_parts()
 
 # ================================================================== run, in a fixed order
 STEPS = [('artifacts', op_artifacts), ('offpage', fix_offpage_text), ('document', op_document), ('adopt_orphans', op_adopt_orphans), ('rolemap', op_rolemap), ('merges', op_merges),

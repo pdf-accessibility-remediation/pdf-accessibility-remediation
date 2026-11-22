@@ -374,6 +374,7 @@ class Reading:
         self.stretch_of = {}                    # pseudo MCID -> 'join' (OCR page, several runs), 'cross' (#161 B) or None
         self.unplaced_keys = {}                 # id(first char of the word) -> reason
         self.words = None
+        self._wid = None                        # id(character) -> the index of its word in self.words (#172's breaks)
         self.break_why = {}                     # pseudo MCID -> why that stretch started
 
     def ends(self, s):
@@ -411,19 +412,19 @@ class Reading:
         `segments`: each maps through its stretch, and the real segments join in reading order. None when a run would
         appear twice (not in order)."""
         pseudo = p.get('segments') or [[p['mcid'], p['first'], p['last']]]
-        real, per = [], []
-        for sm, f, l in pseudo:
+        real, per, stretch_of = [], [], []
+        for si, (sm, f, l) in enumerate(pseudo):
             cs = self.runs.get(sm)
             if cs is None:
                 if len(pseudo) == 1: return p
                 return None
             r = [c for c in cs[f:l + 1] if not c.get('_syn')]
-            real += r; per.append((sm, r))
+            real += r; per.append((sm, r)); stretch_of += [si] * len(r)
         if not real: return None
-        segs = []
-        for c in real:
-            if segs and segs[-1][0] == c['_m']: segs[-1][2] = c['_k']
-            else: segs.append([c['_m'], c['_k'], c['_k']])
+        segs, seg_st, ends = [], [], []         # the stretch each real segment starts in, and its first and last characters (#172)
+        for c, si in zip(real, stretch_of):
+            if segs and segs[-1][0] == c['_m']: segs[-1][2] = c['_k']; ends[-1][1] = c
+            else: segs.append([c['_m'], c['_k'], c['_k']]); seg_st.append(si); ends.append([c, c])
         if len({s[0] for s in segs}) != len(segs): return None
         q = dict(p); q.pop('segments', None)
         m, f, l = segs[0]
@@ -436,6 +437,18 @@ class Reading:
             q['segments'] = segs
             q['text'] = ''.join(c['text'] for s in segs for c in (self.real_runs.get(s[0]) or [])[s[1]:s[2] + 1])
             q['whole'] = False
+            # #172 (review 02 M6): "inside" where one of the reading's words has characters on both sides of the boundary (a
+            # join), else "word" inside one stretch, and between stretches the finder's own break for them
+            if self._wid is None and self.words is not None:
+                self._wid = {id(c): n_ for n_, w in enumerate(self.words) for c in (w.get('chars') or () if isinstance(w, dict) else w)}
+            wid = self._wid or {}
+            pb = p.get('breaks') or []
+            def brk(i):
+                a_, b_ = wid.get(id(ends[i][1])), wid.get(id(ends[i + 1][0]))
+                if a_ is not None and a_ == b_: return 'inside'
+                if seg_st[i] == seg_st[i + 1]: return 'word' if wid else 'inside'
+                return pb[seg_st[i + 1] - 1] if seg_st[i + 1] - 1 < len(pb) else 'inside'
+            q['breaks'] = [brk(i) for i in range(len(segs) - 1)]
         src = set(q.get('source') or [])
         for sm, r in per:                       # a stretch of several runs that the place spans names its reading
             st = self.stretch_of.get(sm)

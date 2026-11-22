@@ -445,8 +445,12 @@ def page_places(pno, chars, page_chars=None, italic=None, doc_lang=None, spoken=
         it = all(x.get('italic') for x in grp if x['text'])
         place(segs[0][0], segs[0][1], segs[-1][2] if len(segs) == 1 else segs[0][2], cls, form, it, wi)
         if len(segs) > 1:
+            # #172 (review 02 M6): each boundary between pieces is "word" where growth joined two of the finder's words,
+            # "inside" where one word has characters on both sides (a join across runs: #150, #161, a hyphen, #170's child)
+            brk = ['inside' if any({idx[id(c)][0] for c in x['chars']} >= {segs[i][0], segs[i + 1][0]} for x in grp) else 'word'
+                   for i in range(len(segs) - 1)]
             places[-1].update(segments=segs, text=''.join(c['text'] for s in segs for c in runs[s[0]][s[1]:s[2] + 1]), whole=False,
-                              source=sorted(set(places[-1].get('source') or []) | {'grow'}))
+                              source=sorted(set(places[-1].get('source') or []) | {'grow'}), breaks=brk)
         if first_m is not None: places[-1].update(_first_mcid=first_m, half=True)   # step 5: its first half's run may become a passage;
                                                                                     # half: lib/langreq.forms numbers forms by their other places
     k, last_end = 0, -1

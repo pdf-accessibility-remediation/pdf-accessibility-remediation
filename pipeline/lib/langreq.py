@@ -417,10 +417,24 @@ def has_forms(lp):
 def parse_row(r):
     """(page, segments [[mcid, first, last], …], form index), or (None, why) for a row of neither shape."""
     if isinstance(r, list) and len(r) == 5 and all(_whole(x) for x in r): return r[0], [[r[1], r[2], r[3]]], r[4]
-    if isinstance(r, list) and len(r) == 3 and _whole(r[0]) and _whole(r[2]) and isinstance(r[1], list) and len(r[1]) >= 2 \
+    if isinstance(r, list) and len(r) in (3, 4) and _whole(r[0]) and _whole(r[2]) and isinstance(r[1], list) and len(r[1]) >= 2 \
+            and (len(r) == 3 or isinstance(r[3], list)) \
             and all(isinstance(x, list) and len(x) == 3 and all(_whole(v) for v in x) for x in r[1]):
         return r[0], [list(x) for x in r[1]], r[2]
-    return None, ('segments not lists of three whole numbers' if isinstance(r, list) and len(r) == 3 and isinstance(r[1], list) else 'not five whole numbers')
+    return None, ('segments not lists of three whole numbers' if isinstance(r, list) and len(r) in (3, 4) and isinstance(r[1], list) else 'not five whole numbers')
+
+BREAKS = ('word', 'inside')
+def row_breaks(r):
+    """#172: a segmented row's breaks, one per boundary between its pieces ("word": title growth joined two words there, so
+    each side may be tagged alone; "inside": one word crosses it), or None when the row carries none (read as all "inside")."""
+    return list(r[3]) if isinstance(r, list) and len(r) == 4 and isinstance(r[3], list) else None
+
+def breaks_problem(segs, brk):
+    """None, or why a row's breaks don't fit its segments (review 02 M6)."""
+    if brk is None: return None
+    if len(brk) != len(segs) - 1: return 'breaks do not match the segments'
+    if any(b not in BREAKS for b in brk): return 'breaks other than "word" or "inside"'
+    return None
 
 def segments_problem(segs):
     """None, or why a row's segments are out of order: a run index below 0, a character range not in order, a run twice."""
@@ -461,8 +475,9 @@ def to_rows(fs, decisions, tag_conf=('high', 'medium'), readings=None, reasons=N
              **({'latin_phrase': f['latin_phrase']} if f.get('latin_phrase') else {})}       # shown by the review page only
         i = len(forms); forms.append(e)
         for p in f['places']:
-            rows.append([p['page'], [list(x) for x in p['segments']], i] if p.get('segments') else [p['page'], p['mcid'], p['first'], p['last'], i])
-    return {'version': 3 if any(len(r) == 3 for r in rows) else 2, 'forms': forms, 'parts': rows}   # version 2 byte for byte with no segments
+            rows.append(([p['page'], [list(x) for x in p['segments']], i] + ([list(p['breaks'])] if p.get('breaks') else []))
+                        if p.get('segments') else [p['page'], p['mcid'], p['first'], p['last'], i])
+    return {'version': 3 if any(len(r) in (3, 4) for r in rows) else 2, 'forms': forms, 'parts': rows}   # version 2 byte for byte with no segments
 
 def to_decide(forms):
     """The indexes of the version-2 forms a person decides on the review page: those the AI tagged or left to a person;
@@ -483,10 +498,15 @@ def expand(lp):
     if not has_forms(lp): return list(lp.get('parts') or [])
     forms = lp.get('forms') or []
     out = []
-    for page, segs, fi in rows(lp):
-        f = forms[fi]
+    n = len(forms)
+    for r in lp.get('parts') or []:
+        page, segs, *fi = parse_row(r)
+        if page is None or not fi or not 0 <= fi[0] < n: continue
+        f = forms[fi[0]]
         if f.get('tag') and f.get('lang'):
             m, a, b = segs[0]
+            brk = row_breaks(r) if len(segs) > 1 else None
             out.append({'page': page, 'mcid': m, 'first': a, 'last': b, 'lang': f['lang'], 'form': f.get('form'),
-                        'class': f.get('class'), 'confidence': f.get('confidence'), **({'segments': segs} if len(segs) > 1 else {})})
+                        'class': f.get('class'), 'confidence': f.get('confidence'), **({'segments': segs} if len(segs) > 1 else {}),
+                        **({'breaks': brk} if brk is not None and not breaks_problem(segs, brk) else {})})
     return out
