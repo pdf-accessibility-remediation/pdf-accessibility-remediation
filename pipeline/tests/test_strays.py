@@ -102,7 +102,7 @@ def test_page_kid_for_a_form_run_named_by_another_element(tmp_path):
         assert rec['removed']['page_kids'] == 1 and rec['removed']['slots_cleared'] == 1 and rec['kept'] == 0
         assert slot(pdf, 0, 1) is None and slot(pdf, 100, 1) == 'P'          # the page slot cleared, the form's kept
         assert len(rec['emptied']) == 1                                          # the second P has nothing left
-        assert strays.counts(pdf) == {'kids_not_drawn': 0, 'kids_not_drawn_pages': [], 'runs_named_twice': 0, 'runs_named_twice_pages': []}
+        assert strays.counts(pdf) == {'kids_not_drawn': 0, 'kids_not_drawn_pages': [], 'runs_named_twice': 0, 'runs_named_twice_pages': [], 'kids_not_judged': 0}
 
 
 def test_page_kid_duplicating_the_same_elements_stm_kid(tmp_path):
@@ -182,6 +182,7 @@ def test_page_that_fails_to_parse_is_left_alone(tmp_path):
         F = strays.find(pdf)
         assert F['strays'] == [] and F['skipped'].get("its page's content could not be read") == 2
         assert strays.repair(pdf)['removed']['page_kids'] == 0
+        assert strays.counts(pdf)['kids_not_judged'] == 2           # verify shows what it could not check (review 04)
 
 
 def test_stm_kid_into_a_form_drawn_only_by_an_annotation_is_kept(tmp_path):

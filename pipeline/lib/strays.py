@@ -291,7 +291,9 @@ def repair(pdf, empties='leave', reader=None):
             if any(k in el for k in BLOCK_KEYS) or refs.get(og): continue
             par = el.get('/P')
             if not isinstance(par, pikepdf.Dictionary): continue
-            tree_set(par, '/K', pikepdf.Array([k for k in _kids(par) if not (isinstance(k, pikepdf.Dictionary) and k.objgen == og)]))
+            pk = _kids(par)                                  # review 04: only when it really is one of its /P's kids (a stale
+            if not any(isinstance(k, pikepdf.Dictionary) and k.objgen == og for k in pk): continue   #   /P would leave it in the tree)
+            tree_set(par, '/K', pikepdf.Array([k for k in pk if not (isinstance(k, pikepdf.Dictionary) and k.objgen == og)]))
             gone.add(og)
         if gone:
             for v in pt.values():
@@ -319,4 +321,5 @@ def counts(pdf):
     twice = [(c, m) for (c, m), v in F['claims'].items() if len(v) > 1]
     tw_pages = sorted({p for p in ((c[1] if c[0] == 'p' else F['claim_page'].get((c, m))) for c, m in twice) if p})
     return {'kids_not_drawn': len(nd), 'kids_not_drawn_pages': sorted({s['page'] for s in nd if s['page']})[:20],
-            'runs_named_twice': len(twice), 'runs_named_twice_pages': tw_pages[:20]}
+            'runs_named_twice': len(twice), 'runs_named_twice_pages': tw_pages[:20],
+            'kids_not_judged': sum(F['skipped'].values())}       # review 04: kids no one could judge (a page that can't be read)

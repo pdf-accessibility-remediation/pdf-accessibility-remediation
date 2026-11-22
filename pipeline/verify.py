@@ -654,6 +654,16 @@ def _mcids(n, pg=None, acc=None, d=0):
         elif isinstance(k, pikepdf.Dictionary) and str(k.get('/Type')) == '/MCR' and '/MCID' in k: acc.add((_own_pg(k) or pg, int(k.MCID)))
         elif _is_el(k) and d < 60: _mcids(k, pg, acc, d + 1)
     return acc
+def _runs_s(n, pg=None, acc=None, d=0):
+    """(page, stream, MCID) of every run under n, the stream None for the page's content, else the form's object number."""
+    acc = set() if acc is None else acc
+    pg = _own_pg(n) or pg
+    for k in _kids(n):
+        if isinstance(k, int): acc.add((pg, None, k))
+        elif isinstance(k, pikepdf.Dictionary) and str(k.get('/Type')) == '/MCR' and '/MCID' in k:
+            acc.add((_own_pg(k) or pg, k.Stm.objgen[0] if isinstance(k.get('/Stm'), pikepdf.Stream) else None, int(k.MCID)))
+        elif _is_el(k) and d < 60: _runs_s(k, pg, acc, d + 1)
+    return acc
 W = collections.defaultdict(list)
 stk = list(reversed(_kids(st)))
 while stk:
@@ -680,10 +690,10 @@ wc['tables_without_header'] = [{'page': _first_pg(n)} for n in W['Table'] if _ha
 # 1.3.2 reading order: on each page, follow the tagged text in tag-tree order and count jumps back UP the same column.
 #   Notes, figures and captions are skipped: they are placed where they are referred to, not where they are drawn.
 placed = set()
-for n in (x for t in readorder.PLACED_ELSEWHERE for x in W[t]): _mcids(n, acc=placed)
+for n in (x for t in readorder.PLACED_ELSEWHERE for x in W[t]): _runs_s(n, acc=placed)   # by stream (review 04): a form run with a note's number stays
 seq = collections.defaultdict(list)
 for r in dict.fromkeys(run_seq):               # tag-tree order (3), page and form runs (#166), each run once
-    if r in _POSS and (r[0], r[2]) not in placed and ''.join(_TXS[r]).strip(): seq[r[0]].append(_POSS[r])
+    if r in _POSS and r not in placed and ''.join(_TXS[r]).strip(): seq[r[0]].append(_POSS[r])
 ro = readorder.page_jumps(seq)
 wc['reading_order'] = {'pages_checked': len(seq), 'flagged': ro, 'flagged_count': len(ro)}
 # 1.3.2 across the book: a section (or Div) read away from its printed place among its siblings (lib/readorder.py),

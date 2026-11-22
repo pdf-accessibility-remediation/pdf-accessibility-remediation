@@ -462,7 +462,8 @@ checks = [
                                and not t.get('kids_not_drawn') and not t.get('runs_named_twice')),
      f'{nc(t.get("parenttree_missing"))} missing · {nc(t.get("parenttree_mismatched"))} mismatched'     # #168: shown only when found
      + (f' · {t["kids_not_drawn"]} reference{"s" if t["kids_not_drawn"] != 1 else ""} to text not drawn there ({pgs(t.get("kids_not_drawn_pages") or [])})' if t.get('kids_not_drawn') else '')
-     + (f' · {t["runs_named_twice"]} text run{"s" if t["runs_named_twice"] != 1 else ""} named by two tags ({pgs(t.get("runs_named_twice_pages") or [])})' if t.get('runs_named_twice') else '')),
+     + (f' · {t["runs_named_twice"]} text run{"s" if t["runs_named_twice"] != 1 else ""} named by two tags ({pgs(t.get("runs_named_twice_pages") or [])})' if t.get('runs_named_twice') else '')
+     + (f' · {t["kids_not_judged"]} reference{"s" if t["kids_not_judged"] != 1 else ""} not checked (a page or form that could not be read)' if t.get('kids_not_judged') else '')),
     ('All marked text reachable from the tag tree', ok(t.get('content_mcids_not_in_tree') == 0), f'{nc(t.get("content_mcids_not_in_tree"))} orphan runs'),
     ('One Document root', ok({k.lstrip('/'): v for k, v in (t.get('root_children') or {}).items()} == {'Document': 1}),
      ', '.join(f'{k.lstrip("/")} {v}' for k, v in (t.get('root_children') or {}).items())),
