@@ -64,9 +64,9 @@ def full(t): return re.sub(r'\s+', ' ', t).strip()
 mc_chars = collections.defaultdict(list)
 for pno, p in enumerate(PL.pages, 1):
     for c in p.chars:
-        if c.get('mcid') is not None: mc_chars[(pno, c['mcid'])].append(c)
+        if c.get('mcid') is not None: mc_chars[(pno, c.get('mcs'), c['mcid'])].append(c)   # #166: by stream (lib/plumb_fix `mcs`)
 def GT(cs): return gaptext.gap_text(cs, page_chars)
-def mc_text(pg, m): return GT(mc_chars.get((pg, m), []))          # what a reader hears (spaces from gaps)
+def mc_text(pg, sk, m): return GT(mc_chars.get((pg, sk, m), []))  # what a reader hears (spaces from gaps)
 
 # ---- walk the tree once
 elems = []                 # dicts in reading order
@@ -78,25 +78,25 @@ while stack:
     pg = pidx[n.Pg.objgen] if '/Pg' in n else pg
     ms = []
     for k in kids(n):
-        if isinstance(k, int): ms.append((pg, k))
-        elif isinstance(k, pikepdf.Dictionary) and str(k.get('/Type')) == '/MCR':
-            ms.append((pidx[k.Pg.objgen] if '/Pg' in k else pg, int(k.MCID)))
+        if isinstance(k, int): ms.append((pg, None, k))      # each run (page, stream, MCID): the stream None for the page's
+        elif isinstance(k, pikepdf.Dictionary) and str(k.get('/Type')) == '/MCR':      #   content, the form's object number (#166)
+            ms.append((pidx[k.Pg.objgen] if '/Pg' in k else pg, k.Stm.objgen[0] if isinstance(k.get('/Stm'), pikepdf.Stream) else None, int(k.MCID)))
     e = {'el': n, 'par': par, 'style': S(n), 'page': pg, 'mcids': ms, 'depth': depth, 'kids': []}
     elems.append(e); info[n.objgen] = e
     if par is not None: info[par.objgen]['kids'].append(e)
     for k in reversed(kids(n)): stack.append((k, n, pg, depth + 1))
 def _chars(e, depth=0):
-    out = [c for p, m in e['mcids'] for c in mc_chars.get((p, m), [])]
+    out = [c for r in e['mcids'] for c in mc_chars.get(r, [])]
     if depth < 40:
         for k in e['kids']: out += _chars(k, depth + 1)
     return out
 def raw_text(e, depth=0):
     """The characters as stored (no spaces where the file has none): used where the audit decides by length."""
     if depth > 40: return ''
-    return ''.join(c['text'] for p, m in e['mcids'] for c in mc_chars.get((p, m), [])) + ''.join(raw_text(k, depth + 1) for k in e['kids'])
+    return ''.join(c['text'] for r in e['mcids'] for c in mc_chars.get(r, [])) + ''.join(raw_text(k, depth + 1) for k in e['kids'])
 def text_of(e): return GT(_chars(e))           # what the digest shows: spaces from gaps (gaptext.py)
 def first_page(e):
-    if e['mcids']: return min(p for p, _ in e['mcids'])
+    if e['mcids']: return min(r[0] for r in e['mcids'])
     ps = [first_page(k) for k in e['kids']]; ps = [p for p in ps if p]
     return min(ps) if ps else e['page']
 _ROOT = {}
@@ -136,7 +136,7 @@ for s, es in by_style.items():
 # ---- reading order of the big containers, as the tree has them
 def page_span(e, acc=None):
     acc = set() if acc is None else acc
-    acc.update(p for p, _ in e['mcids'] if p)
+    acc.update(r[0] for r in e['mcids'] if r[0])
     for k in e['kids']: page_span(k, acc)
     return acc
 reading_order = []
@@ -162,9 +162,10 @@ def container_above(e):
 jump_seq, stk = collections.defaultdict(list), [(k, None, False) for k in reversed(kids(st))]
 while stk:
     n, pg, out_of_flow = stk.pop()
-    if isinstance(n, int) or (isinstance(n, pikepdf.Dictionary) and str(n.get('/Type')) == '/MCR' and '/Stm' not in n):
-        p, m = (pg, n) if isinstance(n, int) else (pidx[n.Pg.objgen] if '/Pg' in n else pg, int(n.MCID))
-        cs = mc_chars.get((p, m))
+    if isinstance(n, int) or (isinstance(n, pikepdf.Dictionary) and str(n.get('/Type')) == '/MCR'):     # form runs too (#166)
+        p, sk, m = (pg, None, n) if isinstance(n, int) else (pidx[n.Pg.objgen] if '/Pg' in n else pg,
+                                                            n.Stm.objgen[0] if isinstance(n.get('/Stm'), pikepdf.Stream) else None, int(n.MCID))
+        cs = mc_chars.get((p, sk, m))
         if not out_of_flow and cs and ''.join(c['text'] for c in cs).strip(): jump_seq[p].append((cs[0]['top'], cs[0]['x0'], cs[0]['size']))
         continue
     if not is_elem(n): continue
@@ -185,7 +186,7 @@ for e in elems:
         'firsts': [min(x) for k in e['kids'] if (x := page_span(k))],
         'kid_styles': sorted({k['style'] for k in e['kids']}),   # the review page: a container of captions only is tied to its figure
         # a small one-page container's runs, so the review page can tell which of the AI's text rules would hide it
-        **({'runs': [mc_text(p, m) for p, m in rs]} if ps and len(ps) == 1 and len(rs := own_runs(e, [])) <= 100 else {})})
+        **({'runs': [mc_text(*r) for r in rs]} if ps and len(ps) == 1 and len(rs := own_runs(e, [])) <= 100 else {})})
 
 # ---- figures, with crops
 docs = pdfium.PdfDocument(SRC); renders = {}
@@ -206,8 +207,8 @@ for e in elems:
     if mapped(e['style']) != 'Figure': continue
     pg = first_page(e); box = None
     if pg:
-        ids = {m for p, m in e['mcids'] if p == pg}
-        ims = [i for i in PL.pages[pg - 1].images if i.get('mcid') in ids]
+        ids = {(r[1], r[2]) for r in e['mcids'] if r[0] == pg}
+        ims = [i for i in PL.pages[pg - 1].images if (i.get('mcs'), i.get('mcid')) in ids]
         if ims: box = [min(i['x0'] for i in ims), min(i['top'] for i in ims), max(i['x1'] for i in ims), max(i['bottom'] for i in ims)]
     prv, nxt = siblings(e)
     f = {'obj': ref(e['el']), 'page': pg, 'label': labels.get(pg), 'alt': str(e['el'].get('/Alt', '')) if '/Alt' in e['el'] else None,
@@ -278,12 +279,12 @@ for pno in range(1, len(pages) + 1):
     page_map.append(f'{pno}|{labels[pno]}|{clip(ls[0][1], 70) if ls else "(no tagged text)"}')
     by = collections.defaultdict(list)
     for c in PL.pages[pno - 1].chars:
-        if c.get('mcid') is not None: by[c['mcid']].append(c)
+        if c.get('mcid') is not None: by[(pno, c.get('mcs'), c['mcid'])].append(c)
     for m, cs in by.items():
         top = min(c['top'] for c in cs); t = clip(GT(cs), 80)
         if band(pno, top) != 'body':
             rep[(re.sub(r'[0-9ivxlc]+', '#', t.lower()), band(pno, top))].append((pno, t, m))
-repeated = [{'pattern': k[0], 'position': k[1], 'count': len(v), 'pages': [v[0][0], v[-1][0]], 'example': v[0][1], 'runs': [(x[0], x[2]) for x in v]}
+repeated = [{'pattern': k[0], 'position': k[1], 'count': len(v), 'pages': [v[0][0], v[-1][0]], 'example': v[0][1], 'runs': [x[2] for x in v]}
             for k, v in rep.items() if len(v) >= 3 and len(re.sub(r'[^a-z]', '', k[0])) >= 3]
 front = [{'page': p, 'label': labels[p], 'text': clip(' / '.join(t for _, t in lines(p)), 900)} for p in range(1, min(12, len(pages)) + 1)]
 contents_pages = [int(x.split('|')[0]) for x in page_map if re.fullmatch(r'contents', x.split('|', 2)[2].strip().lower())]
@@ -293,7 +294,7 @@ for p in contents_pages:
 
 # ---- CJK and links (summaries only; the executor handles them by rule)
 cjk = collections.Counter(); cjk_ex = []                    # the same script test as apply.py's language step (lib/scripts.py)
-for (p, m), cs in mc_chars.items():
+for (p, _sk, m), cs in mc_chars.items():
     t = ''.join(c['text'] for c in cs)
     kind = scripts.kind(t)
     if kind is None: continue
@@ -309,7 +310,7 @@ def is_bold(c): return bool(re.search(r'Bold|Semibold|Black|Heavy|Demi', c.get('
 size_count = collections.Counter(round(c['size'] * 2) / 2 for cs in mc_chars.values() for c in cs)
 BODY = size_count.most_common(1)[0][0] if size_count else 10.0
 def chars_of(e, depth=0):
-    out = [c for p, m in e['mcids'] for c in mc_chars.get((p, m), [])]
+    out = [c for r in e['mcids'] for c in mc_chars.get(r, [])]
     if depth < 40:
         for k in e['kids']: out += chars_of(k, depth + 1)
     return out
@@ -388,7 +389,7 @@ unowned, unowned_tot = [], collections.Counter()
 for pno, p in enumerate(PL.pages, 1):
     runs = collections.defaultdict(list)
     for c in p.chars:
-        if c.get('mcid') is not None and (pno, c['mcid']) not in owned: runs[('orphan', c['mcid'])].append(c)
+        if c.get('mcid') is not None and (pno, c.get('mcs'), c['mcid']) not in owned: runs[('orphan', c['mcid'])].append(c)
         elif c.get('mcid') is None and c.get('tag') != 'Artifact': runs[('untagged', round(c['top']))].append(c)
     if not runs: continue
     kinds = collections.Counter(k[0] for k in runs); bands = collections.Counter()
