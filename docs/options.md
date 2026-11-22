@@ -151,7 +151,9 @@ Two options change what is sent (`language_run.json` records them under `options
   ("Shin kokin wakashū"), is off that list (2026-11-21), so it joins. A word with marks (*Hō*, *Dō*) and a dynasty name (*Song*, *Tang*, *Ming*, *Qing* …) may join (it still needs the romanized shape); see [Language tags](languages.md).
   Since #136 the audit grows titles itself (one pass of the finder per run, and the record's count of word forms
   matches what is sent); the language step finds the words again only when its own setting differs from the audit's.
-  On a joined OCR page a title grows across the runs of its stretch, never past a stretch's break.
+  On a joined OCR page a title grows across the runs of its stretch and on across a line break, never past the
+  reading's other breaks; on a publisher page it grows into an adjacent run of its tag at a word break, however the page
+  is read (see [Language tags](languages.md#running-it)).
   `LANG_GROW` is a terminal setting: the app can't set it, so the app always grows titles (the code's default).
   English function words (*of*, *or*, *and*, *the*, *by*, *for*, *with*, *from*, *at*) never join a title, nor does a
   word that joins its neighbour into an English word (an English word the PDF draws in pieces: "Se lections").

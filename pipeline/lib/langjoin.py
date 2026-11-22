@@ -314,10 +314,21 @@ def one_letter(cs, ln, words, pos, drop, joins, allow):
 
 
 # ---------------------------------------------------------------- one page's reading
+def run_break_ok(a_chars, b_chars):
+    """Two runs, a before b in reading order, meet at a word break (H1 (a), review 24 §6.1): a new line, or on one line a
+    space at a's end or b's start. A run change inside a word on one line ("Griefi" | "ng", the fi ligature) is none."""
+    va = [c for c in a_chars if c['text'].strip()]; vb = [c for c in b_chars if c['text'].strip()]
+    if not va or not vb: return False
+    x, y = va[-1], vb[0]
+    if abs(y['top'] - x['top']) >= 0.5 * max(x['bottom'] - x['top'], 1): return True
+    return a_chars[-1]['text'].isspace() or b_chars[0]['text'].isspace()
+
+
 class Reading:
     """A page read in stretches. chars: copies of the page's characters (pseudo MCIDs, `_m` the real MCID, `_k` the index
     in the real run, `_syn` for a space put in at a word break). unplaced: words read whole across runs that no tag can
-    cover, whose whole spelling the finder will classify (langcands keeps those that are candidates)."""
+    cover, whose whole spelling the finder will classify (langcands keeps those that are candidates). break_why: why each
+    stretch after the first started ('line', 'gap', 'punct', … on an OCR page; 'run' on another page)."""
     def __init__(self, pno, chars, real_runs, kind):
         self.pno, self.chars, self.real_runs, self.kind = pno, chars, real_runs, kind
         self.runs = collections.defaultdict(list)
@@ -326,20 +337,53 @@ class Reading:
         self.stretch_of = {}                    # pseudo MCID -> 'join' (OCR page, several runs), 'cross' (#161 B) or None
         self.unplaced_keys = {}                 # id(first char of the word) -> reason
         self.words = None
+        self.break_why = {}                     # pseudo MCID -> why that stretch started
+
+    def ends(self, s):
+        """The first and last real runs of stretch s (its visible characters), or (None, None)."""
+        real = [c for c in self.runs.get(s) or () if not c.get('_syn') and c.get('_m') is not None and c['text'].strip()]
+        return (real[0]['_m'], real[-1]['_m']) if real else (None, None)
+
+    def adjacent(self, struct, sa, sb):
+        """Growth may go from stretch sa into stretch sb (H1 (a), review 24 §6.1): next to each other (stretches of spaces
+        between them, such as a run's leading space read as a stretch of its own, don't count), each break between them
+        a line break on an OCR page ('line' only: a gap, a phrase end, a quote or a structure break stays) or a run
+        change on another page, the two real runs at the break adjacent in one element (Structure.adjacent), and a word
+        break there (run_break_ok: a new line, or a space)."""
+        if struct is None or not struct.ok or sa is None or sb is None or sa == sb: return False
+        lo, hi = min(sa, sb), max(sa, sb)
+        if any(self.ends(s)[0] is not None for s in range(lo + 1, hi)): return False   # only stretches of spaces between
+        why = 'line' if self.kind == 'ocr' else 'run'
+        if any(self.break_why.get(s) != why for s in range(lo + 1, hi + 1)): return False
+        a, b = self.ends(lo)[1], self.ends(hi)[0]
+        if a is None or b is None or a == b or not struct.adjacent(self.pno, a, b): return False
+        return why == 'line' or run_break_ok(self.real_runs.get(a) or [], self.real_runs.get(b) or [])
+
+    def can_map(self, segs):
+        """A place over these stretch segments maps to the PDF's runs (no real run twice)."""
+        return self.map({'mcid': segs[0][0], 'first': segs[0][1], 'last': segs[0][2], 'segments': segs}) is not None
 
     def map(self, p):
         """A place on the stretch -> the same place on the PDF's runs: (mcid, first, last) for one run, or with
-        `segments` [[mcid, first, last], …] in reading order. None when a run would appear twice (not in order)."""
-        cs = self.runs.get(p['mcid'])
-        if cs is None: return p
-        real = [c for c in cs[p['first']:p['last'] + 1] if not c.get('_syn')]
+        `segments` [[mcid, first, last], …] in reading order. A place grown across stretches (H1 (a)) carries stretch
+        `segments`: each maps through its stretch, and the real segments join in reading order. None when a run would
+        appear twice (not in order)."""
+        pseudo = p.get('segments') or [[p['mcid'], p['first'], p['last']]]
+        real, per = [], []
+        for sm, f, l in pseudo:
+            cs = self.runs.get(sm)
+            if cs is None:
+                if len(pseudo) == 1: return p
+                return None
+            r = [c for c in cs[f:l + 1] if not c.get('_syn')]
+            real += r; per.append((sm, r))
         if not real: return None
         segs = []
         for c in real:
             if segs and segs[-1][0] == c['_m']: segs[-1][2] = c['_k']
             else: segs.append([c['_m'], c['_k'], c['_k']])
         if len({s[0] for s in segs}) != len(segs): return None
-        q = dict(p)
+        q = dict(p); q.pop('segments', None)
         m, f, l = segs[0]
         rr = self.real_runs.get(m) or []
         q.update(mcid=m, first=f, last=l, n=len(rr))
@@ -351,8 +395,9 @@ class Reading:
             q['text'] = ''.join(c['text'] for s in segs for c in (self.real_runs.get(s[0]) or [])[s[1]:s[2] + 1])
             q['whole'] = False
         src = set(q.get('source') or [])
-        st = self.stretch_of.get(p['mcid'])
-        if st and len(segs) > 1: src.add(st)
+        for sm, r in per:                       # a stretch of several runs that the place spans names its reading
+            st = self.stretch_of.get(sm)
+            if st and len({c['_m'] for c in r}) > 1: src.add(st)
         if any(c.get('_join') and c.get('_jin') for c in real): src.add('inrun')
         if any(c.get('_join') and not c.get('_jin') for c in real) and self.kind == 'ocr': src.add('join')
         if src: q['source'] = sorted(src)
@@ -497,7 +542,7 @@ def _ocr_page(pno, cs, real_runs, struct):
                 apart = struct.why_apart(pno, prev_m, m0, run_text)
                 if apart: why = 'structure'; brk_why[k] = apart
             elif why == 'parent': brk_why[k] = 'parent'
-        if why: seg += 1
+        if why: seg += 1; R.break_why[PSEUDO + seg] = why
         c['mcid'] = PSEUDO + seg
         if m0 is not None: members[PSEUDO + seg].add(m0)
         if m0 is not None and not c['text'].isspace(): prev_m = m0
@@ -594,7 +639,7 @@ def _other_page(pno, cs, real_runs, struct, rules):
         m0 = c.get('_m')
         if c.get('mcid') is None: continue
         if c.get('_soft'): c['mcid'] = PSEUDO + seg; continue      # inside a joined word: never a stretch break
-        if prev_m is not None and m0 != prev_m and k not in keep: seg += 1
+        if prev_m is not None and m0 != prev_m and k not in keep: seg += 1; R.break_why[PSEUDO + seg] = 'run'
         c['mcid'] = PSEUDO + seg
         if m0 is not None: members[PSEUDO + seg].add(m0)
         if m0 is not None and not c['text'].isspace(): prev_m = m0

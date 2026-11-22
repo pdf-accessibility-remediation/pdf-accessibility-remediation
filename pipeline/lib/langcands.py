@@ -230,7 +230,7 @@ def _core_span(cs):
     return i0, i1
 
 def page_places(pno, chars, page_chars=None, italic=None, doc_lang=None, spoken=None, grow=False, keep=None, removed=None, info=None, words0=None, extra=(),
-                adjacent=None):
+                adjacent=None, can_map=None):
     """chars: one page's pdfplumber characters in content order (plpages). Returns (places, words): the page's candidate
     places, and the page's words in reading order (for context: each place names its words by index). keep: joined
     spellings (lower case) the hyphen check must not take for English, because the book prints them whole (#140, book());
@@ -412,6 +412,9 @@ def page_places(pno, chars, page_chars=None, italic=None, doc_lang=None, spoken=
             cur.append(n_); cur_m = m_
         if cur: out_.append(cur)
         return [((ns[0], ns[-1]), [words[n_] for n_ in ns]) for ns in out_ if any(candidate(words[n_]) for n_ in ns)]
+    def pieces_of(wi, first_m):
+        for (a, b), piece in run_pieces(wi[0], wi[1]):
+            emit(piece, (a, b), *form_cls(piece), first_m if a == wi[0] else None)
     def emit(grp, wi, form, cls, first_m=None):
         """One place for the phrase grp (words wi[0]..wi[1]): `segments` when growth went on into another run of the
         element (proposal 20 (b)), [run, first, last] per run in reading order. A run that comes back after another
@@ -424,9 +427,9 @@ def page_places(pno, chars, page_chars=None, italic=None, doc_lang=None, spoken=
                 if segs and segs[-1][0] == m_: segs[-1][2] = k_
                 elif not segs or m_ not in {s[0] for s in segs}: segs.append([m_, k_, k_])
                 else:                                # the run again: one place per stretch of one run
-                    for (a, b), piece in run_pieces(wi[0], wi[1]):
-                        emit(piece, (a, b), *form_cls(piece), first_m if a == wi[0] else None)
-                    return
+                    return pieces_of(wi, first_m)
+        if len(segs) > 1 and can_map is not None and not can_map(segs):   # a joined page's stretches that don't map to the
+            return pieces_of(wi, first_m)                                  # PDF's runs (review 24, L4): one place per stretch
         it = all(x.get('italic') for x in grp if x['text'])
         place(segs[0][0], segs[0][1], segs[-1][2] if len(segs) == 1 else segs[0][2], cls, form, it, wi)
         if len(segs) > 1:
@@ -624,9 +627,20 @@ def book(PL, pages=None, doc_lang=None, spoken=None, grow=False, pdf=None, rules
         R = langjoin.reading(pno, pg.chars, struct, rules) if rules else None
         chars = R.chars if R else pg.chars
         info = {}
-        adj = (lambda a, b, _p=pno: struct.adjacent(_p, a, b)) if grow and R is None and struct.ok else None   # proposal 20 (b): on a
+        adj = None                                   # growth into the adjacent run (proposal 20 (b)); on a joined page across
+        if grow and struct.ok and R is None:         # stretches (H1 (a), review 24 §6.1): one rule for every reading
+            runs_ = collections.defaultdict(list); first_at = {}
+            for i_, c in enumerate(pg.chars):
+                m_ = c.get('mcid')
+                if m_ is not None: runs_[m_].append(c); first_at.setdefault(m_, i_)
+            def adj(a, b, _p=pno, _r=runs_, _f=first_at):
+                if not struct.adjacent(_p, a, b): return False
+                x, y = sorted((a, b), key=lambda m_: _f.get(m_, 0))
+                return langjoin.run_break_ok(_r.get(x) or [], _r.get(y) or [])
+        elif grow and struct.ok:
+            adj = lambda a, b, _R=R: _R.adjacent(struct, a, b)
         places, words_ = page_places(pno, chars, lambda p, _c=chars: _c, doc_lang=doc_lang, grow=grow, keep=keep, removed=removed, info=info,
-                                     words0=R.words if R else None, extra=extra, adjacent=adj,       # page read as its runs only
+                                     words0=R.words if R else None, extra=extra, adjacent=adj, can_map=R.can_map if R else None,
                                      spoken={'forms': (spoken or {}).get('forms') or {}, 'reading': ((spoken or {}).get('pages') or {}).get(pno)} if spoken else None)
         if R:
             gaptext._LINES.pop(id(chars), None)

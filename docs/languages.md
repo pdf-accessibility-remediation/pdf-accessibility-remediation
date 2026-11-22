@@ -261,7 +261,18 @@ switches once, not mid-title. `LANG_GROW=off` turns it off.
   - The title is one tag across both runs, so the voice switches once.
   - It needs a clean break: a word ending a phrase (". , ; :" or a closing bracket or quote) or a word opening one stops
     it, and so do English words, so two titles one after the other stay two.
-  - Pages read through a join of OCR runs are left as they are.
+  - **On every page reading** (2026-11-21, H1): a page read as its runs, an OCR page read in joined stretches, and a
+    publisher page read joined (a split word or a dropped letter joined somewhere on it) follow one rule.
+    - **On an OCR page** growth crosses only a line break between stretches. The joined reading's other breaks (a wide
+      gap, a phrase end, a quote, a note, a structure break) stay breaks.
+    - **On a publisher page**, read either way, any run change qualifies, the same line included (a title the publisher
+      set as several runs, "Nihon Rettō | Kaizō | Ron"), when the two runs sit next to each other in one tag and meet at
+      a word break: a new line, or a space. A run change inside a word on one line ("Griefi" | "ng") is none.
+    - **Growth chains line to line,** so a title over three or more lines is one tag from any seed word in it.
+    - **A title the reading can't map to the PDF's runs** (a run that comes back after another) is one place per run
+      instead, and its candidates are kept.
+    - **A word after a line-end hyphen:** the joined reading of an OCR page ends a stretch after the first word of the
+      next line ("Zhong-" ‖ "guo shi": "Zhongguo" is one tag, "shi" another).
 - **What is ours, and what is the reader's:**
   - The tags' correctness is the pipeline's: verify checks each one, and the AI's answers are approved by a person. On the
     test books, 3 of 1,819 grown titles took in an English word.
