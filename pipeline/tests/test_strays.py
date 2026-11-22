@@ -260,3 +260,21 @@ def test_a_named_bdc_is_tagged_content_everywhere(tmp_path):
     v = json.load(open(str(out) + '.verify.json'))
     assert v['untagged_chars'] == 0 and not (v.get('untagged_objects') or {}).get('total'), (v['untagged_chars'], v.get('untagged_objects'))
     assert v['index']['stale_entries'] == 0 and v['tree']['content_mcids_not_in_tree'] == 0
+
+
+
+def test_the_verapdf_finding_stays_first_and_text_named_twice_comes_second():
+    """Review 04 M2: both lead rank 1 of "What Needs a Person"; the veraPDF finding (#38's decision) first, this one second,
+    whatever the order of their rows in review.md. Neither is a safety check."""
+    from lib import glance as G
+    safe = [f'| {n} | OK | x |' for n, _ in G.SAFETY]
+    md = '\n'.join(['# Remediation Review: b.pdf', '', '## Automated Checks', '', '| Check | Result | Detail |', '|---|---|---|'] + safe
+                   + ['| Tag tree consistent | **CHECK** | 0 missing · 0 mismatched · 1 text run named by two tags (PDF 3) |',
+                      '| veraPDF: no rule newly failing or failing more often | **CHECK** | x |',
+                      '| Work order reviewed by a person before it was applied | **CHECK** | x |', ''])
+    tot = {'wcag_failed_rules': 0, 'wcag_failed_checks': 0}
+    vera = {'before': {'rules': [], 'totals': tot}, 'after': {'rules': [{'id': '7.18.1-1', 'scope': 'wcag', 'failed': 1}], 'totals': tot}}
+    g = G.glance({'verify': {'tree': {'runs_named_twice': 1, 'runs_named_twice_pages': [3]}}, 'verapdf': vera}, md)
+    r1 = [x['text'] for x in g['issues'] if x['rank'] == 1]
+    assert g['safety_ok'] and r1[0].startswith('veraPDF:') and r1[1].startswith('Text named by two tags')
+    assert 'a person decides in Acrobat which tag keeps it' in r1[1]

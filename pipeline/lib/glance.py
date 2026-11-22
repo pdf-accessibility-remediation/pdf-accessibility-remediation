@@ -351,7 +351,7 @@ def glance(record, md, labels=None, han_pages=None, sections=None, release=None)
         elif name == 'veraPDF: no rule newly failing or failing more often':   # a safety issue only when the WCAG-only check fails
             # a finding, not a safety check (2026-10-31): first among rank 1 when a WCAG rule regressed or veraPDF did not run
             # on both files; an ordinary check when only PDF/UA-only rules regressed. A CHECK row: counted once, in check_rows
-            if not vera_safe['ok']: add(1, 'check', f'veraPDF: {det}', [], sec('veraPDF')); issues[-1]['lead'] = True
+            if not vera_safe['ok']: add(1, 'check', f'veraPDF: {det}', [], sec('veraPDF')); issues[-1]['lead'] = 1
             else: add(2, 'check', f'veraPDF: {det}', [], sec('veraPDF'))
         elif name == 'OCR text reviewed by a person':
             add(1, 'ship', 'OCR text ' + (('waiting for a language reader' if v.get('verdict') == SENT else 'not approved') if isinstance(v, dict) else 'not yet reviewed'),
@@ -362,8 +362,8 @@ def glance(record, md, labels=None, han_pages=None, sections=None, release=None)
             # blocking): a screen reader may read it twice or under the wrong heading
             tr = ve.get('tree') or {}
             add(1, 'check', f'Text named by two tags ({tr["runs_named_twice"]} run{"s" if tr["runs_named_twice"] != 1 else ""}): '
-                'a screen reader may read it twice, or under the wrong heading; a person decides which tag keeps it',
-                tr.get('runs_named_twice_pages') or [], None, find=f'| {name} |', key=f'check:{name}'); issues[-1]['lead'] = True
+                'a screen reader may read it twice, or under the wrong heading; a person decides in Acrobat which tag keeps it',
+                tr.get('runs_named_twice_pages') or [], None, find=f'| {name} |', key=f'check:{name}'); issues[-1]['lead'] = 2   # after veraPDF's (review 04 M2)
         elif name == 'Language tags hold their words':          # #118: a tag on other words or under another language (review 06, stage D)
             add(1, 'check', f'{name}: {det}', [x['page'] for x in (ve.get('language') or {}).get('mismatch_examples') or [] if isinstance(x.get('page'), int)],
                 sec('Language Tags'), key='check:language')
@@ -423,7 +423,7 @@ def glance(record, md, labels=None, han_pages=None, sections=None, release=None)
     for i_, d in enumerate(d_ai):
         t = re.sub(r'\*\*', '', str(d.get('what') or 'not described')).strip()           # in full: the AI's sentence as written
         add(4, 'ai', t, [p for p in d.get('pages') or [] if isinstance(p, int)], s_ai, find='- ' + t[:60], key=f'ai:{i_}')
-    issues.sort(key=lambda x: (x['rank'], not x.pop('lead', False)))   # stable: the veraPDF finding first among rank 1 (H7)
+    issues.sort(key=lambda x: (x['rank'], x.pop('lead', 9)))   # stable: the veraPDF finding first among rank 1 (H7), text named twice second
     for x in issues: x['pages_text'] = pages_text(x['pages'], labels) if x['pages'] else ''
 
     # ---- the other headline numbers
