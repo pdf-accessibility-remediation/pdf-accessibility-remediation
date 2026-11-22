@@ -50,6 +50,7 @@ intake.json) · 1 error.
 import sys, os, re, json, time, shutil, hashlib, subprocess, tempfile, unicodedata, difflib, collections, datetime, statistics, math, contextlib
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from lib import support
+from lib import peak  # noqa: F401  #167: this step's peak memory, written at exit when run_api.sh asks (PEAK_FILE)
 from lib import tagfix, strays
 from lib.glance import ocr_layer_flagged
 from lib import dates as D

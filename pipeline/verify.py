@@ -2,6 +2,7 @@
 import sys, json, re, collections
 import os; sys.path.insert(0, os.path.dirname(os.path.abspath(__file__))); import vera
 from lib import plumb_fix, readorder, fontname, langtag, strays, contentops as CO  # noqa: F401  plumb_fix before pdfplumber reads a page: it patches pdfplumber
+from lib import peak  # noqa: F401  #167: this step's peak memory, written at exit when run_api.sh asks (PEAK_FILE)
 import pikepdf, pdfplumber, pypdfium2 as pdfium
 import fontTools.cffLib, fontTools.ttLib  # noqa: F401  required: a font that can't be read must not pass as OK
 from PIL import ImageChops

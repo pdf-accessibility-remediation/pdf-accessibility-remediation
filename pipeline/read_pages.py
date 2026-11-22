@@ -25,6 +25,7 @@ The API key comes from OPENROUTER_API_KEY or the nearest .env, as for decide.py.
 import sys, os, re, json, time, base64, hashlib, argparse, urllib.request, urllib.error
 HERE = os.path.dirname(os.path.abspath(__file__)); sys.path.insert(0, HERE)
 from lib import pagereads, costhistory, costs, aisend
+from lib import peak  # noqa: F401  #167: this step's peak memory, written at exit when run_api.sh asks (PEAK_FILE)
 
 ap = argparse.ArgumentParser()
 ap.add_argument('audit_dir'); ap.add_argument('run_dir')

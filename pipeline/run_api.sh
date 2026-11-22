@@ -206,15 +206,19 @@ fi
 
 now() { python3 -c 'import time; print(f"{time.time():.2f}")'; }
 fmt() { python3 -c "s=float('$1'); print(f'{s:.1f}s' if s < 60 else f'{int(s//60)}m {s%60:04.1f}s')"; }
-TIMES=()
-stage() {                      # stage "label" command…  → runs it and prints how long it took
-  local label=$1; shift; local s e d
+TIMES=(); PEAKS=()
+stage() {                      # stage "label" command…  → runs it and prints how long it took; each Python step writes its
+  local label=$1; shift; local s e d pk pf="$R/.peak-stage"   # own peak memory to PEAK_FILE at exit (lib/peak.py, #167)
+  rm -f "$pf"; export PEAK_FILE="$pf"
   echo "▶ $label"; s=$(now); "$@"; e=$(now)
-  d=$(python3 -c "print(f'{$e-$s:.2f}')"); TIMES+=("$label|$d"); echo "  ✓ $label: $(fmt "$d")"
+  unset PEAK_FILE; pk=$(cat "$pf" 2>/dev/null || true); rm -f "$pf"
+  d=$(python3 -c "print(f'{$e-$s:.2f}')"); TIMES+=("$label|$d"); [[ -n $pk ]] && PEAKS+=("$label|$pk"); echo "  ✓ $label: $(fmt "$d")"
 }
 write_timing() {               # timing.json: this call's steps; applying a reviewed order adds them to the first call's,
   python3 -c "import json,os,sys; p=sys.argv[1]; t=json.load(open(p)) if sys.argv[2] and os.path.exists(p) else {}; t.update({l.split('|')[0]: round(float(l.split('|')[1]), 1) for l in sys.argv[3:]}); json.dump(t, open(p, 'w'), indent=1)" \
     "$R/timing.json" "${REVIEWED:-}${RETRY:-}" "${TIMES[@]}"   # kept at the review stop, so the record has the whole run (report.py removes it)
+  python3 -c "import json,os,sys; p=sys.argv[1]; t=json.load(open(p)) if sys.argv[2] and os.path.exists(p) else {}; t.update({l.rsplit('|', 1)[0]: int(l.rsplit('|', 1)[1]) for l in sys.argv[3:] if l.rsplit('|', 1)[1].isdigit()}); json.dump(t, open(p, 'w'), indent=1)" \
+    "$R/timing_peak.json" "${REVIEWED:-}${RETRY:-}" ${PEAKS[@]+"${PEAKS[@]}"}   # #167: each step's peak memory in bytes, beside its time
 }
 summary() {
   local total=0 line label d

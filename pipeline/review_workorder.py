@@ -31,6 +31,7 @@ reviewer gives one; for a hand edit the --note is the reason.
 """
 import sys, os, json, argparse, datetime
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from lib import peak  # noqa: F401  #167: this step's peak memory, written at exit when run_api.sh asks (PEAK_FILE)
 from review import core, sessions, server  # noqa: E402
 
 def finished(R, a):

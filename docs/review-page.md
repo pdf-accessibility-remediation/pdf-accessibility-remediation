@@ -363,6 +363,7 @@ When the run stops, it keeps:
 - `workorder.ai.json`: the AI's work order
 - `review_items.json`: the decisions listed for the review page
 - `timing.json`: the time of each step so far. The second call adds its own, so the record has the whole run's.
+- `timing_peak.json`: each step's peak memory in bytes, written by the step itself at exit (`lib/peak.py`, #167), kept and added to the same way. report.py puts it in record.json as `timing_peak_gb`, beside `timing_seconds`, and removes the file.
 - `review_stop.json`: what the app's **Apply** needs to run the same second call. That is the original's path, the name and the settings it was run with (`OCR_LANG`, `INTAKE_REUSE`, `INTAKE` and `OUT`). The report removes it.
 
 The app's Apply runs the second call in the run's own folder (`RUN_DIR`). It finds the original from `review_stop.json`, or, if that file has moved, by its sha256 in the folder of original PDFs or of uploads.
