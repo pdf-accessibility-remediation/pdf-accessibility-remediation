@@ -89,6 +89,7 @@ class Structure:
     asked. status: 'ok', 'unreadable' (no tag tree, or it could not be read) or 'not given' (no PDF)."""
     def __init__(self, pdf):
         self.pdf, self.par, self.status = pdf, {}, 'not given'
+        self.pg_par, self.stm_par, self.streams = {}, {}, {}
         self._kids, self._marks = {}, {}
         if pdf is None: return
         try:
@@ -124,6 +125,7 @@ class Structure:
                         else: seq.append(('elem',)); stack.append((kid, pg))
                     else: seq.append(('other',))
                 self._kids[k_] = (seq, '/ActualText' in el, {(s[1], s[2]): i for i, s in enumerate(seq) if s[0] == 'mcid'})
+            self.pg_par, self.stm_par = dict(self.par), stm     # #166: kept apart, read by the run's stream (use_streams)
             for k_, v in stm.items(): self.par.setdefault(k_, v)
             self.status = 'ok' if self.par else 'unreadable'
         except Exception:
@@ -132,13 +134,25 @@ class Structure:
     @property
     def ok(self): return self.status == 'ok'
 
-    def parent(self, pno, m): return self.par.get((pno, m))
+    def use_streams(self, pno, chars):
+        """#166: which stream draws each run of page pno (lib/plumb_fix's `mcs` on its characters), so a run drawn in a
+        form is owned by the element its /MCR … /Stm names, and a run drawn in the page by its page kid's element (before,
+        a page kid won whatever drew the run: a stray page kid then took a form's run)."""
+        d = {}
+        for c in chars:
+            if c.get('mcid') is not None: d.setdefault(c['mcid'], c.get('mcs'))
+        self.streams[pno] = d
+    def _p(self, pno, m):
+        d = self.streams.get(pno)
+        if d is None or m not in d: return self.par.get((pno, m))
+        return self.pg_par.get((pno, m)) if d[m] is None else self.stm_par.get((pno, m))
+    def parent(self, pno, m): return self._p(pno, m)
 
     def adjacent(self, pno, m1, m2):
         """Runs m1 and m2 of page pno belong to the same element and sit next to each other among its kids (an MCID or an
         MCR each): a title broken at a line end, each line its own run (proposal 20 (b), growth into the adjacent run)."""
-        a = self.par.get((pno, m1))
-        if a is None or a != self.par.get((pno, m2)): return False
+        a = self._p(pno, m1)
+        if a is None or a != self._p(pno, m2): return False
         ix = (self._kids.get(a) or ((), False, {}))[2]
         return (pno, m1) in ix and (pno, m2) in ix and abs(ix[(pno, m1)] - ix[(pno, m2)]) == 1
 
@@ -147,7 +161,7 @@ class Structure:
     def in_order(self, pno, segs, run_text):
         """apply.py's rule for a place over several runs: one owner, each piece's run after the one before among its kids,
         and only blank runs of this page between them (run_text: {mcid: text})."""
-        own = {self.par.get((pno, m)) for m, _, _ in segs}
+        own = {self._p(pno, m) for m, _, _ in segs}
         if len(own) != 1 or None in own: return False
         seq, _, ix = self._kids.get(own.pop()) or ((), False, {})
         at = [ix.get((pno, m)) for m, _, _ in segs]
@@ -194,7 +208,7 @@ class Structure:
         """None when one tag may cover runs ma and mb (in that order) on page pno, else the reason: parent, not_adjacent,
         actualtext. run_text: {mcid: text} of the page, so blank runs between may be skipped."""
         if not self.ok: return 'parent'
-        pa, pb = self.par.get((pno, ma)), self.par.get((pno, mb))
+        pa, pb = self._p(pno, ma), self._p(pno, mb)
         if pa is None or pa != pb: return 'parent'
         seq, el_at, where = self._seq(pa)
         if seq is None: return 'not_adjacent'

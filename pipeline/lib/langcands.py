@@ -639,6 +639,7 @@ def book(PL, pages=None, doc_lang=None, spoken=None, grow=False, pdf=None, rules
     C = collections.Counter()
     unplaced = []
     def read(pno, pg, keep=None, removed=None, collect=False):
+        if struct.ok: struct.use_streams(pno, pg.chars)   # #166: each run's owner by the stream that draws it
         R = langjoin.reading(pno, pg.chars, struct, rules) if rules else None
         chars = R.chars if R else pg.chars
         info = {}
