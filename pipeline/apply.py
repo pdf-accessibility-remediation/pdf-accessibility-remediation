@@ -199,6 +199,7 @@ def _elems_walk():
 # BaseException, so no `except Exception` in this file can swallow it. The kept result is what is returned either way.
 TREE_CHECK = os.environ.get('APPLY_TREE_CHECK') == '1'
 STALE_MARK = 'TREE INDEX STALE:'                            # fixed: review/core.py, conftest and regression.py look for it
+if TREE_CHECK: log['tree_check'] = True                    # the run's own evidence that it ran checked (review 06 S4); not in record.json
 class TreeIndexStale(BaseException): pass
 def _stale(what):
     f = sys._getframe(1)

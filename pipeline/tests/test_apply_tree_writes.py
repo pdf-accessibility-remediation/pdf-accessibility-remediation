@@ -164,6 +164,17 @@ def test_a_write_around_tree_set_is_stopped_by_the_check_mode(applied, capsys):
     assert re.search(r'^TREE INDEX STALE: the kept tag-tree index differs from a new walk, used by ', err, re.M), err
     assert 'TREE INDEX STALE:' in (tmp / 'own-stale.log').read_text()
 
+def test_the_check_mode_leaves_its_marker_in_the_apply_log(applied):
+    """Review 06 S4: a checked run says so in its own log (the identity runs' evidence); an unchecked run's log has no key."""
+    g, tmp = applied
+    assert json.load(open(tmp / 'out.pdf.log.json')).get('tree_check') is True
+    src, wo, out = tmp / 'b.pdf', tmp / 'wo.json', tmp / 'plain.pdf'
+    import subprocess
+    r = subprocess.run([sys.executable, os.path.join(PIPE, 'apply.py'), str(src), str(wo), str(out)], cwd=PIPE, capture_output=True,
+                       text=True, env={k: v for k, v in os.environ.items() if k != 'APPLY_TREE_CHECK'})
+    assert r.returncode == 0, r.stderr[-1500:]
+    assert 'tree_check' not in json.load(open(str(out) + '.log.json'))
+
 def test_all_elems_hands_out_a_copy(applied):
     g, _ = applied
     a = g['all_elems'](); a.clear()
