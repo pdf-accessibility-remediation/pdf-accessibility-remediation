@@ -8,14 +8,14 @@ each character carries the nearest enclosing MCID.
 """
 import pdfplumber
 
-KEEP_KEYS = ('text', 'x0', 'x1', 'top', 'bottom', 'size', 'fontname', 'mcid', 'tag', 'upright')
+KEEP_KEYS = ('text', 'x0', 'x1', 'top', 'bottom', 'size', 'fontname', 'mcid', 'tag', 'upright', 'mcs')   # mcs: the run's stream (#166)
 class Page:
     def __init__(self, p):
         self.width, self.height = float(p.width), float(p.height)
         mb, cb = p.mediabox, p.cropbox                 # the visible area (CropBox), in the reader's top-left coordinates
         self.vis = (max(cb[0], mb[0]) - mb[0], mb[3] - min(cb[3], mb[3]), min(cb[2], mb[2]) - mb[0], mb[3] - max(cb[1], mb[1]))
         self.chars = [{k: c.get(k) for k in KEEP_KEYS} for c in p.chars]
-        self.images = [{k: i.get(k) for k in ('x0', 'x1', 'top', 'bottom', 'mcid', 'tag', 'srcsize')} for i in p.images]
+        self.images = [{k: i.get(k) for k in ('x0', 'x1', 'top', 'bottom', 'mcid', 'tag', 'srcsize', 'mcs')} for i in p.images]
 class Pages:
     def __init__(self, path):
         self.pages = []
