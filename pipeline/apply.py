@@ -46,6 +46,37 @@ def PGR(a, b):
     return f'PDF {a}–{b}' + (f' (printed {la}–{lb})' if la and lb and (la != str(a) or lb != str(b)) else '')
 st = pdf.Root.StructTreeRoot
 PL = plpages.Pages(SRC)                         # chars, image boxes and size only (lib/plpages.py)
+class RunIndex:
+    """#167: a page's characters by MCID, built once per page from PL instead of one scan of the page per run (images, few
+    on a page, keep a scan). Each list keeps the page's order (gaptext and the readers depend on it). A step that rewrites a
+    character's mcid (op_artifacts, the off-page step, page figures) calls touch(page), and the page is built again from its
+    list on next use (review 02 M1). Until #166's readers ask by stream, (page, MCID) is every character with that number,
+    page and forms together, as the scans gave (review 02 M2). Check mode (APPLY_TREE_CHECK=1): each answer is compared
+    with a fresh scan, and any difference stops the run as a stale tree index does."""
+    def __init__(self): self.c = {}
+    def _build(self, pg):
+        cs = collections.defaultdict(list)
+        for c in PL.pages[pg - 1].chars:
+            if c.get('mcid') is not None: cs[c['mcid']].append(c)
+        self.c[pg] = cs
+    def chars(self, pg, m):
+        if pg not in self.c: self._build(pg)
+        out = list(self.c[pg].get(m, ()))
+        if TREE_CHECK and [id(c) for c in out] != [id(c) for c in PL.pages[pg - 1].chars if c.get('mcid') == m]:
+            _stale(f'the kept character index differs from a new scan (page {pg}, MCID {m})')
+        return out
+    def images(self, pg, ms):
+        """Images keep a scan of their page (a page has few): the images of runs ms, in page order."""
+        return [x for x in PL.pages[pg - 1].images if x.get('mcid') in ms]
+    def chars_in(self, pg, ms):
+        """The characters of several runs, in the page's order (a merge of the runs' lists by page position)."""
+        if pg not in self.c: self._build(pg)
+        ids = {id(c) for m in ms for c in self.c[pg].get(m, ())}
+        if not ids: return []
+        if len(ms) == 1: return self.chars(pg, next(iter(ms)))
+        return [c for c in PL.pages[pg - 1].chars if id(c) in ids]
+    def touch(self, pg): self.c.pop(pg, None)
+RI = RunIndex()
 log = {'applied': collections.Counter(), 'rejected': [], 'deferred': [], 'failed': [], 'empty_notes_removed': [],
        'rolemap': {}, 'bookmarks': None, 'rule_fixes': {}}
 def _versions():                               # recorded in record.json and at the top of review.md
@@ -257,7 +288,7 @@ def pt_set_key(key, el):
     r = nt_find(st.ParentTree, key); r[0].Nums[r[1]] = el
 def detach(el):
     par = parent_of[el.objgen]; set_kids(par, [k for k in kids(par) if not same(k, el)])
-def mc_text(pg, m): return ''.join(c['text'] for c in PL.pages[pg - 1].chars if c.get('mcid') == m)
+def mc_text(pg, m): return ''.join(c['text'] for c in RI.chars(pg, m))
 def elem_text(el, depth=0):
     if depth > 30: return ''
     pg = eff_pg.get(el.objgen); s = ''
@@ -473,8 +504,8 @@ def op_artifacts(spec):
             if arr is not None and m < len(arr): arr[m] = None
             ok(f'artifact: "{label}"'); done.append((pg, m))
     for pg, m in done:                     # the reader now sees these as artifacts too
-        for c in PL.pages[pg - 1].chars:
-            if c.get('mcid') == m: c['mcid'] = None; c['tag'] = 'Artifact'
+        for c in RI.chars(pg, m): c['mcid'] = None; c['tag'] = 'Artifact'
+        RI.touch(pg)
     reindex()
     for rule in spec.get('untagged', []): untagged_rule(rule)
     reindex()
@@ -698,6 +729,7 @@ def fix_offpage_text(_spec=None):
                 if j is not None: set_kids(el, [k for n_, k in enumerate(kids(el)) if n_ != j])
             if arr is not None and m < len(arr): arr[m] = None
         for i in done: chars[i]['mcid'] = None; chars[i]['tag'] = 'Artifact'
+        RI.touch(pno)
         n = sum(1 for i in done if chars[i]['text'].strip())
         sub = [chars[i] for i in sorted(done)]
         lines = [_offpage_text(sub, seg) for seg in sorted(_offpage_lines(sub), key=min)]
@@ -842,10 +874,10 @@ def elem_chars(el, depth=0):
     pg = eff_pg.get(el.objgen); out = []
     for k in kids(el):
         if isinstance(k, int):                     # marked content with no page in the tag tree can't be found: no characters
-            if pg: out += [c for c in PL.pages[pg - 1].chars if c.get('mcid') == k]
+            if pg: out += RI.chars(pg, k)
         elif is_pmcr(k):
             p = pidx[k.Pg.objgen] if '/Pg' in k else pg
-            if p: out += [c for c in PL.pages[p - 1].chars if c.get('mcid') == int(k.MCID)]
+            if p: out += RI.chars(p, int(k.MCID))
         elif is_elem(k): out += elem_chars(k, depth + 1)
     return out
 def elem_gaptext(el): return GT(elem_chars(el))
@@ -895,7 +927,7 @@ def page_scan_figure(o, pg):
     only, at the audit's rounding (keptscans.covers_page, review 11 L1): a Figure of a small image and page-wide text is
     not the page scan."""
     ms = {m for p, m in desc_mcids(o, eff_pg.get(o.objgen)) if p == pg}
-    ims = [i for i in PL.pages[pg - 1].images if i.get('mcid') in ms]
+    ims = RI.images(pg, ms)
     if not ims: return False
     return keptscans.covers_page((min(i['x0'] for i in ims), min(i['top'] for i in ims), max(i['x1'] for i in ims),
                                   max(i['bottom'] for i in ims)), PL.pages[pg - 1].vis)
@@ -938,7 +970,7 @@ def desc_mcids(n, pg=None, acc=None):
 def box_of(el, pno):
     """Bounding box (x0, top, x1, bottom) of an element's text and images on one page, or None."""
     ms = {m for p, m in desc_mcids(el, eff_pg.get(el.objgen)) if p == pno}
-    pts = [c for c in PL.pages[pno - 1].chars if c.get('mcid') in ms] + [i for i in PL.pages[pno - 1].images if i.get('mcid') in ms]
+    pts = RI.chars_in(pno, ms) + RI.images(pno, ms)
     if not pts: return None
     return (min(p['x0'] for p in pts), min(p['top'] for p in pts), max(p['x1'] for p in pts), max(p['bottom'] for p in pts))
 CLAIMED = set()
@@ -1159,7 +1191,7 @@ def unspoken_owner(o):
         if mapped(S(n)) in ('Figure', 'Formula'): return f'inside a {mapped(S(n))}'
         n = parent_of.get(n.objgen)
     return None
-def run_chars(pno, m): return [c for c in PL.pages[pno - 1].chars if c.get('mcid') == m]
+def run_chars(pno, m): return RI.chars(pno, m)
 def whole_part(pno, m, lang, text=None):
     """A refused whole-run tag as review.md lists it (its words and language), like a refused part."""
     return {'text': text if text is not None else ''.join(c['text'] for c in run_chars(pno, m)), 'lang': lang}
@@ -2589,6 +2621,7 @@ def fix_page_figures():
         else:
             j = next(i for i, k in enumerate(ks) if same(k, anc)); set_kids(host, ks[:j + 1] + [fig] + ks[j + 1:])
         for o in pc.chars + pc.images: o['mcid'] = 0
+        RI.touch(pno)
         reindex()
         res['wrapped'].append({'page': pno, 'label': labels.get(pno), 'alt': bool(alts.get(pno)),
                                'after': 'start of the document' if anc is None else f'"{norm_ws(elem_text(anc))[-50:]}" ' + (f'on {PG(max(pp(anc)))}' if pp(anc) else '(page: not on this tag)'),
