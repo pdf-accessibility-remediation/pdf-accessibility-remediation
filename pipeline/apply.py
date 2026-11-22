@@ -1865,16 +1865,19 @@ def op_links(spec):
     @guarded('link')
     def place(pno, a):
         chars = rect_chars(pno, a); pagechars = PL.pages[pno - 1].chars
+        def rk(c): return (c.get('mcs'), c['mcid'])          # #166: a run is its stream and its MCID
         under = []
         for c in chars:
-            if c.get('mcid') is not None and c['mcid'] not in under: under.append(c['mcid'])
-        wholly = [m for m in under if all(c in chars for c in pagechars if c.get('mcid') == m)]
-        if wholly: under = wholly; text = ''.join(c['text'] for c in pagechars if c.get('mcid') in wholly)
+            if c.get('mcid') is not None and rk(c) not in under: under.append(rk(c))
+        inside = {id(c) for c in chars}
+        def whole_run(r): return all(id(c) in inside for c in pagechars if c.get('mcid') is not None and rk(c) == r)
+        wholly = [r for r in under if whole_run(r)]
+        if wholly: under = wholly; text = ''.join(c['text'] for c in pagechars if c.get('mcid') is not None and rk(c) in wholly)
         else: text = ''.join(c['text'] for c in chars)
         a.Contents = pikepdf.String(contents_for(pno, a, text, fix)); ok('links: /Contents set')
         W = wrapper.get(a.objgen)
         if '/StructParent' not in a: add_struct_parent(a)
-        home = next((h for h in (link_ancestor(owner.get((pno, m))) for m in under) if h is not None), None)
+        home = next((h for h in (link_ancestor(run_owner(pno, r)) for r in under) if h is not None), None)
         if home is not None:
             ks = [k for k in kids(home) if not (is_objr(k) and k.Obj.objgen not in live_ids)]
             if not any(is_objr(k) and k.Obj.objgen == a.objgen for k in ks):
@@ -1895,20 +1898,24 @@ def op_links(spec):
         W.S = pikepdf.Name('/Link'); tree_set(W, '/Pg', pages[pno - 1].obj)
         objr = pikepdf.Dictionary(Type=pikepdf.Name('/OBJR'), Obj=a, Pg=pages[pno - 1].obj)
         set_kids(st, [k for k in kids(st) if not same(k, W)])
-        if under and not all((pno, m) in owner for m in under):      # the link's text is not in the tag tree
+        if under and not all(run_owner(pno, r) is not None for r in under):      # the link's text is not in the tag tree
             log['deferred'].append({'page': pno, 'what': 'link on text that is missing from the tag tree',
                                     'why': f'tied to the nearest tagged text instead: "{excerpt(text)}"'})
             under = []
-        whole = bool(under) and all(all(c in chars for c in pagechars if c.get('mcid') == m) for m in under)
+        whole = bool(under) and all(whole_run(r) for r in under)
         if under:
-            o = owner.get((pno, under[-1]))
+            o = run_owner(pno, under[-1])
             if o is None: raise ValueError('no owner for MCID under link')
-            same_owner = all(same(owner.get((pno, m)), o) for m in under)
-            idxs = [mc_entry_index(o, pno, m) for m in under]
-            if whole and same_owner and None not in idxs and sorted(idxs) == list(range(min(idxs), min(idxs) + len(idxs))):
+            same_owner = all(same(run_owner(pno, r), o) for r in under)
+            fm = {r: (form_of(pno, r[0]) if r[0] is not None else None) for r in under}
+            idxs = [mc_entry_index(o, pno, r[1], fm[r].objgen if fm[r] is not None else None) for r in under]
+            movable = all(r[0] is None or (fm[r] is not None and not form_slot_why(kid_for(pno, r[1], fm[r], None))) for r in under)
+            if whole and same_owner and movable and None not in idxs and sorted(idxs) == list(range(min(idxs), min(idxs) + len(idxs))):
                 ks = kids(o); lo, hi = min(idxs), max(idxs)
-                tree_set(W, '/K', pikepdf.Array([mcr(pno, m) for m in under] + [objr]))
-                for m in under: pt_set_mcid(pno, m, W); owner[(pno, m)] = W
+                tree_set(W, '/K', pikepdf.Array([mcr(pno, r[1]) if fm[r] is None else kid_for(pno, r[1], fm[r], ks[i_]) for r, i_ in zip(under, idxs)] + [objr]))
+                for r in under:
+                    if fm[r] is None: pt_set_mcid(pno, r[1], W); owner[(pno, r[1])] = W
+                    else: pt_set(pno, r[1], W, fm[r]); index_set(pno, r[1], W, fm[r])     # #166: the form's own entry
                 dp = dest_page(a)
                 if dp in NOTES and pno not in NOTES and S(o) != 'Reference':
                     R = new_elem('Reference', o, [W], pg=pno); tree_set(W, '/P', R); ks[lo:hi + 1] = [R]; ok('links: note reference wrapped')
@@ -1921,18 +1928,19 @@ def op_links(spec):
             ok('links: placed after shared text'); return
         H = float(PL.pages[pno - 1].height); x0, y0, x1, y1 = [float(v) for v in a.Rect]
         cy = H - (y0 + y1) / 2
-        near = min((c for c in pagechars if c.get('mcid') is not None and (pno, c['mcid']) in owner),
+        near = min((c for c in pagechars if c.get('mcid') is not None and run_owner(pno, rk(c)) is not None),
                    key=lambda c: abs(c['top'] - cy) + abs(c['x0'] - x0) / 10, default=None)
         npg = pno
         if near is None:                            # nothing tagged on this page: last tagged text before it, else first after
             for d in [x for k in range(1, len(pages)) for x in (-k, k)]:
                 q = pno + d
                 if not 1 <= q <= len(pages): continue
-                cs = [c for c in PL.pages[q - 1].chars if c.get('mcid') is not None and (q, c['mcid']) in owner]
+                cs = [c for c in PL.pages[q - 1].chars if c.get('mcid') is not None and run_owner(q, rk(c)) is not None]
                 if cs: near, npg = (cs[-1] if d < 0 else cs[0]), q; break
             if near is None: raise ValueError('no tagged text in the document')
             log['deferred'].append({'page': pno, 'what': 'link on a page with no tagged text', 'why': f'tied to tagged text on {PG(npg)}'})
-        o = owner[(npg, near['mcid'])]; i = mc_entry_index(o, npg, near['mcid'])
+        o = run_owner(npg, rk(near)); nf = form_of(npg, near.get('mcs')) if near.get('mcs') is not None else None
+        i = mc_entry_index(o, npg, near['mcid'], nf.objgen if nf is not None else None)
         tree_set(W, '/K', pikepdf.Array([objr])); tree_set(W, '/P', o)
         ks = kids(o); ks.insert((i if i is not None else len(ks) - 1) + 1, W); set_kids(o, ks); parent_of[W.objgen] = o
         ok('links: placed beside nearest text')
@@ -2204,6 +2212,13 @@ def form_slot_why(k):
     if '/StructParents' not in f or pt_form_arr(f) is None: return WHY_NO_ENTRY
     if _form_uses_all().get(f.objgen, 0) > 1: return WHY_SHARED
     return None
+def run_owner(pno, r):
+    """The element over run r = (stream, MCID) on page pno: its page kid's (stream None), or the one element whose
+    /MCR … /Stm into that form names it (#166); None when none, or two, do."""
+    sk, m = r
+    if sk is None: return owner.get((pno, m))
+    els = {o.objgen: o for o, f in fowner.get((pno, m)) or [] if skey(f) == sk}
+    return next(iter(els.values())) if len(els) == 1 else None
 def stm_refusal(ks):
     """Why a move can't carry these kids' form runs (their form's index entry can't be set), or None."""
     return next((w for w in (form_slot_why(k) for k in ks if is_mcr(k) and isinstance(k.get('/Stm'), pikepdf.Stream)) if w), None)
