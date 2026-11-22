@@ -36,7 +36,7 @@ approved.
        it, are separate places. `!` and `?` don't end one: titles carry them ("Kōgai o Nogasuna!").
      - **A colon doesn't end one inside a line:** "Higashikuni nikki: Nihon gekidōki" is one title with its subtitle, in
        one language. **A colon at a line end does end a title,** since growth into the next run stops at any phrase end
-       (", . ; :" or a closing bracket or quote), as before.
+       (", . ; : ! ?" or a closing bracket or quote), as before.
      - **Inside quotes a comma doesn't count** (“Hyakunin isshu, Sōgi shō” stays one place): from a word opening with
        “ " « to the first word after it carrying ” " » within ten words. The comma on the closing word itself still
        counts ("Kanada,” Genchi ni Miru" is two), an opening quote with no close nearby is no span, and ’ (as in kan’yō)
@@ -263,7 +263,7 @@ switches once, not mid-title. `LANG_GROW=off` turns it off.
 - **Titles broken at a line end:** when an italic title reaches the end of its run, and the run before or after it
   belongs to the same tag and sits next to it there (each line its own run), growth goes on into it.
   - The title is one tag across both runs, so the voice switches once.
-  - It needs a clean break: a word ending a phrase (". , ; :" or a closing bracket or quote) or a word opening one stops
+  - It needs a clean break: a word ending a phrase (". , ; : ! ?" or a closing bracket or quote) or a word opening one stops
     it, and so do English words, so two titles one after the other stay two.
   - **On every page reading** (2026-11-21, H1): a page read as its runs, an OCR page read in joined stretches, and a
     publisher page read joined (a split word or a dropped letter joined somewhere on it) follow one rule.
@@ -273,10 +273,12 @@ switches once, not mid-title. `LANG_GROW=off` turns it off.
       set as several runs, "Nihon Rettō | Kaizō | Ron"), when the two runs sit next to each other in one tag and meet at
       a word break: a new line, or a space. A run change inside a word on one line ("Griefi" | "ng") is none.
     - **Growth chains line to line,** so a title over three or more lines is one tag from any seed word in it.
-    - **A title the reading can't map to the PDF's runs** (a run that comes back after another) is one place per run
-      instead, and its candidates are kept.
-    - **A word after a line-end hyphen:** the joined reading of an OCR page ends a stretch after the first word of the
-      next line ("Zhong-" ‖ "guo shi": "Zhongguo" is one tag, "shi" another).
+    - **A title the reading can't map to the PDF's runs, or whose pieces apply.py couldn't tag as one** (a run that
+      comes back after another, other text between the pieces in their runs, or pieces not next to each other in the
+      tag tree) is one place per run instead, and its candidates are kept.
+    - **A word broken by a line-end hyphen** is one word form tagged in its two pieces. Growth never steps across the
+      hyphen, on any page, so a title's words after it are tagged only where they are candidates of their own
+      ("Zhong-" ‖ "guo shi": "Zhongguo" in two tags; "shi" alone on an OCR page, untagged on a publisher page).
 - **What is ours, and what is the reader's:**
   - The tags' correctness is the pipeline's: verify checks each one, and the AI's answers are approved by a person. On the
     test books, 3 of 1,819 grown titles took in an English word.
