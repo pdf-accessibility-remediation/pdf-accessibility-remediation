@@ -200,3 +200,18 @@ def test_a_work_order_mapping_the_childs_style_to_p_refuses_the_place(tmp_path):
     out, log, v = apply_verify(tmp_path / 'b', src, dict(wo(SEGS), rolemap={'ParagraphSpan': 'P'}))
     assert log['rolemap'] == {'ParagraphSpan': {'to': 'P', 'how': 'RoleMap', 'elements': 1}}
     assert not log['language_parts'].get('phrases') and log['language_parts']['refused'] and lang_spans(out) == [], log['language_parts']
+
+
+
+def test_a_word_made_only_of_two_adjacent_child_tags(tmp_path):
+    """Review 06 S3: no run of the paragraph's own in the word; the Span holds the two children only, and verify's branch
+    for a place with no own runs finds each where the place had it."""
+    src = build(str(tmp_path / 's.pdf'), [('The ', 'own'), ('Ky', 'child'), ('ô', 'child'), (' palace.', 'own')])
+    with pikepdf.open(src) as pdf: c = langcands.book(plpages.Pages(src), doc_lang='en', pdf=pdf, grow=True)
+    ps = [p for p in c['places'] if p['form'] == 'Kyô']
+    assert len(ps) == 1 and ps[0]['segments'] == [[1, 0, 1], [2, 0, 0]] and not c['unplaced'], c['places']
+    out, log, v = apply_verify(tmp_path, src, wo([[1, 0, 1], [2, 0, 0]], form='Kyô'))
+    assert log['language_parts']['phrases'] == 1 and not log['language_parts']['refused'], log['language_parts']
+    assert lang_spans(out) == [('ko-Latn', ['el:Span', 'el:Span'])]
+    assert v['language']['all_match'] and v['pixel_pages_differing'] == [] and v['text_pages_changed'] == [], v['language']
+    assert v['index']['dangling'] == 0 and v['tree']['parenttree_mismatched'] == 0
