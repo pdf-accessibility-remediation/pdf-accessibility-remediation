@@ -200,6 +200,17 @@ Empty tags are removed when proven empty, whether the source or the run emptied 
 
 The pass runs before bookmarks are built.
 
+### Text drawn inside a form
+
+Most collection books draw their text inside a form XObject (741 of 764): the page's own content only draws the form, and the tag tree points into it with `/MCR … /Stm`. The executor reads and moves that text as it does the page's own (#166):
+
+- **Each character knows which stream drew it.** The page reader records, for every character, whether its marked content is the page's own or which form's (`lib/plumb_fix.py`), so a page run and a form run with the same number are never mixed. A marked-content sequence that names its properties (`/P /MC0 BDC`) is read too.
+- **Reading:** a heading, a table cell, a list label, a link's text and the text of any tag are read from their form runs, so tables get header cells, headings get bookmarks, and links are tied to their own text.
+- **Moving:** a run that moves to another tag (a merge, the contents list, the one-item list rule, a link) takes its entry in the form's own index with it. The move is refused, with its reason, when the form has no tag entry or is drawn in several places ("the text is drawn inside a form used in more than one place").
+- **Text rules:** a running head or page number inside a form becomes decoration inside that form when the form is drawn once, directly from its page, outside the page's own marked content, and has no spoken text of its own; otherwise the match is refused with its reason and is not counted as matched. The line guard reads every stream's characters on the line.
+- **The index repair** also fixes the form's own index, for a form drawn once.
+- **verify.py** reads a heading inside a form as text, and checks reading order on form runs.
+
 ### Tag-tree index cleanup
 
 This runs last. A ParentTree entry that points at a tag no longer in the tree is cleared: the entry becomes null, and its key stays. An IDTree entry that points at such a tag, or at nothing, is removed.
