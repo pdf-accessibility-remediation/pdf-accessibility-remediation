@@ -1669,12 +1669,15 @@ def plan_phrase(p, explicit, doc_lang, spec):
             if kk is None or kk[0] != sk or mc_text(pno, kk[1]).strip(): return no('its pieces of text are not next to each other in the tag tree')
             if info is not None and (kk[1] in info['page_mcids'] or info['sources'][kk[1]] != 1): return no("the text's number is used twice on the page")
             blank.append(kk[1]); _STREAM[(pno, kk[1])] = fx
-    plan = []
+    plan, texts = [], []
     for n_, (m, a, b) in enumerate(segs):
         cs = run_chars(pno, m)
         before, after = ''.join(c['text'] for c in cs[:a]), ''.join(c['text'] for c in cs[b + 1:])
         if (n_ > 0 and before.strip()) or (n_ < len(segs) - 1 and after.strip()): return no('other text sits between its pieces')
-        plan.append((m, a, b, not before.strip() and not after.strip()))
+        # a piece is its whole run when nothing outside it is a letter or digit: the single-run rule (language_parts), so a
+        # title ending "isshu." covers its run, period and all, with no split (review 02 §4: teika PDF 216's render refusal)
+        whole = not re.search(r'[^\W_]', before) and not re.search(r'[^\W_]', after)
+        plan.append((m, a, b, whole)); texts.append(''.join(c['text'] for c in (cs if whole else cs[a:b + 1])))
     ph = {'gid': len(_LANG_PHRASES), 'page': pno, 'owner': o, 'segs': plan, 'blank': blank, 'lang': lang, 'form': p.get('form'),
           'text': ''.join(texts), 'stream': sk, 'fx': fx}
     for m, a, b, whole in plan:

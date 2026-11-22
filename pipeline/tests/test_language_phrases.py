@@ -281,3 +281,16 @@ def test_a_span_over_whole_runs_with_nothing_to_edit_in_the_marks_is_written(tmp
     assert log['language_parts']['phrases'] == 1 and spans(out) == [('haw', [1, 2, 3], 'P')]
     assert v['language']['all_match'] and v['language']['spans_written'] == 1
     assert v['pixel_pages_differing'] == [] and v['text_pages_changed'] == [] and v['index']['dangling'] == 0
+
+
+def test_a_piece_whose_run_has_only_punctuation_outside_it_is_taken_whole(tmp_path):
+    """Review 02 §4 (the single-run rule, language_parts'): a phrase's last piece "pasquet" in the run "pasquet." covers its
+    run, the period too, with no split; before, the period was split off (teika PDF 216's render refusal came from such a
+    split)."""
+    line = [{'text': 'The ', 'lang': 'en-US'}, {'text': 'velunka ', 'lang': 'en-US'}, {'text': 'toramio ', 'lang': 'en-US'},
+            {'text': 'pasquet.', 'lang': 'en-US'}]
+    src, out, log, v = apply_verify(tmp_path, [line], wo_of(PHRASE))
+    lp = log['language_parts']
+    assert lp['phrases'] == 1 and not lp['refused'] and not lp.get('split'), lp
+    assert spans(out) == [('haw', [1, 2, 3], 'P')]
+    assert v['language']['all_match'] and v['pixel_pages_differing'] == [] and v['text_pages_changed'] == []
