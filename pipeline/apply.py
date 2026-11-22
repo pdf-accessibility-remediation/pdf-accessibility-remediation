@@ -18,7 +18,7 @@ title, the XMP and the tags are the same as without it); Acrobat shows it under 
 """
 import sys, os, json, re, collections, hashlib, unicodedata
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from lib import plumb_fix, listrule, gaptext, langtag, support, plpages, readorder, scripts, fontname, tablegrid, pagereads, mcsplit, langreq, keptscans  # plumb_fix first: it patches pdfplumber
+from lib import plumb_fix, listrule, gaptext, langtag, support, plpages, readorder, scripts, fontname, tablegrid, pagereads, mcsplit, langreq, keptscans, strays  # plumb_fix first: it patches pdfplumber
 from lib.sections import excerpt
 import pikepdf, pdfplumber
 import fontTools.cffLib, fontTools.ttLib, fontTools.fontBuilder  # noqa: F401  required: reads font programs (no silent skip)
@@ -266,6 +266,14 @@ def elem_text(el, depth=0):
         elif is_pmcr(k): s += mc_text(pidx[k.Pg.objgen] if '/Pg' in k else pg, int(k.MCID))
         elif is_elem(k): s += elem_text(k, depth + 1)
     return s
+# #168: the tag tree's references to nothing (lib/strays.py): removed before any step reads the tree, with the index slot each
+# named; an element left with nothing goes in fix_empty_tags (its blockers and report). Runs on every book: a saved intake
+# made before #168, and a publisher's tree with the same fault (sands), are repaired here too.
+STRAYS = strays.repair(pdf, empties='leave')
+STRAY_EMPTIED = set(tuple(x) for x in STRAYS.pop('emptied'))
+log['strays'] = STRAYS
+if STRAYS['removed']['page_kids']: ok('tag tree: references to page text that is not drawn there removed', STRAYS['removed']['page_kids'])
+if STRAYS['removed']['stm_kids']: ok('tag tree: references into forms that draw no such text removed', STRAYS['removed']['stm_kids'])
 reindex()
 SEC = wo.get('sections', {})
 def prange(key):
@@ -895,6 +903,8 @@ def op_alt(spec):
     for it in spec:
         o = obj(it['obj'])
         if S(o) != 'Figure': reject(f'alt {it["obj"]}', 'not a Figure'); continue
+        if o.objgen in STRAY_EMPTIED and not kids(o):            # #168: it pointed only at a blank page image the tagger left out
+            reject(f'alt {it["obj"]}', 'the figure holds nothing: its only reference pointed at no drawn content (removed)'); continue
         if KEPT_SCANS and not it.get('changed_by') and not str(it.get('why') or '').startswith(('added by ', 'added in review')):
             pg = eff_pg.get(o.objgen) or min((p for p, m in desc_mcids(o) if p), default=None)   # a person's addition or change stands
             if pg in KEPT_SCANS and page_scan_figure(o, pg):   # the kept page scan itself (review 08 H1: not another figure on the

@@ -457,8 +457,11 @@ checks = [
      (', '.join(f'{pg(x["page"])} (caption inside {x["parent"]})' for x in by_page(stc['captions_not_grouped'])) or 'all grouped') if stc else 'not checked'),
     ('No link whose only text is a URL', ok(stc is not None and not stc['links_url_only']),
      (f'{len(stc["links_url_only"])}: ' + pgs([x['page'] for x in stc['links_url_only']]) if stc['links_url_only'] else 'none') if stc else 'not checked'),
-    ('Tag tree consistent', ok(t.get('parenttree_missing') == 0 and t.get('parenttree_mismatched') == 0),
-     f'{nc(t.get("parenttree_missing"))} missing · {nc(t.get("parenttree_mismatched"))} mismatched'),
+    ('Tag tree consistent', ok(t.get('parenttree_missing') == 0 and t.get('parenttree_mismatched') == 0
+                               and not t.get('kids_not_drawn') and not t.get('runs_named_twice')),
+     f'{nc(t.get("parenttree_missing"))} missing · {nc(t.get("parenttree_mismatched"))} mismatched'     # #168: shown only when found
+     + (f' · {t["kids_not_drawn"]} reference{"s" if t["kids_not_drawn"] != 1 else ""} to text not drawn there ({pgs(t.get("kids_not_drawn_pages") or [])})' if t.get('kids_not_drawn') else '')
+     + (f' · {t["runs_named_twice"]} text run{"s" if t["runs_named_twice"] != 1 else ""} named by two tags ({pgs(t.get("runs_named_twice_pages") or [])})' if t.get('runs_named_twice') else '')),
     ('All marked text reachable from the tag tree', ok(t.get('content_mcids_not_in_tree') == 0), f'{nc(t.get("content_mcids_not_in_tree"))} orphan runs'),
     ('One Document root', ok({k.lstrip('/'): v for k, v in (t.get('root_children') or {}).items()} == {'Document': 1}),
      ', '.join(f'{k.lstrip("/")} {v}' for k, v in (t.get('root_children') or {}).items())),

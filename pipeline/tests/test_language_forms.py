@@ -174,11 +174,15 @@ def test_10_page_runs_and_form_runs_on_one_page_are_both_tagged(tmp_path):
 
 
 # ---------------------------------------------------------------- review 09 §3.4 and decision 5
-def test_a_run_the_tree_names_both_as_page_text_and_in_the_form_is_refused(tmp_path):
-    """Decision 5 (condition 6): an integer page kid and an /MCR … /Stm both name form run 1. Refused, the form unchanged."""
+def test_a_run_the_tree_names_both_as_page_text_and_in_the_form_is_tagged_after_the_strays_repair(tmp_path):
+    """Decision 5 (condition 6), since #168: an integer page kid and an /MCR … /Stm both name form run 1. The page kid
+    points at no text the page draws, and the run is held by its /Stm kid, so apply.py's strays repair (lib/strays.py)
+    removes it before the language pass; the run is then tagged through its /Stm path. (run_at still refuses a run named
+    twice, for a page kid the repair keeps.)"""
     src, out, log, v = apply_verify(tmp_path, THREE, wo_of(WHOLE), page_refs=(1,))
-    assert spans(out) == [] and log['language_parts']['refused'] == {'the tag tree names this text twice': 1}, log['language_parts']
-    assert form_bytes(out) == form_bytes(src)
+    assert log['strays']['removed']['page_kids'] == 1 and log['strays']['removed']['slots_cleared'] == 1
+    assert [x[3] for x in spans(out)] == [['stm']] and not log['language_parts'].get('refused'), log['language_parts']
+    assert v['language']['all_match'] and v['tree']['kids_not_drawn'] == 0 and v['tree']['runs_named_twice'] == 0
 
 
 def test_a_run_named_only_by_a_page_kid_is_refused_as_before(tmp_path):

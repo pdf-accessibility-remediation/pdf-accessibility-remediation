@@ -357,6 +357,13 @@ def glance(record, md, labels=None, han_pages=None, sections=None, release=None)
             add(1, 'ship', 'OCR text ' + (('waiting for a language reader' if v.get('verdict') == SENT else 'not approved') if isinstance(v, dict) else 'not yet reviewed'),
                 ocr_pages, sec('Intake'), find='- OCR text added', key='intake:ocr')
         elif name in GATE_ROWS: add(1, 'ship', f'{name}: {det}', [], sec('Work order reviewed'))
+        elif name == 'Tag tree consistent' and ((ve.get('tree') or {}).get('runs_named_twice') or 0) > 0:
+            # #168, review 02 item 8: text two tags name, left after the repair, near the top of "What Needs a Person" (never
+            # blocking): a screen reader may read it twice or under the wrong heading
+            tr = ve.get('tree') or {}
+            add(1, 'check', f'Text named by two tags ({tr["runs_named_twice"]} run{"s" if tr["runs_named_twice"] != 1 else ""}): '
+                'a screen reader may read it twice, or under the wrong heading; a person decides which tag keeps it',
+                tr.get('runs_named_twice_pages') or [], None, find=f'| {name} |', key=f'check:{name}'); issues[-1]['lead'] = True
         elif name == 'Language tags hold their words':          # #118: a tag on other words or under another language (review 06, stage D)
             add(1, 'check', f'{name}: {det}', [x['page'] for x in (ve.get('language') or {}).get('mismatch_examples') or [] if isinstance(x.get('page'), int)],
                 sec('Language Tags'), key='check:language')

@@ -1,7 +1,7 @@
 """Verify work/remediated.pdf against the original. Read-only."""
 import sys, json, re, collections
 import os; sys.path.insert(0, os.path.dirname(os.path.abspath(__file__))); import vera
-from lib import plumb_fix, readorder, fontname, langtag, contentops as CO  # noqa: F401  plumb_fix before pdfplumber reads a page: it patches pdfplumber
+from lib import plumb_fix, readorder, fontname, langtag, strays, contentops as CO  # noqa: F401  plumb_fix before pdfplumber reads a page: it patches pdfplumber
 import pikepdf, pdfplumber, pypdfium2 as pdfium
 import fontTools.cffLib, fontTools.ttLib  # noqa: F401  required: a font that can't be read must not pass as OK
 from PIL import ImageChops
@@ -168,6 +168,7 @@ out['tree'] = {'root_children': dict(collections.Counter(root_kids)), 'types': d
                'parenttree_missing': missing, 'parenttree_mismatched': mism,
                'stale_OBJRs': stale, 'annotations_unresolved': len(annot_bad), 'annotations_without_Contents': no_contents,
                'nested_Link_in_Link': nested_links}
+out['tree'].update(strays.counts(pdf))            # #168: kids pointing at no drawn number, and drawn runs two kids name (lib/strays.py)
 lv = [l for l, _ in seq]
 out['headings'] = {'first': seq[0] if seq else None, 'counts': dict(collections.Counter(f'H{l}' for l in lv)),
                    'skipped_levels': [(a, b) for a, b in zip(lv, lv[1:]) if b > a + 1][:5]}
