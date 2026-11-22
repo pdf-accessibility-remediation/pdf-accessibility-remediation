@@ -17,3 +17,12 @@ def test_nothing_without_peak_file(tmp_path):
     env = {k: v for k, v in os.environ.items() if k != 'PEAK_FILE'}
     subprocess.run([sys.executable, '-c', 'from lib import peak'], cwd=PIPE, env=env, check=True)
     assert not list(tmp_path.iterdir())
+
+
+def test_a_childs_peak_counts(tmp_path):
+    """Review 04 M1: a step whose child (a Java tool) uses more memory than the step itself reports the child's peak."""
+    f = tmp_path / 'pk'
+    code = ("import subprocess, sys; from lib import peak; "
+            "subprocess.run([sys.executable, '-c', 'x = bytearray(300 * 2 ** 20)'], check=True)")
+    step({'PEAK_FILE': str(f)}, code)
+    assert int(f.read_text()) > 300 * 2 ** 20

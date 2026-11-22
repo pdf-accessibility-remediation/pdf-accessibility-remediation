@@ -3,13 +3,16 @@
 Imported by the step scripts run_api.sh times (intake, audit, decide, apply, verify, the language and page-reading steps,
 vera, review_workorder). When PEAK_FILE is set (run_api.sh's stage() sets it for each step), the process writes its peak
 resident memory in bytes there at exit, keeping the larger of what is already in the file (a stage may start several
-processes). Nothing happens without PEAK_FILE. ru_maxrss is bytes on macOS and kilobytes on Linux: normalised here.
+processes). The peak is the larger of the process's own and its largest child's (a Java step: the tagger, veraPDF).
+Nothing happens without PEAK_FILE. ru_maxrss is bytes on macOS and kilobytes on Linux: normalised here.
 """
 import os, sys, atexit, resource
 
 
 def peak_bytes():
-    r = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+    """The larger of this process's peak and its largest child's (review 04 M1: the Java steps, OpenDataLoader in intake and
+    veraPDF in audit and verify, run as children; RUSAGE_CHILDREN's ru_maxrss is the largest single child waited for)."""
+    r = max(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss, resource.getrusage(resource.RUSAGE_CHILDREN).ru_maxrss)
     return int(r) if sys.platform == 'darwin' else int(r) * 1024
 
 
