@@ -108,7 +108,10 @@ def test_every_variable_apply_reads_is_in_the_key():
     names = set()
     for f in core.dryrun_code():
         names |= set(re.findall(r'''(?:environ\.get|environ\[|getenv)\(?\s*['"]([A-Z0-9_]+)['"]''', open(f, encoding='utf-8').read()))
+    names -= NOT_OUTPUT
     assert names and names <= set(core.DRYRUN_ENV), sorted(names - set(core.DRYRUN_ENV))
+
+NOT_OUTPUT = {'PEAK_FILE'}      # #167: lib/peak.py writes the step's peak memory to it at exit; nothing the trial run makes changes
 
 # ------------------------------------------------------------------ #93 Part 2: the run's own apply, kept for the first Review Again
 # A run that applied the AI's own order with the figure step on has, in its apply log, exactly what the trial run would
