@@ -321,7 +321,30 @@ def mc_entry_index(el, pg, m, stream=None):
     for i, k in enumerate(kids(el)):
         if kid_key(el, k, pg) == (stream, m): return i
     return None
+_NTC = {}
 def nt_find(node, key):
+    """(leaf node, index of the value) for key in a number tree. #167: from a map of the whole tree made once, each hit
+    checked against the leaf (a stale map is rebuilt, never trusted); a node stored directly is searched as before."""
+    if node.is_indirect:
+        for _ in range(2):
+            m = _NTC.get(node.objgen)
+            if m is None: m = _NTC[node.objgen] = _nt_map(node)
+            hit = m.get(key)
+            if hit is not None and hit[1] - 1 < len(hit[0].Nums) and int(hit[0].Nums[hit[1] - 1]) == key: return hit
+            _NTC.pop(node.objgen, None)
+        return None
+    return _nt_scan(node, key)
+def _nt_map(node):
+    out, stack = {}, [node]
+    while stack:
+        n = stack.pop()
+        if '/Nums' in n:
+            a = n.Nums
+            for j in range(0, len(a) - 1, 2):
+                if isinstance(a[j], int): out.setdefault(int(a[j]), (n, j + 1))
+        stack += list(reversed(list(n.get('/Kids') or [])))
+    return out
+def _nt_scan(node, key):
     if '/Nums' in node:
         a = node.Nums
         for j in range(0, len(a), 2):
@@ -329,7 +352,7 @@ def nt_find(node, key):
     for kid in node.get('/Kids') or []:
         lim = kid.get('/Limits')
         if lim is None or int(lim[0]) <= key <= int(lim[1]):
-            r = nt_find(kid, key)
+            r = _nt_scan(kid, key)
             if r: return r
 def pt_arr(pg):
     sp = pages[pg - 1].obj.get('/StructParents')
@@ -586,6 +609,7 @@ def form_has_free_text(x):
         elif op == 'EMC': depth = max(0, depth - 1)
         elif op in TEXT_OPS and depth == 0: return True
     return False
+FIGPAGES = {}
 def untagged_rule(rule):
     """Untagged text (in no marked-content sequence at all) that the work order says is decoration: a page notice that
     the regex fully matches, or text lying entirely inside Figures that carry alt text. Each page is all-or-nothing:
@@ -600,7 +624,9 @@ def untagged_rule(rule):
             if not any(r.fullmatch(x) for r in (rx, rxl) for x in (norm_ws(''.join(c['text'] for c in U)), GT(U))):
                 reject(f'untagged {PG(pno)}', f'the untagged text on the page does not fully match the rule "{label}"'); continue
         elif where == 'in_figure':
-            boxes = [(f, box_of(f, pno)) for f, _ in all_elems() if mapped(S(f)) == 'Figure']
+            if 'figs' not in FIGPAGES:                    # #167: each Figure's pages once, not every Figure measured on every page
+                FIGPAGES['figs'] = [(f, {p_ for p_, _m in desc_mcids(f, eff_pg.get(f.objgen))}) for f, _ in all_elems() if mapped(S(f)) == 'Figure']
+            boxes = [(f, box_of(f, pno)) for f, ps in FIGPAGES['figs'] if pno in ps]
             boxes = [(f, b) for f, b in boxes if b is not None]
             if not boxes:
                 reject(f'untagged {PG(pno)}', 'no Figure tag on this page: the drawing and its text are untagged; a person must tag it as a Figure with alt text first'); continue
