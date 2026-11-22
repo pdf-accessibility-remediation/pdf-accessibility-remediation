@@ -26,6 +26,19 @@ approved.
        for in the language step's requests but add no rows to the review page: a person decides only the tagged ones.
        Across 34 test books the rule adds about 5,200 word forms, worst about $0.23 a book to send (most $0.94).
      - `LANG_FINDER_RULES=-italic` turns it off for a measurement (testing only, see [Options](options.md)).
+   - **A comma or semicolon ends a phrase** (L3, 2026-11-21): consecutive candidates in one run are one phrase up to a
+     word ending in `,` or `;` (with any closing quote or bracket after it), and title growth doesn't step across one
+     either, in either direction or over a slash. Lists ("topeng, wayang"), an author and a title ("Saitō, “Hōshasei”"),
+     and two titles side by side are separate places; "Winesburg, Ohio" no longer takes in "Ohio".
+     - **A colon doesn't end one inside a line:** "Higashikuni nikki: Nihon gekidōki" is one title with its subtitle, in
+       one language. **A colon at a line end does end a title,** since growth into the next run stops at any phrase end
+       (", . ; :" or a closing bracket or quote), as before.
+     - **Inside quotes a comma doesn't count** (“Hyakunin isshu, Sōgi shō” stays one place): from a word opening with
+       “ " « to the first word after it carrying ” " » within ten words. The comma on the closing word itself still
+       counts ("Kanada,” Genchi ni Miru" is two), an opening quote with no close nearby is no span, and ’ (as in kan’yō)
+       never counts as a quote.
+     - A whole-run passage stays one place whatever its punctuation, and the joined reading of OCR pages already breaks
+       its stretches at `, ; :` where the run changes; inside a run of several words the rule applies there too.
    - **A word broken by a hyphen at a line end** is checked joined, both without its hyphen ("infor-" + "mation") and
      with it ("long-" + "standing"); English either way, it is no candidate. The form with the hyphen counts only when
      each half has three or more plain letters and the joined word does not have the shape of romanized Japanese or

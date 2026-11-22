@@ -60,6 +60,8 @@ HYPHENS = '-‐‑'
 GROW_STOP = {'of', 'or', 'and', 'the', 'by', 'for', 'with', 'from', 'at'}   # English function words never join a title (#136)
 RUN_END = re.compile(r'[.,;:!?)\]}”"’»]\s*$')   # growth into the next run (proposal 20 (b)): a word ending a phrase stops it,
 RUN_OPEN = re.compile(r'^\s*[(\[{“"‘«]')          # and so does one opening a bracket or quote at the start of the next run
+PHRASE_END = re.compile(r'[,;][”"’»)\]}]*\s*$')    # L3 (review 22; Patrick, 2026-11-21): a word ending in a comma or semicolon
+QUOTE_OPEN, QUOTE_CLOSE, QUOTE_WINDOW = '“"«', '”"»', 10   # ends a phrase in a run, unless inside quotes (review 24 §7.3)
 ITALIC = re.compile(r'(?i)ital|oblique|-it$|-it[A-Z]|It$')
 NUMERAL = re.compile(r'(?i)[ivxlcdm]+|\d[\d,.]*\w{0,3}')
 
@@ -381,6 +383,18 @@ def page_places(pno, chars, page_chars=None, italic=None, doc_lang=None, spoken=
                   (min(ws), max(ws)) if ws else (None, None))
             k = j + 1
     def latin_word(x): return bool(x['text']) and x['mcid'] is not None and bool(LATIN.search(x['text'])) and not _is_cjk(x['text'])
+    def quoted_inside(n):
+        """Word n is inside a quoted span and is not its closing word (review 24 §7.3): the span runs from a word opening
+        with “ " « to the first word after it carrying ” " » (before any , . ; :), within QUOTE_WINDOW words. The closing
+        word's own mark still ends a phrase; an opening with no close in the window is no span; ’ never counts (kan’yō)."""
+        def opens(x): return words[x]['all'].lstrip()[:1] in QUOTE_OPEN
+        def closes(x): return words[x]['all'].rstrip(' ,.;:')[-1:] in QUOTE_CLOSE
+        if closes(n): return False
+        for a in range(n, max(-1, n - QUOTE_WINDOW), -1):
+            if a < n and closes(a): return False          # a span closed before n
+            if opens(a): return any(closes(b) for b in range(n + 1, min(len(words), a + QUOTE_WINDOW)))
+        return False
+    def phrase_end(n): return 0 <= n < len(words) and bool(PHRASE_END.search(words[n]['all'])) and not quoted_inside(n)
     def is_italic(x): return bool(x['chars']) and all(italic(c.get('fontname')) for c in x['chars'] if c['text'].strip())
     def form_cls(grp):
         form = ' '.join(x.get('form', x['text']) for n_, x in enumerate(grp)
@@ -425,8 +439,9 @@ def page_places(pno, chars, page_chars=None, italic=None, doc_lang=None, spoken=
         w = words[k]
         if not w.get('cls') or w['mcid'] is None: k += 1; continue
         j = k
-        while j + 1 < len(words) and words[j + 1].get('cls') and words[j + 1]['mcid'] == w['mcid'] and not words[j].get('half_cls'):
-            j += 1                                   # a phrase ends at the second half of a broken word (#140): its form stays the first half's
+        while j + 1 < len(words) and words[j + 1].get('cls') and words[j + 1]['mcid'] == w['mcid'] and not words[j].get('half_cls') \
+                and not phrase_end(j):           # a phrase ends at the second half of a broken word (#140): its form stays the first half's;
+            j += 1                               # and at a comma or semicolon (L3)
         if grow:                                     # a title's whole extent (review 06, M4): the voice switches once, not mid-title
             m0 = w['mcid']
             def slash(i): return 0 <= i < len(words) and words[i]['all'].strip() == '/'
@@ -455,6 +470,11 @@ def page_places(pno, chars, page_chars=None, italic=None, doc_lang=None, spoken=
                 if 0 <= i < len(words) and i > last_end and slash(i):   # a lone slash may carry no run of its own: the
                     return True if step == 0 else same(i + step, step)   # word beyond it must be in this run
                 if not (0 <= i < len(words) and i > last_end and in_run(i, step) and latin_word(words[i])): return False
+                if step:                                 # L3: no step over a comma or semicolon, on the earlier word of the pair in
+                    q = i - step                          # reading order (and at a slash, on each word it crosses)
+                    while slash(q): q -= step
+                    lo, hi = (q, i) if step > 0 else (i, q)
+                    if any(phrase_end(n_) for n_ in range(max(lo, 0), hi)): return False
                 t = words[i]['text']
                 if t.lower() in GROW_STOP: return False                  # #136's narrower rule: "Tsurezuregusa of Kenkō", "… or …"
                 for n_ in (i - 1, i + 1):                               # a piece of an English word the PDF draws apart ("Se lections",
