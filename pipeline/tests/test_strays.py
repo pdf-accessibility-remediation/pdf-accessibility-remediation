@@ -279,3 +279,17 @@ def test_the_verapdf_finding_stays_first_and_text_named_twice_comes_second():
     r1 = [x['text'] for x in g['issues'] if x['rank'] == 1]
     assert g['safety_ok'] and r1[0].startswith('veraPDF:') and r1[1].startswith('Text named by two tags')
     assert 'a person decides in Acrobat which tag keeps it' in r1[1]
+
+
+def test_a_page_whose_only_tagged_content_is_a_named_path_is_not_wrapped_as_a_figure(tmp_path):
+    """Review 06 M1: the page-figure step's inventory reads a named property list too. A page whose only content is a path
+    inside /P /MC0 BDC (its MCID in the page's /Properties) is tagged, so it is not wrapped whole in a new Figure."""
+    b = Book([{'content': '/Figure /MC0 BDC 72 72 m 300 300 l S EMC', 'props': {'/MC0': pikepdf.Dictionary(MCID=0)}}])
+    f = b.el('Figure', 1, [0], Alt=pikepdf.String('A line')); b.index(0, 0, f)
+    src = b.save(str(tmp_path / 'src.pdf'))
+    wo = tmp_path / 'wo.json'; wo.write_text('{}'); out = tmp_path / 'out.pdf'
+    run('apply.py', src, wo, out)
+    log = json.load(open(str(out) + '.log.json'))
+    assert not any('whole page wrapped' in k for k in log['applied']), log['applied']
+    with pikepdf.open(out) as pdf:
+        assert [str(k.S) for k in pdf.Root.StructTreeRoot.K[0].K] == ['/Figure']

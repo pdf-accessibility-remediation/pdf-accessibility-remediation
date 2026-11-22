@@ -2904,7 +2904,7 @@ def _page_inventory(page):
             op, ops = str(ins.operator), ins.operands
             if op in ('BDC', 'BMC'):
                 if str(ops[0]) == '/Artifact': inv['artifact'] += 1
-                if len(ops) > 1 and isinstance(ops[1], pikepdf.Dictionary) and '/MCID' in ops[1]: inv['mcid'] += 1
+                if op == 'BDC' and tagfix.bdc_mcid(ops, res) is not None: inv['mcid'] += 1   # named too (review 06 M1)
             elif op == 'q': gs.append(tr)
             elif op == 'Q': tr = gs.pop() if gs else tr
             elif op == 'Tr': tr = int(ops[0])
@@ -2918,7 +2918,7 @@ def _page_inventory(page):
                 if x is None: continue
                 if str(x.get('/Subtype')) == '/Image': inv['images'] += 1
                 elif str(x.get('/Subtype')) == '/Form': walk(x, x.get('/Resources') or res, tr, depth + 1)
-    walk(page, page.obj.get('/Resources'), 0)
+    walk(page, strays._res(page), 0)                   # inherited resources too, so a named property list resolves
     return inv
 PF_LAST = {}
 def _anchor_for(pno):
