@@ -1352,6 +1352,7 @@ def tag_run(pno, m, lang, text=None):
     _LANG_WHOLE.append((pno, m)); LANG['whole'] += 1
     LANG['spans'].append({'page': pno, 'mcid': m, 'lang': lang, 'text': text if text is not None else mc_text(pno, m), 'whole': True})
 _CONTENT = {}
+_PCOUNT = {}
 def drawn_here(pno, m, n):
     """None when run m is drawn in the page's own content with exactly the n characters pdfplumber lists for it;
     otherwise why not. pdfplumber also lists text drawn inside a form XObject under the form's own MCIDs, which may
@@ -1361,10 +1362,12 @@ def drawn_here(pno, m, n):
         try: _CONTENT[pno] = list(pikepdf.parse_content_stream(pages[pno - 1]))
         except Exception: _CONTENT[pno] = None
     if _CONTENT[pno] is None: return 'page content not readable'
-    res = _inherited(pages[pno - 1], '/Resources') or {}
-    try: got = mcsplit.count_codes(_CONTENT[pno], res.get('/Font'), m, res.get('/XObject') or {})
-    except mcsplit.Refuse as e:                     # a count only (review 06, M1): the split's own refusals stay with the split
-        return 'this text is drawn inside a form XObject, not in the page' if str(e) == 'the text is not drawn in the page content' else str(e)
+    if pno not in _PCOUNT:                          # #167: every run's count in one pass per page (count_all: count_codes' rules)
+        res = _inherited(pages[pno - 1], '/Resources') or {}
+        _PCOUNT[pno] = mcsplit.count_all(_CONTENT[pno], res.get('/Font'), res.get('/XObject') or {})
+    got = _PCOUNT[pno].get(m, 'the text is not drawn in the page content')
+    if isinstance(got, str):                        # a count only (review 06, M1): the split's own refusals stay with the split
+        return 'this text is drawn inside a form XObject, not in the page' if got == 'the text is not drawn in the page content' else got
     return None if got == n else 'the characters do not line up with the text'
 # ------------------------------------------------------------------ #165: text drawn inside a form XObject
 # A run keeps its name (page, MCID) everywhere (proposal 08 §2): the executor finds which stream draws it. A run is a form
