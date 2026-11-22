@@ -382,6 +382,26 @@ def page_places(pno, chars, page_chars=None, italic=None, doc_lang=None, spoken=
             k = j + 1
     def latin_word(x): return bool(x['text']) and x['mcid'] is not None and bool(LATIN.search(x['text'])) and not _is_cjk(x['text'])
     def is_italic(x): return bool(x['chars']) and all(italic(c.get('fontname')) for c in x['chars'] if c['text'].strip())
+    def form_cls(grp):
+        form = ' '.join(x.get('form', x['text']) for n_, x in enumerate(grp)
+                        if (n_ == 0 or 'joined_from' not in x) and (x.get('form') or x['text']))   # a rejoined half once; a slash never
+        return form, [c for x in grp for c in x['cls']]
+    def emit(grp, wi, form, cls, first_m=None):
+        """One place for the phrase grp (words wi[0]..wi[1]): `segments` when growth went on into another run of the
+        element (proposal 20 (b)), [run, first, last] per run in reading order."""
+        segs = []
+        for x in grp:
+            for c in x['chars']:
+                m_, k_ = idx[id(c)]
+                if segs and segs[-1][0] == m_: segs[-1][2] = k_
+                elif not segs or m_ not in {s[0] for s in segs}: segs.append([m_, k_, k_])
+        it = all(x.get('italic') for x in grp if x['text'])
+        place(segs[0][0], segs[0][1], segs[-1][2] if len(segs) == 1 else segs[0][2], cls, form, it, wi)
+        if len(segs) > 1:
+            places[-1].update(segments=segs, text=''.join(c['text'] for s in segs for c in runs[s[0]][s[1]:s[2] + 1]), whole=False,
+                              source=sorted(set(places[-1].get('source') or []) | {'grow'}))
+        if first_m is not None: places[-1].update(_first_mcid=first_m, half=True)   # step 5: its first half's run may become a passage;
+                                                                                    # half: lib/langreq.forms numbers forms by their other places
     k, last_end = 0, -1
     while k < len(words):
         w = words[k]
@@ -441,31 +461,30 @@ def page_places(pno, chars, page_chars=None, italic=None, doc_lang=None, spoken=
                 if not x.get('cls') and not slash(n_): x['cls'] = ['title']; x.setdefault('form', x['text']); x.setdefault('italic', is_italic(x))
         last_end = j
         grp = words[k:j + 1]
-        f = idx[id(grp[0]['chars'][0])][1]; l = idx[id(grp[-1]['chars'][-1])][1]
-        form = ' '.join(x.get('form', x['text']) for n_, x in enumerate(grp)
-                        if (n_ == 0 or 'joined_from' not in x) and (x.get('form') or x['text']))   # a rejoined half once; a slash never
-        cls = [c for x in grp for c in x['cls']]
+        form, cls = form_cls(grp)
         if grp[0].get('half_cls') and not grp[0].get('phrase'):     # its first half has no place (drawn across two runs: no mcid):
             k = j + 1; continue                                     # neither has, as before #140, never half a word tagged
         first_m = None
         if grp[0].get('half_cls'): form, cls, first_m = grp[0]['phrase']   # a second half in its own run: its first half's
         if grp[-1].get('hy_to', {}).get('half_cls'): grp[-1]['hy_to']['phrase'] = (form, cls, grp[-1]['mcid'])    # form and classes (#140): one form, two places
-        segs = []                                    # [run, first, last] per run, in reading order: two when growth went on
-        for x in grp:                                # into the next run of the element (proposal 20 (b)), else one
-            for c in x['chars']:
-                m_, k_ = idx[id(c)]
-                if segs and segs[-1][0] == m_: segs[-1][2] = k_
-                elif not segs or m_ not in {s[0] for s in segs}: segs.append([m_, k_, k_])
-        if len(segs) > 1:
-            place(segs[0][0], segs[0][1], segs[0][2], cls, form, all(x.get('italic') for x in grp if x['text']), (k, j))
-            places[-1].update(segments=segs, text=''.join(c['text'] for s in segs for c in runs[s[0]][s[1]:s[2] + 1]), whole=False,
-                              source=sorted(set(places[-1].get('source') or []) | {'grow'}))
-            if first_m is not None: places[-1].update(_first_mcid=first_m, half=True)
-            k = j + 1; continue
-        place(w['mcid'], f, l, cls, form, all(x.get('italic') for x in grp if x['text']), (k, j))
-        if first_m is not None: places[-1].update(_first_mcid=first_m, half=True)   # step 5: its first half's run may become a passage;
-                                                                                # half: lib/langreq.forms numbers forms by their other places
+        emit(grp, (k, j), form, cls, first_m)
         k = j + 1
+    def pieces_outside(k0, j0, passage):
+        """The stretches of words k0..j0 outside the passages' runs: [((first, last), words)], slashes trimmed at their ends."""
+        out_, cur = [], []
+        for n_ in range(k0, j0 + 1):
+            x = words[n_]
+            if x['mcid'] is not None and x['mcid'] in passage:
+                if cur: out_.append(cur); cur = []
+                continue
+            cur.append(n_)
+        if cur: out_.append(cur)
+        res = []
+        for ns in out_:
+            while ns and (words[ns[0]]['all'].strip() == '/' or not words[ns[0]]['chars']): ns = ns[1:]
+            while ns and (words[ns[-1]]['all'].strip() == '/' or not words[ns[-1]]['chars']): ns = ns[:-1]
+            if ns and any(words[n_].get('cls') for n_ in ns): res.append(((ns[0], ns[-1]), [words[n_] for n_ in ns]))
+        return res
     # 5. passages: a run where most words are candidates becomes one place for the whole run
     by_run = collections.defaultdict(list)
     for k, w in enumerate(words):
@@ -487,10 +506,17 @@ def page_places(pno, chars, page_chars=None, italic=None, doc_lang=None, spoken=
                     'italic': all(w.get('italic') for w in ws if w.get('cls') and not w.get('half_cls')),
                     'whole': not re.search(r'[^\W_]', ''.join(c['text'] for k_, c in enumerate(cs) if k_ < f or k_ > l)),
                     'w0': min(wi) if wi else None, 'w1': max(wi) if wi else None})
-    for p in places:
+    for p in list(places):
         fm = p.pop('_first_mcid', None)
+        if p.get('segments') and any(s[0] in passage for s in p['segments']):
+            # a title grown into a passage's run (review 22, M1): the passage holds its words there, and each stretch of its
+            # words outside the passage is a place of its own, as with growth stopping at the run boundary
+            n0 = len(places)
+            for piece in pieces_outside(p['w0'], p['w1'], passage): emit(piece[1], piece[0], *form_cls(piece[1]))
+            for q in places[n0:]: q.pop('_first_mcid', None); out.append(q)
+            del places[n0:]
+            continue
         if p['mcid'] in passage and not p['class'][0].startswith('cjk:'): continue
-        if any(s[0] in passage for s in p.get('segments') or []): continue    # a title grown into a passage's run: the passage holds it
         if fm in pas: p['form'], p['class'] = pas[fm]['form'], list(pas[fm]['class'])   # #140: a second half of a passage's last word
         out.append(p)
     out += [pas[m] for m in sorted(pas)]

@@ -62,3 +62,56 @@ def test_apply_tags_the_joined_title_once_and_verify_matches(tmp_path):
     assert not log['language_parts']['refused'], log['language_parts']
     assert v['language']['all_match'] and v['pixel_pages_differing'] == [] and v['text_pages_changed'] == []
     assert v['index']['dangling'] == 0 and not (v.get('fonts') or {}).get('unreadable')
+
+
+def mixed(parts):
+    """One run drawing several fonts: parts [(font, text)] (F6 oblique, F1 roman)."""
+    body = []
+    for f, t in parts: body += [f'/{f} 11 Tf', langpdf.show(f, t)]
+    return {'text': ''.join(t for _, t in parts), 'body': body}
+
+
+PARTIAL = [[mixed([('F1', 'See the anthology '), ('F6', 'Shoku gosen')])], [mixed([('F6', 'wakashu'), ('F1', ' for the poems.')])]]
+
+
+def test_a_title_starting_and_ending_mid_run_is_tagged_once_and_verify_matches(tmp_path):
+    """Review 22, probe 1: one run per line, the title starting mid-line and ending mid-line on the next."""
+    src = langpdf.build_lines(str(tmp_path / 'p.pdf'), PARTIAL)
+    with pikepdf.open(src) as pdf: c = langcands.book(plpages.Pages(src), doc_lang='en', grow=True, pdf=pdf)
+    (p,) = c['places']
+    assert p['form'] == 'Shoku gosen wakashu' and p['segments'] == [[0, 18, 28], [1, 0, 6]]
+    _, out, log, v = apply_verify(tmp_path, PARTIAL, wo_of([(p['form'], 'ja-Latn', [[1, p['segments']]])]), name='q.pdf')
+    sp = spans(out)
+    assert len(sp) == 1 and sp[0][0] == 'ja-Latn' and sorted(sp[0][1]) == [1, 2], sp
+    assert not log['language_parts']['refused'] and not log.get('failed'), log['language_parts']
+    assert v['language']['all_match'] and v['pixel_pages_differing'] == [] and v['text_pages_changed'] == []
+    assert v['index']['dangling'] == 0 and not (v.get('fonts') or {}).get('unreadable')
+
+
+def with_and_without_adjacency(tmp_path, monkeypatch, lines):
+    from lib import langjoin
+    on = full(tmp_path, lines, 'on.pdf')
+    monkeypatch.setattr(langjoin.Structure, 'adjacent', lambda self, *a: False)
+    return on, full(tmp_path, lines, 'off.pdf')
+
+
+def full(tmp_path, lines, name):
+    src = langpdf.build_lines(str(tmp_path / name), lines)
+    with pikepdf.open(src) as pdf: c = langcands.book(plpages.Pages(src), doc_lang='en', grow=True, pdf=pdf)
+    return [(p['mcid'], p['form'], p['class'][0], p.get('segments')) for p in c['places']]
+
+
+def test_a_title_grown_into_a_passages_run_keeps_its_piece_before_it(tmp_path, monkeypatch):
+    """Review 22, M1 (probe 2): the next run is a passage. The passage holds its words; "Shoku gosen" stays a place of
+    its own, as with growth stopping at the run boundary (before, the grown place was dropped whole)."""
+    lines = [[mixed([('F1', 'See the anthology '), ('F6', 'Shoku gosen')])],
+             [mixed([('F6', 'wakashu tsuki hana yuki kaze nami sora')])], [mixed([('F1', ' for the poems.')])]]
+    on, off = with_and_without_adjacency(tmp_path, monkeypatch, lines)
+    assert on == off == [(0, 'Shoku gosen', 'unknown', None), (1, 'wakashu tsuki hana yuki kaze nami sora', 'passage', None)]
+
+
+def test_a_title_grown_out_of_a_passages_run_keeps_its_piece_after_it(tmp_path, monkeypatch):
+    """Review 22, M1 (probe 3): the first run is the passage, "wakashu" opens the next run and stays a place."""
+    lines = [[mixed([('F6', 'tsuki hana yuki kaze nami sora Shoku gosen')])], [mixed([('F6', 'wakashu'), ('F1', ' for the poems.')])]]
+    on, off = with_and_without_adjacency(tmp_path, monkeypatch, lines)
+    assert on == off == [(0, 'tsuki hana yuki kaze nami sora Shoku gosen', 'passage', None), (1, 'wakashu', 'unknown', None)]
