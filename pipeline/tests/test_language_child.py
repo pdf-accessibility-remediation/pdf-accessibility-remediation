@@ -17,7 +17,7 @@ HELV = dict(Type=pikepdf.Name.Font, Subtype=pikepdf.Name.Type1, BaseFont=pikepdf
 def lit(t): return '(' + ''.join(f'\\{ord(ch):03o}' if ord(ch) > 126 else ch for ch in t) + ')'
 
 
-def build(path, pieces, child_extra=None, child_marks='', child_type='Span', headers_id=None):
+def build(path, pieces, child_extra=None, child_marks='', child_type='Span', headers_id=None, p_type='P', rolemap=None):
     """pieces: [(text, 'own' | 'child')] on one line, MCID = index. Every 'child' piece is its own child tag of the one P."""
     pdf = pikepdf.new()
     font = pdf.make_indirect(pikepdf.Dictionary(**HELV))
@@ -32,7 +32,7 @@ def build(path, pieces, child_extra=None, child_marks='', child_type='Span', hea
     doc = pdf.make_indirect(pikepdf.Dictionary(Type=pikepdf.Name.StructElem, S=pikepdf.Name.Document, K=pikepdf.Array()))
     st = pdf.make_indirect(pikepdf.Dictionary(Type=pikepdf.Name.StructTreeRoot, K=pikepdf.Array([doc])))
     doc.P = st
-    p = pdf.make_indirect(pikepdf.Dictionary(Type=pikepdf.Name.StructElem, S=pikepdf.Name.P, P=doc, Pg=pg.obj, K=pikepdf.Array()))
+    p = pdf.make_indirect(pikepdf.Dictionary(Type=pikepdf.Name.StructElem, S=pikepdf.Name('/' + p_type), P=doc, Pg=pg.obj, K=pikepdf.Array()))
     doc.K.append(p)
     arr, ids, kids_ = [], [], []
     for n, (t, kind) in enumerate(pieces):
@@ -49,7 +49,7 @@ def build(path, pieces, child_extra=None, child_marks='', child_type='Span', hea
     st.ParentTree = pdf.make_indirect(pikepdf.Dictionary(Nums=pikepdf.Array([0, pdf.make_indirect(pikepdf.Array(arr))])))
     st.ParentTreeNextKey = 1
     st.IDTree = pdf.make_indirect(pikepdf.Dictionary(Names=pikepdf.Array(ids)))
-    st.RoleMap = pikepdf.Dictionary()
+    st.RoleMap = pikepdf.Dictionary({k: pikepdf.Name(v) for k, v in (rolemap or {}).items()})
     pdf.Root.StructTreeRoot = st; pdf.Root.MarkInfo = pikepdf.Dictionary(Marked=True); pdf.Root.Lang = pikepdf.String('en')
     pdf.save(path)
     return path
@@ -177,3 +177,13 @@ def test_a_late_refusal_leaves_the_child_where_it_was(tmp_path):
         p = pdf.Root.StructTreeRoot.K[0].K[0]
         child = next(k for k in p.K if isinstance(k, pikepdf.Dictionary))
         assert child.P.objgen == p.objgen and str(child.S) == '/Span'
+
+
+
+def test_a_phrase_inside_a_tag_the_role_map_fix_retypes_still_matches(tmp_path):
+    """clans' Sub (a standard tag remapped to Span, veraPDF 7.1-7): fix_standard_remaps retypes it to Span after the
+    language write; the phrase's record follows, so verify still finds its Span where the place was."""
+    src = build(str(tmp_path / 's.pdf'), [('The Ky', 'own'), ('ônggi palace.', 'own')], p_type='Sub', rolemap={'/Sub': '/Span'})
+    out, log, v = apply_verify(tmp_path, src, wo([[0, 4, 5], [1, 0, 4]]))
+    assert any('standard tag Sub was remapped' in k for k in log['applied'])
+    assert log['language_parts']['phrases'] == 1 and v['language']['all_match'], v['language']

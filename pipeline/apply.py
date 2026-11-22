@@ -2617,6 +2617,8 @@ def fix_standard_remaps():
     for k, t in todo.items():
         del st.RoleMap['/' + k]; RMAP.pop(k, None)
         ok(f'role map: standard tag {k} was remapped to {t}; retyped', cnt[k]); rule_fix('7.1-7', cnt[k] or 1, f'{k} → {t} ({cnt[k]} tags)')
+    for sp_ in LANG['spans']:                       # a phrase's Span sits in a tag retyped here (clans' Sub → Span): its record
+        if sp_.get('parent_type') in todo: sp_['parent_type'] = todo[sp_['parent_type']]   # names the type verify now finds
     reindex()
 def fix_lang_values():
     """veraPDF 7.2-29: a /Lang value must be a language tag. Spelling only is tidied (en_US → en-US, case, spaces); an

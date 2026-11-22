@@ -381,14 +381,15 @@ def _lang_section():
         if sp.get('segments'):                     # one Span over several runs (#150, #161; review 02 M2): checked exactly, no walk up
             keys = [(sp['page'], x) for x in sp.get('mcids') or []]
             chil = sp.get('children') or []              # #170: letters-only child tags moved in whole, at their place in the Span
-            ch_el = []
-            for ch in chil:
-                try: ch_el.append((ch, pdf.get_object(tuple(int(v) for v in ch['obj'].split()))))
-                except Exception: ch_el.append((ch, None))
-            ogs = {own_of(kk) for kk in keys}
-            if not keys and ch_el and ch_el[0][1] is not None and isinstance(ch_el[0][1].get('/P'), pikepdf.Dictionary):
-                ogs = {ch_el[0][1].P.objgen}
+            ogs = {own_of(kk) for kk in keys}            #   (found by place and runs: the saved file numbers its objects anew)
+            if not keys and chil:                        # only children: the Span is the parent of the tag over the first one's run
+                o_ = own_of((sp['page'], chil[0]['mcids'][0]))
+                e0 = pdf.get_object(o_) if o_ else None
+                ogs = {e0.P.objgen} if e0 is not None and isinstance(e0.get('/P'), pikepdf.Dictionary) else {None}
             el = pdf.get_object(next(iter(ogs))) if len(ogs) == 1 and None not in ogs else None
+            elk_ = (list(el.get('/K')) if isinstance(el.get('/K'), pikepdf.Array) else [el.get('/K')]) if el is not None else []
+            ch_el = [(ch, elk_[ch['at']] if 0 <= ch['at'] < len(elk_) and isinstance(elk_[ch['at']], pikepdf.Dictionary)
+                      and '/S' in elk_[ch['at']] else None) for ch in chil]
             par = el.get('/P') if el is not None else None
             kk_ = el.get('/K') if el is not None else None
             # each kid as (stream, MCID): a page MCID, or an /MCR … /Stm into the form that draws the run (#165)
@@ -401,8 +402,7 @@ def _lang_section():
                 for ch, e_ in ch_el:
                     ek = (list(e_.get('/K')) if isinstance(e_.get('/K'), pikepdf.Array) else [e_.get('/K')]) if e_ is not None else []
                     em = [int(x) if isinstance(x, int) else int(x.MCID) for x in ek if isinstance(x, int) or (isinstance(x, pikepdf.Dictionary) and '/MCID' in x)]
-                    if e_ is None or not (0 <= ch['at'] < len(elk)) or not (isinstance(elk[ch['at']], pikepdf.Dictionary) and elk[ch['at']].objgen == e_.objgen):
-                        ch_why = 'a child tag is not where the place had it'; break
+                    if e_ is None: ch_why = 'a child tag is not where the place had it'; break
                     if not (isinstance(e_.get('/P'), pikepdf.Dictionary) and e_.P.objgen == el.objgen) or em != ch['mcids']:
                         ch_why = 'a child tag holds other runs'; break
                 order = []                               # every run the Span reads, in its order: its own and its children's
