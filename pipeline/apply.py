@@ -1222,9 +1222,10 @@ class FigureMap:
     def on(self, pg):
         if self.by is None: self.build()
         out = list(self.by.get(pg, ()))
-        if TREE_CHECK and [x.objgen for x in out] != [e.objgen for e, _ in all_elems() if S(e) == 'Figure' and eff_pg.get(e.objgen) == pg]:
-            _stale(f'the kept figure map differs from a new walk (page {pg})')
-        return out
+        if TREE_CHECK and sorted(x.objgen for x in out) != sorted(e.objgen for e, _ in all_elems() if S(e) == 'Figure' and eff_pg.get(e.objgen) == pg):
+            _stale(f'the kept figure map differs from a new walk (page {pg})')   # as a set: a figure moved out of its paragraph may
+        return out                                                               #   come after one still in it (sands PDF 85), and
+                                                                                 #   pick_figure doesn't depend on their order
     def moved(self, n, gone=False):
         if self.by is None: return
         stack = [n]
