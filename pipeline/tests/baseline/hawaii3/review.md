@@ -2,13 +2,13 @@
 
 Result: `hawaii3_remediated.pdf`
 
-301 pages · run November 19, 2026, at 7:17 PM · model `anthropic/claude-sonnet-5.5` · prompt `workorder_v12.md` (762395b72330c407) · AI cost $0.217 ($0.0007 per page), from the original AI request on November 15, 2026 · this run: no new AI request · tokens: saved reply reused, not counted
+301 pages · run November 22, 2026, at 1:11 AM · model `anthropic/claude-sonnet-5.5` · prompt `workorder_v12.md` (762395b72330c407) · AI cost $0.217 ($0.0007 per page), from the original AI request on November 15, 2026 · this run: no new AI request · tokens: saved reply reused, not counted
 
 Intake: none (already tagged)
 
 Libraries: python 3.13.9 · pikepdf 10.5.1 · pdfplumber 0.11.9 · pypdfium2 5.7.1 · pillow 13.0.0 · fonttools 4.62.1
 
-Time: intake 0.9s · audit 63.8s · reuse saved reply 1.8s · apply 44.5s · verify 60.0s · total 171.0s
+Time: intake 0.5s · audit 26.4s · reuse saved reply 1.4s · apply 22.9s · verify 26.1s · total 77.3s
 
 ## Overview
 
@@ -33,12 +33,12 @@ Automated checks are evidence, not sign-off.
 
 | Top issues | Pages | Where |
 |---|---|---|
-| All content tagged or marked as decoration: 399 untagged characters · 7 untagged objects (7 text) | see Automated Checks | [Automated Checks](#automated-checks) |
-| If the Lang entry is present in the document's Catalog dictionary or i (veraPDF 7.2-29, 1 check) | PDF 224 (printed 211) | [§8](#8-verapdf-wcag-22-machine-profile-before-and-after) |
-| Reading order jumps back up a column (2 jumps) | PDF 71 (printed 58) | [§9](#9-wcag-checks-verapdf-does-not-make) |
-| /Lang "Hawaii" on Span names Hawaiian, but "Tengan" is not spelled with Hawaiian letters: "P. Kāwika Tengan" (2) | PDF 75 (printed 62), PDF 78 (printed 65) | [§11](#11-deferred-by-the-executor) |
-| /Lang "Hawaii" on Span names Hawaiian, but "Nyéléni" is not spelled with Hawaiian letters: "Nyéléni" (2) | PDF 127 (printed 114) | [§11](#11-deferred-by-the-executor) |
-| … and 16 more | | §10, §11 |
+| All content tagged or marked as decoration: 0 untagged characters · 7 untagged objects (7 text) | see Automated Checks | [Automated Checks](#automated-checks) |
+| If the Lang entry is present in the document's Catalog dictionary or i (veraPDF 7.2-29, 1 check) | PDF 224 (printed 211) | [§7](#7-verapdf-wcag-22-machine-profile-before-and-after) |
+| Reading order jumps back up a column (2 jumps) | PDF 71 (printed 58) | [§8](#8-wcag-checks-verapdf-does-not-make) |
+| /Lang "Hawaii" on Span names Hawaiian, but "Tengan" is not spelled with Hawaiian letters: "P. Kāwika Tengan" (2) | PDF 75 (printed 62), PDF 78 (printed 65) | [§10](#10-deferred-by-the-executor) |
+| /Lang "Hawaii" on Span names Hawaiian, but "Nyéléni" is not spelled with Hawaiian letters: "Nyéléni" (2) | PDF 127 (printed 114) | [§10](#10-deferred-by-the-executor) |
+| … and 16 more | | §9, §10 |
 
 Automated checks are evidence, not legal sign-off. Items marked **CHECK**, and everything under "For a person to check", need a human.
 
@@ -48,7 +48,7 @@ Automated checks are evidence, not legal sign-off. Items marked **CHECK**, and e
 |---|---|---|
 | Every page looks the same as the original | OK | 0 pages differ |
 | Published text unchanged | OK | 0 pages changed |
-| All content tagged or marked as decoration | **CHECK** | 399 untagged characters · 7 untagged objects (7 text) |
+| All content tagged or marked as decoration | **CHECK** | 0 untagged characters · 7 untagged objects (7 text) |
 | Untagged paths: none left | OK | 0 untagged paths |
 | Invisible OCR text: every glyph defined | OK | no undefined glyphs in invisible text |
 | Page-level figure wrap | OK | no page with only an untagged drawing |
@@ -205,13 +205,7 @@ Check each one is (or is not) a heading as decided.
 | PDF 295 (printed 282) | of Abundance from a Future Hāmākua 2120 A Moʻolelo | H1 | H2 |
 | PDF 299 (printed 286) | Dear Reader Making the Value of Hawaiʻi Together | H1 | H2 |
 
-### 4. Text a Screen Reader Could Not Reach (before this run)
-
-3 pages had text outside the tag tree: 0 orphan runs (marked, but no tag owns them) and 7 untagged runs. Running heads and page numbers among them can be hidden as decoration; real content must be added to the tag tree by a person. After this run: 399 untagged characters, 0 orphan runs remain.
-
-Pages: PDF 9–10 (printed viii–ix), PDF 35 (printed 22)
-
-### 5. Untagged Content (7 objects)
+### 4. Untagged Content (7 objects)
 
 Drawn content that is neither tagged nor marked as decoration (content reused on several pages counts once). Not changed by the pipeline; a person decides whether each is real content (tag it) or decoration (artifact it). Pages with the most:
 
@@ -219,7 +213,7 @@ Drawn content that is neither tagged nor marked as decoration (content reused on
 - PDF 9 (printed viii): 1 text
 - PDF 10 (printed ix): 1 text
 
-### 6. Links Whose Description Was Only a URL (62)
+### 5. Links Whose Description Was Only a URL (62)
 
 The description (what a screen reader announces) was set to the book's own sentence around the link, with the URL removed. No words were added and the visible URL is unchanged. Replace any of these with a better description if needed.
 
@@ -288,14 +282,14 @@ The description (what a screen reader announces) was set to the book's own sente
 | PDF 294 (printed 281) | http://www.marimatsudapeaceorchestra.com | Richardson School of Law and an artist |
 | PDF 298 (printed 285) | https://www.ft.com/content/10d8f5e8-74eb-11ea-95fe-fcd274e920ca | “The pandemic is a portal.” Financial Times, 3 Apr. 2020 |
 
-### 7. Tag-tree Index Entries Cleared (6)
+### 6. Tag-tree Index Entries Cleared (6)
 
 Entries that pointed at a tag no longer in the tag tree (left by the source file, or by a tag the run removed). Nothing reads such a tag; no page, text or reachable tag changed.
 
 - ParentTree, PDF 11 (printed x): MCID 48 (Link), MCID 49 (Link), MCID 50 (Link)
 - ParentTree, entries not tied to page content (annotations, forms, or keys nothing uses): key 2 (Link), key 3 (Link), key 6 (Link)
 
-### 8. veraPDF (WCAG 2.2 machine profile), Before and After
+### 7. veraPDF (WCAG 2.2 machine profile), Before and After
 
 veraPDF 1.30.3, profile "WCAG 2.2 machine validation profile" (7da399cf5baa). Counts are failed checks; pages are from the first checks veraPDF lists for each rule, so a rule may fail on more pages. Rules that only PDF/UA requires are listed apart and do not count. "Who fixes" is who can act on the rule: the pipeline by itself, the AI through the work order, or only a person. **Newly failing** means this run broke something the original passed. Before: 1 rule failing (the AI can act on 0, the pipeline on 1, only a person on 0). After: 1.
 
@@ -307,13 +301,13 @@ PDF/UA-only, not required for WCAG (not counted):
 
 - 7.21.5-1: glyph width consistency (48 checks, PDF 31 (printed 18), PDF 32 (printed 19), PDF 34 (printed 21), PDF 63 (printed 50), PDF 75 (printed 62), PDF 77 (printed 64), PDF 104 (printed 91), PDF 124 (printed 111)), still failing
 
-### 9. WCAG Checks veraPDF Does Not Make
+### 8. WCAG Checks veraPDF Does Not Make
 
 Each item is something to look at, not a proven failure.
 
 - 1.3.2 the reading order jumps back up the same column on 1 page. Listen through them with a screen reader (or the PAC screen-reader preview): PDF 71 (printed 58) (2 jumps)
 
-### 10. Deferred by the AI
+### 9. Deferred by the AI
 
 - **Untagged body text on PDF 35 (printed 22)**: Five runs of real endnote or body text ('place on natural systems. Across 65% of the terre…' and similar) are in no tag and not marked. This work order cannot tag them; a person must tag them in reading order. [PDF 35 (printed 22)]
 - **Untagged numbers '198' and '253' on contents pages PDF 9 (printed viii) and PDF 10 (printed ix)**: They are the page numbers of contents entries, so real content outside any tag. They cannot be artifacted. A person should add them to the matching TOC entries. [PDF 9 (printed viii), PDF 10 (printed ix)]
@@ -322,7 +316,7 @@ Each item is something to look at, not a proven failure.
 
 Reviewer note from the AI: Heading plan: the title page (PDF 4) holds the single H1. Every other former H1 (contents, acknowledgments, introduction, part titles, essay titles) is retyped one by one to H2, because mapping the H1 style would also hit the title. The H2 style (essay subsections, Works Cited, Note) is mapped to H3 in the rolemap. The Jojo values and the author lines under Lessons from Activism sections were H3 and are retyped to H4. This gives H1 > H2 > H3 > H4 with no skips. The half-title (PDF 2) and series name (PDF 3) are demoted to P. Part titles and essays share level H2, so the outline is flat; nesting essays under parts would need a further per-element retype. All figure alt texts were rewritten because the old ones carried NUL characters. The six bullet lists are real lists and are left as they are. The TOC, TOCI and Note tags already exist. There are no tables, running heads, OCR words or untagged pages.
 
-### 11. Deferred by the Executor
+### 10. Deferred by the Executor
 
 - the source file already claims PDF/UA conformance: not verified by this pipeline; check it with PAC before relying on it
 - /Lang "Hawaii" on Span names Hawaiian, but "Tengan" is not spelled with Hawaiian letters: "P. Kāwika Tengan" (PDF 75 (printed 62)): set the right tag (e.g. haw, en), or remove it
@@ -347,7 +341,7 @@ Reviewer note from the AI: Heading plan: the title page (PDF 4) holds the single
 - /Lang "Hawaii" on Span names Hawaiian, but "Famalåo'an" is not spelled with Hawaiian letters: "Famalåo'an:" (PDF 221 (printed 208)): set the right tag (e.g. haw, en), or remove it
 - 8 more language names whose words look like another language
 
-### 12. Language Tags
+### 11. Language Tags
 
 Words and passages in another language get a language tag, so a screen reader switches to that language's voice (WCAG 3.1.2). Tags from the language step are decided by a person; kana and Hangul are tagged by a fixed rule.
 
