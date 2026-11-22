@@ -187,3 +187,16 @@ def test_a_phrase_inside_a_tag_the_role_map_fix_retypes_still_matches(tmp_path):
     out, log, v = apply_verify(tmp_path, src, wo([[0, 4, 5], [1, 0, 4]]))
     assert any('standard tag Sub was remapped' in k for k in log['applied'])
     assert log['language_parts']['phrases'] == 1 and v['language']['all_match'], v['language']
+
+
+def test_a_work_order_mapping_the_childs_style_to_p_refuses_the_place(tmp_path):
+    """Review 06 S2: the rule reads the role map op_rolemap left, not the source's. clans' ParagraphSpan maps to Span, so
+    its child is one slot; a work order mapping ParagraphSpan to P makes it a block, and the place is refused."""
+    kw = dict(child_type='ParagraphSpan', rolemap={'/ParagraphSpan': '/Span'})
+    src = build(str(tmp_path / 's.pdf'), KY, **kw)
+    out, log, v = apply_verify(tmp_path, src, wo(SEGS))
+    assert log['language_parts']['phrases'] == 1 and v['language']['all_match']          # as the source maps it: placed
+    (tmp_path / 'b').mkdir()
+    out, log, v = apply_verify(tmp_path / 'b', src, dict(wo(SEGS), rolemap={'ParagraphSpan': 'P'}))
+    assert log['rolemap'] == {'ParagraphSpan': {'to': 'P', 'how': 'RoleMap', 'elements': 1}}
+    assert not log['language_parts'].get('phrases') and log['language_parts']['refused'] and lang_spans(out) == [], log['language_parts']

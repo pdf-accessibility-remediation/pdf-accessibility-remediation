@@ -1641,7 +1641,7 @@ def language_parts(parts):
         _LANG_SPLITS[(pno, m)].append({**p, 'text': text})
     return done
 _REWRITTEN_PAGES = {}
-CHILD_RULE = langjoin.ChildRule(pdf)              # #170: the finder's own rule for a letters-only child tag (lib/langjoin)
+CHILD_RULE = langjoin.ChildRule(pdf)              # #170: the finder's own rule for a letters-only child tag (lib/langjoin); rebuilt in op_language
 _SPOKEN = {}
 def run_spoken(pno, m, f):
     """#170: run m (in the page's content, or in form f) has spoken text of its own in its marks, or sits inside a span that
@@ -1802,8 +1802,10 @@ def op_language(spec):
     or Korean document; hangul in a Korean one; kana in a Japanese one). Otherwise hangul runs get ko, kana runs the AI's
     kana_runs (ja when it gave none), explicit runs the AI's language; Han-only runs are listed for a person (never
     guessed). Runs on every book (ALWAYS), with or without a `language` key, so no CJK run is left unlisted (3.1.2)."""
+    global CHILD_RULE
     spec = spec or {}
     reindex()
+    CHILD_RULE = langjoin.ChildRule(pdf)          # review 06 S2: built here, so it reads the role map op_rolemap left, not the source's
     explicit = {(r['page'], r['mcid']): r['lang'] for r in spec.get('runs', [])}
     lp_ = wo.get('language_parts') if isinstance(wo.get('language_parts'), dict) else {}
     fs_ = lp_.get('forms') or [] if langreq.has_forms(lp_) else []
