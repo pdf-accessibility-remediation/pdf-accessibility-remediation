@@ -118,3 +118,32 @@ def test_apply_and_verify_tag_the_two_phrases_apart(tmp_path):
     assert not log['language_parts']['refused'] and not log.get('failed'), log['language_parts']
     assert v['language']['all_match'] and v['pixel_pages_differing'] == [] and v['text_pages_changed'] == []
     assert v['index']['dangling'] == 0 and not (v.get('fonts') or {}).get('unreadable')
+
+
+def test_a_period_ends_a_phrase_between_two_non_english_sentences(tmp_path):
+    """Review 26 §11, variant P (Patrick, 2026-11-21): translation's "muwilyaba mämawurriya. Muwilyaba …"."""
+    got = forms(tmp_path, one(R('Then '), I('muwilyaba mamawurriya. Muwilyaba nemederrenda'), R(' here.')))
+    assert got == ['muwilyaba mamawurriya', 'Muwilyaba nemederrenda'], got
+
+
+def test_a_short_core_before_a_period_does_not_end_a_phrase():
+    """A number, one or two letters, or initials of one or two letters each: "1.", "K.", "St.", "pp.", "D.T." (and
+    "n.a."); no list of abbreviations, so "vols." and "Mohd." end a phrase, as measured."""
+    assert not any(langcands.period_end(t) for t in ('1.', '1940.', 'K.', 'St.', 'pp.', 'D.T.', 'n.a.', '(Ka.)'))
+    assert all(langcands.period_end(t) for t in ('wakashu.', 'vols.', 'Mohd.', 'kokin.”', 'gosen.)'))
+
+
+def test_a_two_letter_core_inside_a_phrase_keeps_it_whole_and_a_longer_one_ends_it(tmp_path):
+    assert forms(tmp_path, one(R('See '), I('Velunka Qx. Toramio'), R(' for these.'))) == ['Velunka Qx Toramio']
+    assert forms(tmp_path, one(R('See '), I('Velunka Qxz. Toramio'), R(' for these.')), 'b.pdf') == ['Velunka Qxz', 'Toramio']
+
+
+def test_a_quoted_title_ending_in_a_period_ends_the_phrase_on_its_closing_word(tmp_path):
+    assert forms(tmp_path, one(R('In "'), I('Velunka toramio." Pasquet kiro'), R(' here.'))) == ['Velunka toramio', 'Pasquet kiro']
+    assert forms(tmp_path, one(R('See "'), I('Hyakunin isshu. Sogi sho'), R('" here.')), 'q.pdf') == ['Hyakunin isshu Sogi sho']
+
+
+def test_a_two_language_pair_splits_at_its_period(tmp_path):
+    """buddhist PDF 175's shape: a Sanskrit title, then a French one."""
+    got = forms(tmp_path, one(R('See '), I('Vijnaptimatratasiddhi. La Siddhi Hiuan-Tsang'), R(' here.')))
+    assert got[0] == 'Vijnaptimatratasiddhi' and not any('Vijnaptimatratasiddhi' in f and 'Siddhi ' in f for f in got), got

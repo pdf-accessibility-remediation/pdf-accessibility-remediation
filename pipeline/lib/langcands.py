@@ -62,6 +62,17 @@ RUN_END = re.compile(r'[.,;:!?)\]}”"’»]\s*$')   # growth into the next run 
 RUN_OPEN = re.compile(r'^\s*[(\[{“"‘«]')          # and so does one opening a bracket or quote at the start of the next run
 PHRASE_END = re.compile(r'[,;][”"’»)\]}]*\s*$')    # L3 (review 22; Patrick, 2026-11-21): a word ending in a comma or semicolon
 QUOTE_OPEN, QUOTE_CLOSE, QUOTE_WINDOW = '“"«', '”"»', 10   # ends a phrase in a run, unless inside quotes (review 24 §7.3)
+PERIOD_END = re.compile(r'\.[”"’»)\]}]*\s*$')    # a period ends one too (review 26 §11, variant P; Patrick, 2026-11-21),
+_SHORT = re.compile(r'\d[\d,]*|[^\W\d_]{1,2}|(?:[^\W\d_]{1,2}\.)+[^\W\d_]{1,2}')   # except after a short core:
+
+
+def period_end(t):
+    """A word ending in a period (any closing quote or bracket after it) ends a phrase, unless its core is a number ("1."),
+    one or two letters ("K.", "St.", "pp.") or initials of one or two letters each ("D.T."). No list of abbreviations:
+    "vols." and "Mohd." end a phrase (review 26 §11 measured it)."""
+    if not PERIOD_END.search(t): return False
+    core = re.sub(r'[.”"’»)\]}\s]+$', '', t.strip()).lstrip('“"‘«([{')
+    return not _SHORT.fullmatch(core)
 ITALIC = re.compile(r'(?i)ital|oblique|-it$|-it[A-Z]|It$')
 NUMERAL = re.compile(r'(?i)[ivxlcdm]+|\d[\d,.]*\w{0,3}')
 
@@ -394,7 +405,8 @@ def page_places(pno, chars, page_chars=None, italic=None, doc_lang=None, spoken=
             if a < n and closes(a): return False          # a span closed before n
             if opens(a): return any(closes(b) for b in range(n + 1, min(len(words), a + QUOTE_WINDOW)))
         return False
-    def phrase_end(n): return 0 <= n < len(words) and bool(PHRASE_END.search(words[n]['all'])) and not quoted_inside(n)
+    def phrase_end(n):
+        return 0 <= n < len(words) and bool(PHRASE_END.search(words[n]['all']) or period_end(words[n]['all'])) and not quoted_inside(n)
     def is_italic(x): return bool(x['chars']) and all(italic(c.get('fontname')) for c in x['chars'] if c['text'].strip())
     def form_cls(grp):
         form = ' '.join(x.get('form', x['text']) for n_, x in enumerate(grp)

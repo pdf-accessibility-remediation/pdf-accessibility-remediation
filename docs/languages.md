@@ -30,6 +30,10 @@ approved.
      word ending in `,` or `;` (with any closing quote or bracket after it), and title growth doesn't step across one
      either, in either direction or over a slash. Lists ("topeng, wayang"), an author and a title ("Saitō, “Hōshasei”"),
      and two titles side by side are separate places; "Winesburg, Ohio" no longer takes in "Ohio".
+     - **A period ends one too** (2026-11-21), with the same quote rule, unless the word before it is a number ("1."),
+       one or two letters ("K.", "St.", "pp.") or initials of one or two letters each ("D.T."). There is no list of
+       abbreviations, so "vols." and "Mohd." end a phrase. Two sentences, or a Sanskrit title and the French one after
+       it, are separate places. `!` and `?` don't end one: titles carry them ("Kōgai o Nogasuna!").
      - **A colon doesn't end one inside a line:** "Higashikuni nikki: Nihon gekidōki" is one title with its subtitle, in
        one language. **A colon at a line end does end a title,** since growth into the next run stops at any phrase end
        (", . ; :" or a closing bracket or quote), as before.
