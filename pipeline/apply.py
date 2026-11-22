@@ -465,6 +465,26 @@ def artifact_form(form, props, label):
     return gone
 
 # ================================================================== 1. artifacts (the only page-content edit)
+def runs_by_key(pno, keep=None):
+    """{(page, stream, MCID): its characters in page order} for page pno: the band rules' runs, page and form apart (#166)."""
+    by = collections.defaultdict(list)
+    for c in PL.pages[pno - 1].chars:
+        if c.get('mcid') is not None:
+            k = (pno, c.get('mcs'), c['mcid'])
+            if keep is None or keep(k): by[k].append(c)
+    return by
+def form_of(pno, sk):
+    """The form drawn directly from page pno whose stream key is sk, or None."""
+    return next((d['form'] for d in _page_forms(pno)['direct'].values() if skey(d['form']) == sk), None)
+def form_run_why(r):
+    """#166: why form run r = (page, stream, MCID) can't become an artifact inside its form (#165's conditions: drawn once,
+    directly from its page, outside the page's marked content, readable, no spoken text of its own), or None."""
+    pno, sk, m = r
+    if sk == FORM_GEN: return FORM_GEN
+    if sk == plumb_fix.DIRECT: return 'text inside a form that was not read'
+    f = form_of(pno, sk)
+    if f is None: return 'the text is drawn inside a nested form'
+    return _form_check(pno, m, f)
 def op_artifacts(spec):
     elems = []
     stack = [(k, st, None) for k in kids(st)]
@@ -474,27 +494,29 @@ def op_artifacts(spec):
         pg = pidx[n.Pg.objgen] if '/Pg' in n else pg
         for k in kids(n):
             if is_elem(k): stack.append((k, n, pg))
-        elems.append((n, par, own_mcids(n, pg, forms=False)))   # page content only: the form path is its own (#166)
+        elems.append((n, par, own_runs(n, pg)))       # (page, stream, MCID): page and form runs apart (#166)
     by_obj = {n.objgen: (n, par, ms) for n, par, ms in elems}
     targets = {}
     def take(n, par, ms, props, label):
         if len(ms) != 1 or len(kids(n)) != 1:
             reject(f'artifact {label} {n.objgen}', 'element is not a single marked-content run'); return
+        why = form_run_why(ms[0]) if ms[0][1] is not None else None      # #166: a form run only when it can be hidden in its form
+        if why: reject(f'artifact {label} {n.objgen}', why); return
         targets[ms[0]] = (n, par, props, label)
     for item in spec.get('elements', []):
         o = obj(item['obj']); hit = by_obj.get(o.objgen)
         if hit is None: reject(f'artifact {item["obj"]}', 'not in the structure tree'); continue
         take(*hit, pikepdf.Dictionary(Type=pikepdf.Name('/' + item.get('type', 'Layout'))), item.get('label', 'element'))
     owned_now = {pm for _, _, ms in elems for pm in ms}
-    elems_at = collections.defaultdict(list)        # (page, MCID) -> its owning entries of elems, in elems' order (once, not a scan per run)
+    elems_at = collections.defaultdict(list)        # (page, stream, MCID) -> its owning entries of elems, in elems' order
     for e_ in elems:
         for pm in dict.fromkeys(e_[2]): elems_at[pm].append(e_)
     def in_band(band, top, pno):                      # measured from the visible page area (CropBox)
         vt, vb = PL.pages[pno - 1].vis[1], PL.pages[pno - 1].vis[3]; t = top - vt
         return not (band == 'top' and t >= 70 or band == 'bottom' and t <= (vb - vt) - 60)
-    forms_done, form_mcids = {}, collections.defaultdict(set)      # form objgen -> gone elements; page -> MCIDs drawn by an artifacted form
+    forms_done, form_mcids = {}, collections.defaultdict(set)      # form objgen -> gone elements; page -> runs drawn by an artifacted form
     def rule_hits(rule, pno, by):
-        """MCIDs on page pno that this rule's pattern, band and top_max match (forms aside)."""
+        """The runs on page pno that this rule's pattern, band and top_max match."""
         rx = re.compile(rule.get('regex', '.*'), re.S); rxl = re.compile(gaptext.loosen(rule.get('regex', '.*')), re.S); out = set()
         for m, cs in by.items():
             raw = ''.join(c['text'] for c in cs); top = min(c['top'] for c in cs)
@@ -505,19 +527,17 @@ def op_artifacts(spec):
     for rule in spec.get('text_rules', []):
         if rule.get('band', 'any') not in ('top', 'bottom'): continue
         for pno in range(rule['pages'][0], rule['pages'][1] + 1):
-            by_ = collections.defaultdict(list)
-            for c in PL.pages[pno - 1].chars:
-                if c.get('mcid') is not None: by_[c['mcid']].append(c)
-            band_match[pno] |= rule_hits(rule, pno, by_)
+            band_match[pno] |= rule_hits(rule, pno, runs_by_key(pno))
     def line_blocker(pno, m, cs, allowed):
         """A band rule may hide a run only when everything else on its line is matched too (or already decoration): a
         superscript note number on a body line near the top or bottom is matched by a page-number pattern, but the body
         text beside it is not. Returns the text of the first glyph that blocks, or None."""
         top, bot = min(c['top'] for c in cs), max(c['bottom'] for c in cs)
-        for c in PL.pages[pno - 1].chars:
-            if c.get('mcid') == m or not c['text'].strip() or c.get('tag') == 'Artifact': continue
+        for c in PL.pages[pno - 1].chars:                 # every stream's characters, by position (#166: a line half in a form)
+            key = (pno, c.get('mcs'), c.get('mcid'))
+            if key == m or not c['text'].strip() or c.get('tag') == 'Artifact': continue
             if min(bot, c['bottom']) - max(top, c['top']) <= 0.05: continue     # any vertical overlap: a superscript barely touches its line
-            if c.get('mcid') is None or c['mcid'] not in allowed:
+            if c.get('mcid') is None or key not in allowed:
                 line = [d for d in PL.pages[pno - 1].chars if min(bot, d['bottom']) - max(top, d['top']) > 0.05]
                 return GT(sorted(line, key=lambda d: d['x0']))          # the whole line (review.md shows an excerpt)
         return None
@@ -529,38 +549,40 @@ def op_artifacts(spec):
         props = pikepdf.Dictionary(Type=pikepdf.Name('/' + rule.get('type', 'Pagination')))
         if rule.get('subtype'): props.Subtype = pikepdf.Name('/' + rule['subtype'])
         for pno in range(rule['pages'][0], rule['pages'][1] + 1):
-            H = float(PL.pages[pno - 1].height); by = collections.defaultdict(list)
-            for c in PL.pages[pno - 1].chars:
-                if c.get('mcid') is not None: by[c['mcid']].append(c)
+            H = float(PL.pages[pno - 1].height); by = runs_by_key(pno)
             if band == 'any':                       # decoration drawn by a shared Form XObject (e.g. a junk text grid)
                 for form in page_forms(pno, forms_done):
                     if form.objgen in forms_done:
-                        form_mcids[pno] |= set(form_runs(form, pages[pno - 1])); continue
+                        form_mcids[pno] |= {(pno, skey(form), m_) for m_ in form_runs(form, pages[pno - 1])}; continue
                     runs = {m: norm_ws(t) for m, t in form_runs(form, pages[pno - 1]).items()}
                     texts = [t for t in runs.values() if t]
                     if texts and all(rx.fullmatch(t) or rxl.fullmatch(t) for t in texts):
-                        forms_done[form.objgen] = artifact_form(form, props, label); form_mcids[pno] |= set(runs); matched += len(texts)
+                        forms_done[form.objgen] = artifact_form(form, props, label); form_mcids[pno] |= {(pno, skey(form), m_) for m_ in runs}; matched += len(texts)
             for m, cs in by.items():
                 raw = ''.join(c['text'] for c in cs); t = raw.strip(); top = min(c['top'] for c in cs)
                 cands = (t, norm_ws(raw), GT(cs))       # as found, spaces normalised, spaces from gaps
                 if top >= rule.get('top_max', 1e9) or not any(r.fullmatch(x) for r in (rx, rxl) for x in cands): continue
                 if not in_band(band, top, pno): continue
                 if m in form_mcids[pno]: continue
-                hit = [] if orphans else list(elems_at.get((pno, m), ()))
+                hit = [] if orphans else list(elems_at.get(m, ()))
                 if band in ('top', 'bottom'):        # the rest of the line must be matched too (the run's own tag counts)
-                    own = {p2 for _, _, ms_ in hit[:1] for p_, p2 in ms_ if p_ == pno and p2 in by        # its own tag's other runs count,
-                           and in_band(band, min(c['top'] for c in by[p2]), pno)}                         # but only those in the band
+                    own = {r for _, _, ms_ in hit[:1] for r in ms_ if r[0] == pno and r in by        # its own tag's other runs count,
+                           and in_band(band, min(c['top'] for c in by[r]), pno)}                       # but only those in the band
                     blocker = line_blocker(pno, m, cs, band_match[pno] | own)
                     if blocker is not None:
                         guard.append({'page': pno, 'rule': label, 'text': norm_ws(raw), 'line': blocker}); continue
+                if m[1] is not None:                # #166: a run inside a form is hidden inside it, or refused (never counted
+                    fwhy = form_run_why(m)          #   as matched when it can't be hidden)
+                    if fwhy:
+                        log.setdefault('text_rules_refused', []).append({'page': pno, 'rule': label, 'text': norm_ws(raw), 'why': fwhy}); continue
                 matched += 1
                 if orphans:                         # marked content that no tag-tree element owns
-                    if (pno, m) not in owned_now: targets[(pno, m)] = (None, None, props, label)
+                    if m not in owned_now: targets[m] = (None, None, props, label)
                     continue
                 if len(hit) != 1: continue
                 n, par, ms = hit[0]
-                if len(ms) > 1 and band != 'any' and len(kids(n)) == len(ms) and all(p == pno and p2 in by and
-                        in_band(band, min(c['top'] for c in by[p2]), pno) for p, p2 in ms):
+                if len(ms) > 1 and band != 'any' and len(kids(n)) == len(ms) and all(r[0] == pno and r in by and
+                        in_band(band, min(c['top'] for c in by[r]), pno) and (r[1] is None or not form_run_why(r)) for r in ms):
                     for pm in ms: targets[pm] = (n, par, props, label)      # a running head split into several runs, all in the band
                 else: take(n, par, ms, props, label)
         if matched == 0:
@@ -583,39 +605,45 @@ def op_artifacts(spec):
         if not rule.get('orphans') or rule.get('band', 'any') == 'any': continue
         missed = []
         for pno in range(rule['pages'][0], rule['pages'][1] + 1):
-            H = float(PL.pages[pno - 1].height); by = collections.defaultdict(list)
-            for c in PL.pages[pno - 1].chars:
-                if c.get('mcid') is not None and (pno, c['mcid']) not in owned_now: by[c['mcid']].append(c)
+            H = float(PL.pages[pno - 1].height); by = runs_by_key(pno, keep=lambda k: k not in owned_now)
             for m, cs in by.items():
                 vt, vb = PL.pages[pno - 1].vis[1], PL.pages[pno - 1].vis[3]; top = min(c['top'] for c in cs) - vt
                 inband = top < 70 if rule['band'] == 'top' else top > (vb - vt) - 60
-                if inband and (pno, m) not in targets: missed.append((pno, excerpt(''.join(c['text'] for c in cs))))
+                if inband and m not in targets: missed.append((pno, excerpt(''.join(c['text'] for c in cs))))
         if missed:
             log['deferred'].append({'what': f'{len(missed)} orphan runs in the {rule["band"]} band were not matched by rule "{rule.get("label")}"',
                                     'why': 'still unreachable: ' + '; '.join(f'{PG(p)} "{t}"' for p, t in missed)})
-    by_page = collections.defaultdict(set)
-    for (pg, m) in targets: by_page[pg].add(m)
+    by_stream = collections.defaultdict(set)          # (page, stream) -> MCIDs: the page's own content, or one form (#166)
+    for (pg, sk, m) in targets: by_stream[(pg, sk)].add(m)
     done = []
-    for pg, ms in sorted(by_page.items()):
-        page = pages[pg - 1]; out, hit = [], set()
-        for ins in pikepdf.parse_content_stream(page):
+    for (pg, sk), ms in sorted(by_stream.items(), key=lambda kv: (kv[0][0], kv[0][1] is not None, str(kv[0][1]))):
+        if sk is None: owner_, arr = pages[pg - 1], pt_arr(pg)
+        else:
+            owner_ = form_of(pg, sk)
+            why = 'text inside a form that was not read' if owner_ is None else None
+            if why:
+                for m in ms: reject(f'artifact {PG(pg)} mcid {m}', why)
+                continue
+            arr = pt_form_arr(owner_)
+        out, hit = [], set()
+        for ins in pikepdf.parse_content_stream(owner_):
             if str(ins.operator) == 'BDC' and len(ins.operands) == 2 and isinstance(ins.operands[1], pikepdf.Dictionary) \
-                    and '/MCID' in ins.operands[1] and int(ins.operands[1].MCID) in ms:
+                    and '/MCID' in ins.operands[1] and int(ins.operands[1].MCID) in ms and int(ins.operands[1].MCID) not in hit:
                 m = int(ins.operands[1].MCID)
-                out.append(pikepdf.ContentStreamInstruction([pikepdf.Name('/Artifact'), targets[(pg, m)][2]], pikepdf.Operator('BDC')))
+                out.append(pikepdf.ContentStreamInstruction([pikepdf.Name('/Artifact'), targets[(pg, sk, m)][2]], pikepdf.Operator('BDC')))
                 hit.add(m)
             else: out.append(ins)
-        for m in ms - hit: reject(f'artifact {PG(pg)} mcid {m}', 'marked content not found in page stream')
+        for m in ms - hit: reject(f'artifact {PG(pg)} mcid {m}', 'marked content not found in page stream' if sk is None else 'marked content not found in its form')
         if not hit: continue
-        page.obj.Contents = pdf.make_stream(pikepdf.unparse_content_stream(out))
-        arr = pt_arr(pg)
+        if sk is None: owner_.obj.Contents = pdf.make_stream(pikepdf.unparse_content_stream(out))
+        else: owner_.write(pikepdf.unparse_content_stream(out)); _FINS.pop(owner_.objgen, None); _FBYTES.pop(owner_.objgen, None)
         for m in hit:
-            n, par, props, label = targets[(pg, m)]
+            n, par, props, label = targets[(pg, sk, m)]
             if n is not None: set_kids(par, [k for k in kids(par) if not same(k, n)])
             if arr is not None and m < len(arr): arr[m] = None
-            ok(f'artifact: "{label}"'); done.append((pg, m))
-    for pg, m in done:                     # the reader now sees these as artifacts too
-        for c in RI.chars(pg, m): c['mcid'] = None; c['tag'] = 'Artifact'
+            ok(f'artifact: "{label}"' if sk is None else f'artifact: "{label}" (inside a form)'); done.append((pg, sk, m))
+    for pg, sk, m in done:                     # the reader now sees these as artifacts too
+        for c in RI.chars_at(pg, sk, m): c['mcid'] = None; c['tag'] = 'Artifact'
         RI.touch(pg)
     reindex()
     for rule in spec.get('untagged', []): untagged_rule(rule)
@@ -959,6 +987,8 @@ def merge(el, direction, allowed):
     other = (ks[i + 1] if i + 1 < len(ks) else None) if direction == 'next' else (ks[i - 1] if i > 0 else None)
     if not (is_elem(other) and S(other) in allowed):
         reject(f'merge {S(el)} {el.objgen}', f'{direction} sibling is not one of {allowed}'); return
+    why = stm_refusal(kids(el))                       # #166: a form run moves only when its form's index entry can follow
+    if why: reject(f'merge {S(el)} {el.objgen}', why); return
     spg = eff_pg[el.objgen]; moved = []
     opar = parent_of[other.objgen]
     _kept['index'] = None; _index_drop(el); _index_drop(other)      # #167: no whole walk per merged element (index_fresh below)
@@ -966,7 +996,9 @@ def merge(el, direction, allowed):
         if isinstance(k, int): moved.append(mcr(spg, k)); pt_set_mcid(spg, k, other)
         elif is_pmcr(k):
             p = pidx[k.Pg.objgen] if '/Pg' in k else spg; moved.append(mcr(p, int(k.MCID))); pt_set_mcid(p, int(k.MCID), other)
-        elif is_mcr(k): moved.append(k)                      # form-XObject content keeps its own reference
+        elif is_mcr(k):                                       # form-XObject content keeps its own reference, and its form's
+            moved.append(k)                                   #   index entry now names the element it joined (#166)
+            if isinstance(k.get('/Stm'), pikepdf.Stream) and '/MCID' in k: form_slot_set(k, other)
         else:
             if is_elem(k): tree_set(k, '/P', other)
             moved.append(k)
@@ -2061,6 +2093,8 @@ def op_toc_finalize(_spec):
         for k in kids(n):
             if not is_elem(k): continue
             if S(k) == 'TOCI' and not (len(kids(k)) == 1 and is_elem(kids(k)[0]) and S(kids(k)[0]) == 'Reference'):
+                why = stm_refusal(kids(k))                # #166: left unwrapped when its form runs' index entry can't follow
+                if why: reject(f'contents entry {k.objgen}', f'not wrapped in a Reference: {why}'); stack.append(k); continue
                 pg = pidx[k.Pg.objgen] if '/Pg' in k else None
                 ref = pdf.make_indirect(pikepdf.Dictionary(Type=pikepdf.Name('/StructElem'), S=pikepdf.Name('/Reference'), P=k,
                                                            K=pikepdf.Array([]), **({'Pg': k.Pg} if '/Pg' in k else {})))
@@ -2068,7 +2102,9 @@ def op_toc_finalize(_spec):
                 for g in kids(k):
                     if isinstance(g, int): moved.append(g); pt_set_mcid(pg, g, ref)
                     elif is_pmcr(g): moved.append(g); pt_set_mcid(pidx[g.Pg.objgen] if '/Pg' in g else pg, int(g.MCID), ref)
-                    elif is_mcr(g): moved.append(g)
+                    elif is_mcr(g):
+                        moved.append(g)
+                        if isinstance(g.get('/Stm'), pikepdf.Stream) and '/MCID' in g: form_slot_set(g, ref)
                     else:
                         if is_elem(g): tree_set(g, '/P', ref)
                         moved.append(g)
@@ -2096,7 +2132,9 @@ def fix_root():
             for k in kids(extra_doc):
                 if isinstance(k, int): moved.append(mcr(dpg, k)); pt_set_mcid(dpg, k, DOC)
                 elif is_pmcr(k): p = pidx[k.Pg.objgen] if '/Pg' in k else dpg; moved.append(mcr(p, int(k.MCID))); pt_set_mcid(p, int(k.MCID), DOC)
-                elif is_mcr(k): moved.append(k)
+                elif is_mcr(k):
+                    moved.append(k)
+                    if isinstance(k.get('/Stm'), pikepdf.Stream) and '/MCID' in k: form_slot_set(k, DOC)   # #166
                 elif is_objr(k):
                     moved.append(k)
                     if '/StructParent' in k.Obj: pt_set_key(int(k.Obj.StructParent), DOC)
@@ -2156,6 +2194,24 @@ def moved_kids(part, epg):
             if (is_mcr(k) or is_elem(k)) and '/Pg' not in k and ppg != epg and ppg: tree_set(k, '/Pg', pages[ppg - 1].obj)
             out.append(k)
     return out
+# #166: a run drawn inside a form keeps its index entry in the form's own ParentTree array. A move that carries it sets that
+# entry; it can't when the form has no tag entry, or when the form is drawn in several places (its one array would name
+# one element for every draw). One wording per cause across the steps (review 02, stage C).
+WHY_SHARED = 'the text is drawn inside a form used in more than one place'
+WHY_NO_ENTRY = 'the form has no tag entry'
+def form_slot_why(k):
+    f = k.Stm
+    if '/StructParents' not in f or pt_form_arr(f) is None: return WHY_NO_ENTRY
+    if _form_uses_all().get(f.objgen, 0) > 1: return WHY_SHARED
+    return None
+def stm_refusal(ks):
+    """Why a move can't carry these kids' form runs (their form's index entry can't be set), or None."""
+    return next((w for w in (form_slot_why(k) for k in ks if is_mcr(k) and isinstance(k.get('/Stm'), pikepdf.Stream)) if w), None)
+def form_slot_set(k, el):
+    """The form's index entry for /MCR … /Stm kid k names el (padded); counted as refused, with its reason, when it can't."""
+    why = form_slot_why(k)
+    if why: log.setdefault('form_runs_refused', collections.Counter())[why] += 1; return why
+    pt_set(None, int(k.MCID), el, k.Stm); return None
 def point_at(el, ks, epg):
     """The ParentTree names el for its content kids ks (epg: el's page): page MCIDs, annotations (OBJR), and content
     drawn inside a form XObject (an MCR with /Stm), which has its own ParentTree array."""
@@ -2163,11 +2219,7 @@ def point_at(el, ks, epg):
         if isinstance(k, int): pt_set_mcid(epg, k, el)
         elif is_pmcr(k): pt_set_mcid(pidx[k.Pg.objgen] if '/Pg' in k else epg, int(k.MCID), el)
         elif is_objr(k) and '/StructParent' in k.Obj: pt_set_key(int(k.Obj.StructParent), el)
-        elif is_mcr(k) and '/Stm' in k:
-            fx = k.Stm
-            if '/StructParents' in fx:
-                r = nt_find(st.ParentTree, int(fx.StructParents))
-                if r and isinstance(r[0].Nums[r[1]], pikepdf.Array) and int(k.MCID) < len(r[0].Nums[r[1]]): r[0].Nums[r[1]][int(k.MCID)] = el
+        elif is_mcr(k) and isinstance(k.get('/Stm'), pikepdf.Stream) and '/MCID' in k: form_slot_set(k, el)   # #166
 FLATTENED = set()                             # everything inside a list or table the work order flattened
 LIST_RULE = set()                             # lists the one-item list rule turned into paragraphs
 def op_list_rule(_spec=None):
@@ -2194,6 +2246,8 @@ def op_list_rule(_spec=None):
         if el.objgen in keep: res['kept'].append(entry); ok('one-item list kept as a list (work order)'); continue
         if any(is_elem(k) for k in kids(lbl) + kids(body)):
             res['skipped'].append({**entry, 'why': 'label or body holds tags of its own'}); continue
+        why = stm_refusal(kids(lbl) + kids(body))         # #166: its form runs' index entry must follow them
+        if why: res['skipped'].append({**entry, 'why': why}); continue
         new = moved_kids(lbl, epg) + moved_kids(body, epg)
         set_kids(el, new); el.S = pikepdf.Name('/P')
         if '/A' in el: del el['/A']
@@ -3432,6 +3486,26 @@ def fix_parenttree():
             cur = arr[m]
             if not (isinstance(cur, pikepdf.Dictionary) and cur.objgen == el.objgen): arr[m] = el; fixed += 1
     if fixed: ok('tag tree index: entries repaired', fixed)
+    # #166: the forms' own arrays too, for a form drawn once (a form drawn in several places has one array for every draw):
+    # each run one element names gets that element; a slot naming an element that holds no run of that number is cleared
+    held, forms_, ffixed, fcleared = collections.defaultdict(dict), {}, 0, 0
+    for (pg, m), lst in fowner.items():
+        for o, f in lst:
+            forms_[f.objgen] = f
+            held[f.objgen].setdefault(m, set()).add(o.objgen)
+    for og, f in forms_.items():
+        if _form_uses_all().get(og, 0) != 1 or '/StructParents' not in f: continue
+        arr = pt_form_arr(f)
+        if arr is None: continue
+        for m, els in held[og].items():
+            if len(els) != 1: continue
+            el = pdf.get_object(next(iter(els)))
+            while len(arr) <= m: arr.append(None)
+            if not (isinstance(arr[m], pikepdf.Dictionary) and arr[m].objgen == el.objgen): arr[m] = el; ffixed += 1
+        for i in range(len(arr)):
+            if isinstance(arr[i], pikepdf.Dictionary) and arr[i].objgen not in held[og].get(i, set()): arr[i] = None; fcleared += 1
+    if ffixed: ok('tag tree index: form entries repaired', ffixed)
+    if fcleared: ok('tag tree index: form entries naming an element that no longer holds the text cleared', fcleared)
 
 # ================================================================== always, after the index is rebuilt: no entry may point outside the tree
 def fix_index():
