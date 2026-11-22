@@ -163,7 +163,7 @@ Two options change what is sent (`language_run.json` records them under `options
 
 The italics rule (on by default since 2026-11-21, #136) also adds to what is sent: an italic word of two or more letters
 not in the English list is a candidate. Measured on four test books, 46% of the forms it adds were tagged; the names and
-English among the rest cost money but add no rows. Across 34 test books it adds about $0.23 a book at worst. It has no
+English among the rest cost money but add no rows. Across 34 test books it adds a median of $0.23 a book at worst (at most $0.94). It has no
 setting of its own; `LANG_FINDER_RULES=-italic` turns it off for a measurement (see
 [Language tags](languages.md#how-it-works)).
 

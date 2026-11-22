@@ -24,7 +24,7 @@ approved.
        don't belong together, and 1 had the wrong language, for the reviewer to catch as with any AI decision.
      - **What it costs:** the other forms come back as names (161), English (106) or "not a word" (69). Those are paid
        for in the language step's requests but add no rows to the review page: a person decides only the tagged ones.
-       Across 34 test books the rule adds about 5,200 word forms, worst about $0.23 a book to send (most $0.94).
+       Across 34 test books the rule adds about 5,200 word forms, a median of $0.23 a book at worst to send (at most $0.94).
      - `LANG_FINDER_RULES=-italic` turns it off for a measurement (testing only, see [Options](options.md)).
    - **A comma or semicolon ends a phrase** (L3, 2026-11-21): consecutive candidates in one run are one phrase up to a
      word ending in `,` or `;` (with any closing quote or bracket after it), and title growth doesn't step across one
