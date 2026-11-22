@@ -54,12 +54,20 @@ class RunIndex:
     list on next use (review 02 M1). Until #166's readers ask by stream, (page, MCID) is every character with that number,
     page and forms together, as the scans gave (review 02 M2). Check mode (APPLY_TREE_CHECK=1): each answer is compared
     with a fresh scan, and any difference stops the run as a stale tree index does."""
-    def __init__(self): self.c = {}
+    def __init__(self): self.c, self.x = {}, {}
     def _build(self, pg):
-        cs = collections.defaultdict(list)
+        cs, xs = collections.defaultdict(list), collections.defaultdict(list)
         for c in PL.pages[pg - 1].chars:
-            if c.get('mcid') is not None: cs[c['mcid']].append(c)
-        self.c[pg] = cs
+            if c.get('mcid') is not None: cs[c['mcid']].append(c); xs[(c.get('mcs'), c['mcid'])].append(c)
+        self.c[pg], self.x[pg] = cs, xs
+    def chars_at(self, pg, sk, m):
+        """#166 stage B: run m of stream sk on page pg exactly (sk None: the page's own content; else the form's object
+        number, lib/plumb_fix's `mcs`), in page order."""
+        if pg not in self.x: self._build(pg)
+        out = list(self.x[pg].get((sk, m), ()))
+        if TREE_CHECK and [id(c) for c in out] != [id(c) for c in PL.pages[pg - 1].chars if c.get('mcid') == m and c.get('mcs') == sk]:
+            _stale(f'the kept character index differs from a new scan (page {pg}, stream {sk}, MCID {m})')
+        return out
     def chars(self, pg, m):
         if pg not in self.c: self._build(pg)
         out = list(self.c[pg].get(m, ()))
@@ -76,7 +84,7 @@ class RunIndex:
         if not ids: return []
         if len(ms) == 1: return self.chars(pg, next(iter(ms)))
         return [c for c in PL.pages[pg - 1].chars if id(c) in ids]
-    def touch(self, pg): self.c.pop(pg, None)
+    def touch(self, pg): self.c.pop(pg, None); self.x.pop(pg, None)
 RI = RunIndex()
 log = {'applied': collections.Counter(), 'rejected': [], 'deferred': [], 'failed': [], 'empty_notes_removed': [],
        'rolemap': {}, 'bookmarks': None, 'rule_fixes': {}}
@@ -293,12 +301,24 @@ def block_of(last):
     while last.objgen in parent_of and not (is_container(parent_of[last.objgen]) or S(parent_of[last.objgen]) in BLOCK_PARENTS):
         last = parent_of[last.objgen]
     return last if last.objgen in parent_of else None
-def own_mcids(n, pg):
-    out = []
-    for k in kids(n):
-        if isinstance(k, int): out.append((pg, k))
-        elif is_pmcr(k): out.append((pidx[k.Pg.objgen] if '/Pg' in k else pg, int(k.MCID)))
-    return out
+FORM_GEN = 'a form with a generation number other than 0'   # #166: no character's stream matches it (review 02, stage A)
+def skey(f):
+    """A form XObject's stream key, as lib/plumb_fix writes it on each character (`mcs`): its object number."""
+    return f.objgen[0] if f.objgen[1] == 0 else FORM_GEN
+def run_of(k, pg):
+    """(page, stream, MCID) of a content kid k under an element whose page is pg: an integer or a page /MCR (stream
+    None), or an /MCR … /Stm (the form's key; its page is its /Pg, else the element's). None for anything else."""
+    if isinstance(k, int): return (pg, None, k)
+    if is_pmcr(k): return (pidx[k.Pg.objgen] if '/Pg' in k else pg, None, int(k.MCID))
+    if is_mcr(k) and isinstance(k.get('/Stm'), pikepdf.Stream) and '/MCID' in k and '/StmOwn' not in k:
+        return (pidx.get(k.Pg.objgen) if '/Pg' in k else pg, skey(k.Stm), int(k.MCID))
+    return None
+def own_runs(n, pg):
+    """#166: the element's own runs, page and form (as (page, stream, MCID))."""
+    return [r for r in (run_of(k, pg) for k in kids(n)) if r is not None]
+def own_mcids(n, pg, forms=True):
+    """(page, MCID) of the element's own runs; forms=False: the page's own content only (steps that edit page content)."""
+    return [(p_, m) for p_, sk, m in own_runs(n, pg) if forms or sk is None]
 def kid_mcid(el, k, pg):
     """The MCID of /K kid k of element el, if that kid is marked content on page pg, else None. An element may run across
     pages: an integer kid sits on the element's own page, an MCR on its /Pg (review 06, M1)."""
@@ -380,12 +400,13 @@ def detach(el):
     par = parent_of[el.objgen]; set_kids(par, [k for k in kids(par) if not same(k, el)])
 def mc_text(pg, m): return ''.join(c['text'] for c in RI.chars(pg, m))
 def elem_text(el, depth=0):
+    """The element's text in tree order, its form runs included (#166), each run read from its own stream."""
     if depth > 30: return ''
     pg = eff_pg.get(el.objgen); s = ''
     for k in kids(el):
-        if isinstance(k, int): s += mc_text(pg, k)
-        elif is_pmcr(k): s += mc_text(pidx[k.Pg.objgen] if '/Pg' in k else pg, int(k.MCID))
-        elif is_elem(k): s += elem_text(k, depth + 1)
+        if is_elem(k): s += elem_text(k, depth + 1); continue
+        r = run_of(k, pg)
+        if r and r[0]: s += ''.join(c['text'] for c in RI.chars_at(*r))
     return s
 # #168: the tag tree's references to nothing (lib/strays.py): removed before any step reads the tree, with the index slot each
 # named; an element left with nothing goes in fix_empty_tags (its blockers and report). Runs on every book: a saved intake
@@ -453,7 +474,7 @@ def op_artifacts(spec):
         pg = pidx[n.Pg.objgen] if '/Pg' in n else pg
         for k in kids(n):
             if is_elem(k): stack.append((k, n, pg))
-        elems.append((n, par, own_mcids(n, pg)))
+        elems.append((n, par, own_mcids(n, pg, forms=False)))   # page content only: the form path is its own (#166)
     by_obj = {n.objgen: (n, par, ms) for n, par, ms in elems}
     targets = {}
     def take(n, par, ms, props, label):
@@ -968,12 +989,9 @@ def elem_chars(el, depth=0):
     if depth > 30: return []
     pg = eff_pg.get(el.objgen); out = []
     for k in kids(el):
-        if isinstance(k, int):                     # marked content with no page in the tag tree can't be found: no characters
-            if pg: out += RI.chars(pg, k)
-        elif is_pmcr(k):
-            p = pidx[k.Pg.objgen] if '/Pg' in k else pg
-            if p: out += RI.chars(p, int(k.MCID))
-        elif is_elem(k): out += elem_chars(k, depth + 1)
+        if is_elem(k): out += elem_chars(k, depth + 1); continue
+        r = run_of(k, pg)                          # #166: page and form runs, each from its own stream; marked content with no
+        if r and r[0]: out += RI.chars_at(*r)      #   page in the tag tree can't be found: no characters
     return out
 def elem_gaptext(el): return GT(elem_chars(el))
 HYPH_ANY = '-\u2010\u2011\u00ad\u2012'
@@ -1021,8 +1039,8 @@ def page_scan_figure(o, pg):
     kept_by_picture_test (audit.py), so the guard applies to that figure only, not to another figure on the page. Images
     only, at the audit's rounding (keptscans.covers_page, review 11 L1): a Figure of a small image and page-wide text is
     not the page scan."""
-    ms = {m for p, m in desc_mcids(o, eff_pg.get(o.objgen)) if p == pg}
-    ims = RI.images(pg, ms)
+    rs = {(sk, m) for p, sk, m in desc_runs(o, eff_pg.get(o.objgen)) if p == pg}       # #166: by stream
+    ims = [i for i in PL.pages[pg - 1].images if (i.get('mcs'), i.get('mcid')) in rs]
     if not ims: return False
     return keptscans.covers_page((min(i['x0'] for i in ims), min(i['top'] for i in ims), max(i['x1'] for i in ims),
                                   max(i['bottom'] for i in ims)), PL.pages[pg - 1].vis)
@@ -1052,20 +1070,26 @@ def op_move_to_document_start(spec):
         tree_set(o, '/P', DOC); set_kids(DOC, [o] + kids(DOC)); ok('figure: moved into Document, first')
     reindex()
 
-def desc_mcids(n, pg=None, acc=None):
-    """(page, mcid) of every page-level marked-content run under an element, its children included."""
+def desc_runs(n, pg=None, acc=None):
+    """(page, stream, MCID) of every run under an element, its children included, page and form (#166)."""
     acc = [] if acc is None else acc
     if not isinstance(n, pikepdf.Dictionary): return acc
     pg = pidx[n.Pg.objgen] if '/Pg' in n else pg
     for k in kids(n):
-        if isinstance(k, int): acc.append((pg, k))
-        elif is_pmcr(k): acc.append((pidx[k.Pg.objgen] if '/Pg' in k else pg, int(k.MCID)))
-        elif is_elem(k): desc_mcids(k, pg, acc)
+        if is_elem(k): desc_runs(k, pg, acc); continue
+        r = run_of(k, pg)
+        if r is not None: acc.append(r)
     return acc
+def desc_mcids(n, pg=None, acc=None):
+    """(page, mcid) of every run under an element, its children included, page and form (#166)."""
+    out = [(p_, m) for p_, _sk, m in desc_runs(n, pg)]
+    if acc is not None: acc += out; return acc
+    return out
 def box_of(el, pno):
     """Bounding box (x0, top, x1, bottom) of an element's text and images on one page, or None."""
-    ms = {m for p, m in desc_mcids(el, eff_pg.get(el.objgen)) if p == pno}
-    pts = RI.chars_in(pno, ms) + RI.images(pno, ms)
+    rs = {(sk, m) for p, sk, m in desc_runs(el, eff_pg.get(el.objgen)) if p == pno}     # #166: by stream
+    ids = {id(c) for sk, m in rs for c in RI.chars_at(pno, sk, m)}
+    pts = [c for c in PL.pages[pno - 1].chars if id(c) in ids] + [i for i in PL.pages[pno - 1].images if (i.get('mcs'), i.get('mcid')) in rs]
     if not pts: return None
     return (min(p['x0'] for p in pts), min(p['top'] for p in pts), max(p['x1'] for p in pts), max(p['bottom'] for p in pts))
 CLAIMED = set()
@@ -2660,8 +2684,7 @@ def fix_outline():
         title = norm_ws(str(el.get('/ActualText'))) if '/ActualText' in el else norm_ws(elem_text(el))
         ms = desc_mcids(el, eff_pg.get(el.objgen)); pg = eff_pg.get(el.objgen) or min((p for p, _ in ms if p), default=None)
         if not title or pg is None: continue
-        mine = {m for p, m in ms if p == pg}
-        tops = [c['top'] for c in PL.pages[pg - 1].chars if c.get('mcid') in mine]
+        tops = [c['top'] for p_, sk, m in desc_runs(el, eff_pg.get(el.objgen)) if p_ == pg for c in RI.chars_at(pg, sk, m)]   # #166: by stream
         mb = pages[pg - 1].mediabox; y = float(mb[3]) - (min(tops) if tops else 0) + 4
         heads.append((lvl, title[:200], pg, y))
     if not heads:

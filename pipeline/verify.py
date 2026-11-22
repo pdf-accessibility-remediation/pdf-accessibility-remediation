@@ -424,11 +424,11 @@ def _lang_section():
     # under it name another language
     for e in haw_el:
         ks = [tuple(k) for k in e.get('keys') or []]
-        og = owner.get(ks[0]) if ks else None; el = pdf.get_object(og) if og else None
+        og = own_of(ks[0]) if ks else None; el = pdf.get_object(og) if og else None      # a form run too (#166)
         why = None
         if el is None: why = 'not in the tag tree'
         elif str(el.get('/Lang', '')) != 'haw': why = f'its tag says {str(el.get("/Lang", "")) or "no language"}'
-        elif any(k in _BDC_LANG and not same_lang(_BDC_LANG[k], 'haw') for k in ks): why = f'its marked content says {next(_BDC_LANG[k] for k in ks if k in _BDC_LANG)}'
+        elif any(marks_lang(k) and not same_lang(marks_lang(k), 'haw') for k in ks): why = f'its marked content says {next(marks_lang(k) for k in ks if marks_lang(k))}'
         if why: mism.append({'page': e.get('page'), 'mcid': ks[0][1] if ks else None, 'lang': 'haw', 'text': str(e.get('text') or '')[:80], 'why': why})
     return {'spans_written': len(written), 'haw_elements': len(haw_el),
             'not_in_tree': sum(1 for x in mism if x['why'] == 'not in the tag tree'),   # content not tagged: a failed tagging safety check (Patrick, review 10 H1)
