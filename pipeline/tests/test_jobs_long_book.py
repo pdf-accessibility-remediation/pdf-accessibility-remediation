@@ -1,7 +1,7 @@
 """#167 (whole-book work redone per item), memory: a single run of a book over 1,000 pages runs alone in the app, as a batch
 does: it starts only when nothing counted runs, and nothing counted starts while it runs (webapp/jobs.py LONG_PAGES).
 Made-up PDFs of blank pages; the dispatcher's start is replaced, so nothing runs."""
-import os, sys
+import os, sys, json
 import pikepdf
 PIPE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, PIPE)
@@ -50,3 +50,14 @@ def test_books_up_to_the_limit_share_places(tmp_path, monkeypatch):
     for k in 'abc': jobs.create(J, 'run', f'{k}/x', ['bash', 'run_api.sh', pdf(tmp_path / f'{k}.pdf', jobs.LONG_PAGES), k, 'x'], {})
     jobs.tick(J, s)
     assert sorted(started) == ['a/x', 'b/x', 'c/x']
+
+
+
+def test_a_job_naming_no_pdf_takes_its_page_count_from_the_run_folder(tmp_path, monkeypatch):
+    """Review 04 M5: "Apply session N" of a run whose input is a copy names no PDF; its run folder's record says how long
+    the book is, so a long one still runs alone."""
+    J, started = setup(tmp_path, monkeypatch)
+    R = tmp_path / 'runs' / 'big' / 'x'; R.mkdir(parents=True)
+    (R / 'record.json').write_text(json.dumps({'document': {'pages': jobs.LONG_PAGES + 300}}))
+    j = jobs.create(J, 'apply', 'big/x', ['python3', 'review_workorder.py', str(R), '--apply'], {}, R=str(R))
+    assert j['pages'] == jobs.LONG_PAGES + 300 and jobs.long_book(j)
