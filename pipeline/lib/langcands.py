@@ -490,7 +490,9 @@ def page_places(pno, chars, page_chars=None, italic=None, doc_lang=None, spoken=
         emit(grp, (k, j), form, cls, first_m)
         k = j + 1
     def pieces_outside(k0, j0, passage):
-        """The stretches of words k0..j0 outside the passages' runs: [((first, last), words)], slashes trimmed at their ends."""
+        """The stretches of words k0..j0 outside the passages' runs that hold a candidate (a word with a class of its own,
+        not only growth's `title`: review 24, L1): [((first, last), words)], slashes trimmed at their ends. A grown word
+        at a kept stretch's edge stays in it (cadaverous PDF 311's "ra mokuroku")."""
         out_, cur = [], []
         for n_ in range(k0, j0 + 1):
             x = words[n_]
@@ -503,7 +505,7 @@ def page_places(pno, chars, page_chars=None, italic=None, doc_lang=None, spoken=
         for ns in out_:
             while ns and (words[ns[0]]['all'].strip() == '/' or not words[ns[0]]['chars']): ns = ns[1:]
             while ns and (words[ns[-1]]['all'].strip() == '/' or not words[ns[-1]]['chars']): ns = ns[:-1]
-            if ns and any(words[n_].get('cls') for n_ in ns): res.append(((ns[0], ns[-1]), [words[n_] for n_ in ns]))
+            if ns and any(candidate(words[n_]) for n_ in ns): res.append(((ns[0], ns[-1]), [words[n_] for n_ in ns]))
         return res
     # 5. passages: a run where most words are candidates becomes one place for the whole run
     by_run = collections.defaultdict(list)
@@ -530,7 +532,7 @@ def page_places(pno, chars, page_chars=None, italic=None, doc_lang=None, spoken=
         fm = p.pop('_first_mcid', None)
         if p.get('segments') and any(s[0] in passage for s in p['segments']):
             # a title grown into a passage's run (review 22, M1): the passage holds its words there, and each stretch of its
-            # words outside the passage is a place of its own, as with growth stopping at the run boundary
+            # words outside the passage that holds a candidate is a place of its own
             n0 = len(places)
             for piece in pieces_outside(p['w0'], p['w1'], passage): emit(piece[1], piece[0], *form_cls(piece[1]))
             for q in places[n0:]: q.pop('_first_mcid', None); out.append(q)

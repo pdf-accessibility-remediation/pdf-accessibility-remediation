@@ -155,3 +155,15 @@ def test_a_run_that_comes_back_after_another_gives_one_place_per_stretch(tmp_pat
     with pikepdf.open(src) as pdf: c = langcands.book(plpages.Pages(src), doc_lang='en', grow=True, pdf=pdf)
     got = [(p['mcid'], p['first'], p['last'], p['form'], p.get('segments')) for p in c['places']]
     assert got == [(0, 4, 8, 'Shoku', None), (0, 9, 15, 'wakashu', None), (1, 0, 4, 'gosen', None)], got
+
+
+def test_a_grown_word_alone_beside_a_passage_is_no_place(tmp_path, monkeypatch):
+    """Review 24, L1 (probes A and B): "Shin" is no candidate; growth took it from the passage's side. The piece outside the
+    passage holds no candidate, so it is no place, as with adjacency off."""
+    after = [[mixed([('F6', 'tsuki hana yuki kaze nami sora Shoku')])], [mixed([('F6', 'Shin'), ('F1', ' for the poems.')])]]
+    on, off = with_and_without_adjacency(tmp_path, monkeypatch, after)
+    assert on == off and not any('Shin' == f for _, f, _, _ in on), on
+    before = [[mixed([('F1', 'See the '), ('F6', 'Shin')])], [mixed([('F6', 'kokin tsuki hana yuki kaze nami sora')])], [mixed([('F1', ' here.')])]]
+    monkeypatch.undo()
+    on, off = with_and_without_adjacency(tmp_path, monkeypatch, before)
+    assert on == off and not any('Shin' == f for _, f, _, _ in on), on
