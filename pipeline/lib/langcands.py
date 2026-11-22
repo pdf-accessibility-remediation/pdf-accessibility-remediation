@@ -644,7 +644,8 @@ def book(PL, pages=None, doc_lang=None, spoken=None, grow=False, pdf=None, rules
             adj = lambda a, b, _R=R: _R.adjacent(struct, a, b)
         places, words_ = page_places(pno, chars, lambda p, _c=chars: _c, doc_lang=doc_lang, grow=grow, keep=keep, removed=removed, info=info,
                                      words0=R.words if R else None, extra=extra, adjacent=adj,
-                                     can_map=R.can_map if R else (lambda segs, _r=runs_: langjoin.pieces_fill(_r, segs)) if adj else None,
+                                     can_map=(lambda segs, _R=R: _R.can_map(segs, struct)) if R else (lambda segs, _r=runs_, _p=pno: langjoin.pieces_fill(_r, segs)
+                                              and struct.in_order(_p, segs, {m_: ''.join(c['text'] for c in cs_) for m_, cs_ in _r.items()})) if adj else None,
                                      spoken={'forms': (spoken or {}).get('forms') or {}, 'reading': ((spoken or {}).get('pages') or {}).get(pno)} if spoken else None)
         if R:
             gaptext._LINES.pop(id(chars), None)

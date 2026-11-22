@@ -158,3 +158,15 @@ def test_pieces_fill_is_apply_s_rule_for_text_between_pieces():
     assert not langjoin.pieces_fill(rr, [[0, 0, 2], [1, 0, 3]])          # the hyphen sits between the pieces
     assert langjoin.pieces_fill(rr, [[2, 1, 3], [3, 0, 2]])              # before the first and after the last: allowed
     assert not langjoin.pieces_fill(rr, [[3, 0, 2], [2, 1, 3]])
+
+
+def test_in_order_is_apply_s_rule_for_pieces_in_the_tag_tree(tmp_path):
+    """Report 25 (teika's "Teika yō Teika", 7 refused): a place's pieces must follow each other among one owner's kids,
+    with only blank runs between; a run with text between, a reversed order, or another owner are refused by apply.py."""
+    src = langpdf.build_lines(str(tmp_path / 'k.pdf'), [[R('Teika'), R(' yo '), R('Teika'), R(' '), R('here', parent='P1')]])
+    with pikepdf.open(src) as pdf: st = langjoin.Structure(pdf)
+    text = {0: 'Teika', 1: ' yo ', 2: 'Teika', 3: ' ', 4: 'here'}
+    assert st.in_order(1, [[0, 0, 4], [1, 1, 2]], text)
+    assert not st.in_order(1, [[0, 0, 4], [2, 0, 4]], text)                 # " yo " sits between
+    assert not st.in_order(1, [[1, 1, 2], [0, 0, 4]], text)                 # reversed
+    assert st.in_order(1, [[2, 0, 4], [3, 0, 0]], text) and not st.in_order(1, [[3, 0, 0], [4, 0, 3]], text)   # another owner

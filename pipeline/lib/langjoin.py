@@ -144,6 +144,19 @@ class Structure:
 
     def _seq(self, og): return self._kids.get(og, (None, True, {}))
 
+    def in_order(self, pno, segs, run_text):
+        """apply.py's rule for a place over several runs: one owner, each piece's run after the one before among its kids,
+        and only blank runs of this page between them (run_text: {mcid: text})."""
+        own = {self.par.get((pno, m)) for m, _, _ in segs}
+        if len(own) != 1 or None in own: return False
+        seq, _, ix = self._kids.get(own.pop()) or ((), False, {})
+        at = [ix.get((pno, m)) for m, _, _ in segs]
+        if None in at or any(b <= a for a, b in zip(at, at[1:])): return False
+        for a, b in zip(at, at[1:]):
+            for k in seq[a + 1:b]:
+                if k[0] != 'mcid' or k[1] != pno or (run_text.get(k[2]) or '').strip(): return False
+        return True
+
     def marks(self, pno):
         """{mcid: (own ActualText, under an enclosing ActualText)} from the page's content stream, and from the forms it
         draws that are drawn nowhere else (#165: their runs are tagged like the page's, so spoken text there counts too)."""
@@ -369,11 +382,14 @@ class Reading:
         if a is None or b is None or a == b or not struct.adjacent(self.pno, a, b): return False
         return why == 'line' or run_break_ok(self.real_runs.get(a) or [], self.real_runs.get(b) or [])
 
-    def can_map(self, segs):
-        """A place over these stretch segments maps to the PDF's runs (no real run twice) and its pieces fill their runs
-        as apply.py needs (pieces_fill)."""
+    def can_map(self, segs, struct=None):
+        """A place over these stretch segments maps to the PDF's runs (no real run twice), its pieces fill their runs
+        (pieces_fill), and with struct, they follow each other in the tag tree (Structure.in_order): apply.py's rules."""
         q = self.map({'mcid': segs[0][0], 'first': segs[0][1], 'last': segs[0][2], 'segments': segs})
-        return q is not None and pieces_fill(self.real_runs, q.get('segments') or [[q['mcid'], q['first'], q['last']]])
+        if q is None: return False
+        real = q.get('segments') or [[q['mcid'], q['first'], q['last']]]
+        if not pieces_fill(self.real_runs, real): return False
+        return struct is None or len(real) < 2 or struct.in_order(self.pno, real, {m: ''.join(c['text'] for c in rr) for m, rr in self.real_runs.items()})
 
     def map(self, p):
         """A place on the stretch -> the same place on the PDF's runs: (mcid, first, last) for one run, or with
