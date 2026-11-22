@@ -478,6 +478,9 @@ def page_places(pno, chars, page_chars=None, italic=None, doc_lang=None, spoken=
                     while slash(q): q -= step
                     lo, hi = (q, i) if step > 0 else (i, q)
                     if any(phrase_end(n_) for n_ in range(max(lo, 0), hi)): return False
+                    if 0 <= lo and words[lo].get('hy_to') is words[hi]: return False   # never across a line-end hyphen join:
+                                                  # its two halves are two places of one form (#140); one place over both
+                                                  # would hold the hyphen between its pieces, which apply.py refuses
                 t = words[i]['text']
                 if t.lower() in GROW_STOP: return False                  # #136's narrower rule: "Tsurezuregusa of Kenkō", "… or …"
                 for n_ in (i - 1, i + 1):                               # a piece of an English word the PDF draws apart ("Se lections",
@@ -640,7 +643,8 @@ def book(PL, pages=None, doc_lang=None, spoken=None, grow=False, pdf=None, rules
         elif grow and struct.ok:
             adj = lambda a, b, _R=R: _R.adjacent(struct, a, b)
         places, words_ = page_places(pno, chars, lambda p, _c=chars: _c, doc_lang=doc_lang, grow=grow, keep=keep, removed=removed, info=info,
-                                     words0=R.words if R else None, extra=extra, adjacent=adj, can_map=R.can_map if R else None,
+                                     words0=R.words if R else None, extra=extra, adjacent=adj,
+                                     can_map=R.can_map if R else (lambda segs, _r=runs_: langjoin.pieces_fill(_r, segs)) if adj else None,
                                      spoken={'forms': (spoken or {}).get('forms') or {}, 'reading': ((spoken or {}).get('pages') or {}).get(pno)} if spoken else None)
         if R:
             gaptext._LINES.pop(id(chars), None)

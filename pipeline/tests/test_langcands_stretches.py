@@ -139,11 +139,22 @@ def test_a_romanized_title_and_its_english_translation_on_the_next_line_stay_apa
     assert kinds == ['ocr'] and [f for f, _ in got(c)] == ['Shoku gosen']
 
 
-def test_a_line_end_hyphen_on_an_ocr_page_takes_the_half_once(tmp_path):
-    """Review 24 §6.2: "Zhong-" ‖ "guo shi". Growth crosses the line into the hyphen half: one place over both halves, the
-    hyphen itself outside it, and the half in no other place. The joined reading ends a stretch after the first word of a
-    line that follows a line-end hyphen ('hyphen half', not 'line'), so "shi" stays a place of its own."""
+def test_a_line_end_hyphen_on_an_ocr_page_keeps_its_two_halves_and_verify_matches(tmp_path):
+    """Review 24 §6.2: "Zhong-" ‖ "guo shi". Growth doesn't cross a line-end hyphen join: one place over both halves would
+    hold the hyphen between its pieces, which apply.py refuses (report 25: dwellings' "Chū-" ‖ "goku"). The halves stay
+    two places of one form (#140), the second marked `half`, and each is tagged."""
     lines = [[R('See '), R('the '), I('Zhong-')], [I('guo '), I('shi '), R('for '), R('the '), R('story.')]]
     c, kinds = book(tmp_path, lines)
     assert kinds == ['ocr']
-    assert got(c) == [('Zhongguo', [[2, 0, 4], [3, 0, 2]]), ('shi', None)], got(c)
+    assert [(p['mcid'], p['form'], p.get('segments'), p.get('half')) for p in c['places']] == [(2, 'Zhongguo', None, None), (3, 'Zhongguo', None, True), (4, 'shi', None, None)], c['places']
+    rows = [[1, p['mcid'], p['first'], p['last']] for p in c['places'][:2]]
+    _, out, log, v = apply_verify(tmp_path, lines, wo_of([('Zhongguo', 'zh-Latn', rows)]), name='h2.pdf')
+    assert not log['language_parts']['refused'] and len(spans(out)) == 2 and v['language']['all_match'], log['language_parts']
+
+
+def test_pieces_fill_is_apply_s_rule_for_text_between_pieces():
+    def run(t): return [{'text': ch} for ch in t]
+    rr = {0: run('Chū-'), 1: run('goku'), 2: run('(gen'), 3: run('ari,')}
+    assert not langjoin.pieces_fill(rr, [[0, 0, 2], [1, 0, 3]])          # the hyphen sits between the pieces
+    assert langjoin.pieces_fill(rr, [[2, 1, 3], [3, 0, 2]])              # before the first and after the last: allowed
+    assert not langjoin.pieces_fill(rr, [[3, 0, 2], [2, 1, 3]])

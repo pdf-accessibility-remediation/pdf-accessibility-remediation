@@ -324,6 +324,16 @@ def run_break_ok(a_chars, b_chars):
     return a_chars[-1]['text'].isspace() or b_chars[0]['text'].isspace()
 
 
+def pieces_fill(real_runs, segs):
+    """A place over several runs leaves no other text between its pieces (apply.py's own rule): nothing visible after
+    any piece but the last in its run, nor before any piece but the first."""
+    for n_, (m, a, b) in enumerate(segs):
+        cs = real_runs.get(m) or []
+        if (n_ > 0 and ''.join(c['text'] for c in cs[:a]).strip()) or (n_ < len(segs) - 1 and ''.join(c['text'] for c in cs[b + 1:]).strip()):
+            return False
+    return True
+
+
 class Reading:
     """A page read in stretches. chars: copies of the page's characters (pseudo MCIDs, `_m` the real MCID, `_k` the index
     in the real run, `_syn` for a space put in at a word break). unplaced: words read whole across runs that no tag can
@@ -360,8 +370,10 @@ class Reading:
         return why == 'line' or run_break_ok(self.real_runs.get(a) or [], self.real_runs.get(b) or [])
 
     def can_map(self, segs):
-        """A place over these stretch segments maps to the PDF's runs (no real run twice)."""
-        return self.map({'mcid': segs[0][0], 'first': segs[0][1], 'last': segs[0][2], 'segments': segs}) is not None
+        """A place over these stretch segments maps to the PDF's runs (no real run twice) and its pieces fill their runs
+        as apply.py needs (pieces_fill)."""
+        q = self.map({'mcid': segs[0][0], 'first': segs[0][1], 'last': segs[0][2], 'segments': segs})
+        return q is not None and pieces_fill(self.real_runs, q.get('segments') or [[q['mcid'], q['first'], q['last']]])
 
     def map(self, p):
         """A place on the stretch -> the same place on the PDF's runs: (mcid, first, last) for one run, or with
