@@ -281,7 +281,8 @@ switches once, not mid-title. `LANG_GROW=off` turns it off.
       ("Zhong-" ‖ "guo shi": "Zhongguo" in two tags; "shi" alone on an OCR page, untagged on a publisher page).
     - **A grown title apply.py refuses is tagged piece by piece** (#172). The finder records, for each title over several
       runs, where growth joined two words ("word") and where one word crosses runs ("inside": a split word, a dropped
-      letter, a hyphen). When apply.py refuses the whole title (its words under different tags, in different content
+      letter). A word broken by a line-end hyphen is two places from the start (one per piece), never one place over
+      both runs, so it has no breaks. When apply.py refuses the whole title (its words under different tags, in different content
       streams, other text between them, or the page would look different), it splits the title at its "word" breaks and
       tags each piece as it would have without growth: a piece of one run by the single-run rules (which still refuse a
       piece on a page rewritten from OCR, rotated text, or spoken text of its own), and a word that crosses runs all or

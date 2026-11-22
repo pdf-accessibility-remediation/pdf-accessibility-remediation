@@ -345,3 +345,13 @@ def test_172_the_finder_says_where_growth_joined_words_and_where_a_word_crosses_
         assert [(p['form'], p.get('breaks')) for p in c['places'] if p.get('segments')] == [want]
         lp = langreq.to_rows(langreq.forms(c['places']), {})
         assert all(len(r) == 4 and r[3] == want[1] for r in lp['parts'] if len(r) != 5)
+
+
+def test_172_a_word_hyphenated_at_a_line_end_is_two_places_never_one_with_breaks(tmp_path):
+    """Review 04 §4: growth never crosses a line-end hyphen. "velunkato-" / "ramio" is two places of one form, one per
+    piece (#140), never one place over both runs, so it has no breaks and #172's fallback can never split it."""
+    lines = [[{'text': 'We read about velunkato-', 'lang': 'en-US'}], [{'text': 'ramio here today.', 'lang': 'en-US'}]]
+    src = langpdf.build_lines(str(tmp_path / 'h.pdf'), lines)
+    with pikepdf.open(src) as pdf: c = langcands.book(plpages.Pages(src), doc_lang='en', pdf=pdf, grow=True)
+    ps = [p for p in c['places'] if p['form'] == 'velunkatoramio']
+    assert len(ps) == 2 and not any(p.get('segments') or p.get('breaks') for p in ps)
