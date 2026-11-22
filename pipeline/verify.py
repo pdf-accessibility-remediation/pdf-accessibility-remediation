@@ -292,7 +292,7 @@ out['untagged_paths'] = free.get('path', 0)          # a vector path drawn outsi
 # form reached from it at any depth) holds it; that form is drawn once in the whole document, directly from this page, and
 # not inside marked content; an /MCR … /Stm names it, for this page; no page-level reference names it.
 def _run_form():
-    DO = re.compile(rb'/([^\s/\[\]<>(){}%]+)\s+Do\b'); MC = re.compile(rb'/MCID\s+(\d+)')
+    DO = re.compile(rb'/([^\s/\[\]<>(){}%]+)\s+Do\b')
     fb = {}
     def raw(x):
         if x.objgen not in fb:
@@ -342,10 +342,10 @@ def _run_form():
             for nm in DO.findall(raw(f)):
                 g = forms(f.get('/Resources') or r).get('/' + nm.decode('latin-1'))
                 if g is None or g.objgen in seen: continue
-                seen.add(g.objgen); src.update(set(map(int, MC.findall(raw(g)))))
+                seen.add(g.objgen); src.update(tagfix.form_mcids(g, g.get('/Resources') or f.get('/Resources') or r, raw(g)))   # named too (review 06 §2)
                 if d < 4: nest(g, g.get('/Resources') or r, d + 1)
         for og, (f, _in) in direct.items():
-            ms = set(map(int, MC.findall(raw(f)))); src.update(ms)
+            ms = tagfix.form_mcids(f, f.get('/Resources') or res, raw(f)); src.update(ms)
             for m in ms: where[m] = og
             nest(f, f.get('/Resources') or res, 1)
         per[i] = (pm, direct, src, where)

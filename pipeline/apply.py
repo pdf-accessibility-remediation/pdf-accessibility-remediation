@@ -444,7 +444,7 @@ def page_forms(pno, done=()):
     """Form XObjects drawn on this page that hold marked content with MCIDs (or did, before this run artifacted them)."""
     out = []
     for name, x in (pages[pno - 1].obj.get('/Resources', {}).get('/XObject') or {}).items():
-        if str(x.get('/Subtype')) == '/Form' and (x.objgen in done or b'/MCID' in x.read_bytes()): out.append(x)
+        if str(x.get('/Subtype')) == '/Form' and (x.objgen in done or tagfix.form_has_mcids(x)): out.append(x)   # named too (review 06 §2)
     return out
 def artifact_form(form, props, label):
     """Every marked run in this form matched a decoration rule: mark them all as artifacts inside the form,
@@ -1437,7 +1437,7 @@ def drawn_here(pno, m, n):
     if _CONTENT[pno] is None: return 'page content not readable'
     if pno not in _PCOUNT:                          # #167: every run's count in one pass per page (count_all: count_codes' rules)
         res = _inherited(pages[pno - 1], '/Resources') or {}
-        _PCOUNT[pno] = mcsplit.count_all(_CONTENT[pno], res.get('/Font'), res.get('/XObject') or {})
+        _PCOUNT[pno] = mcsplit.count_all(_CONTENT[pno], res.get('/Font'), res.get('/XObject') or {}, res=res)   # named runs too (review 06 S1)
     got = _PCOUNT[pno].get(m, 'the text is not drawn in the page content')
     if isinstance(got, str):                        # a count only (review 06, M1): the split's own refusals stay with the split
         return 'this text is drawn inside a form XObject, not in the page' if got == 'the text is not drawn in the page content' else got
@@ -1449,7 +1449,6 @@ def drawn_here(pno, m, n):
 # (5) the form's Do is outside any marked content on the page, (6) no page-level reference names the same (page, MCID), and
 # (7) the form's own content shows exactly the characters pdfplumber lists for it. Anything else is refused, with its reason.
 DO_RX = re.compile(rb'/([^\s/\[\]<>(){}%]+)\s+Do\b')
-MCID_RX = re.compile(rb'/MCID\s+(\d+)')
 _FBYTES, _FINS, _PF, _FORM_OBJ, _FCOUNT, _FPROPS = {}, {}, {}, {}, {}, {}
 _FUSES = []
 _STREAM = {}            # (page, MCID) -> None (the page's content) or the form XObject: where each run the language path touches is
@@ -1520,10 +1519,10 @@ def _page_forms(pno):
             g = _xforms(f.get('/Resources') or res_).get('/' + nm.decode('latin-1'))
             if g is None or g.objgen in seen: continue
             seen.add(g.objgen); info['nested'].add(g.objgen)
-            for m in set(map(int, MCID_RX.findall(_fbytes(g)))): info['sources'][m] += 1
+            for m in tagfix.form_mcids(g, g.get('/Resources') or f.get('/Resources') or res_, _fbytes(g)): info['sources'][m] += 1   # named too (review 06 §2)
             if depth < 4: nested(g, g.get('/Resources') or res_, depth + 1)
     for og, d in list(info['direct'].items()):
-        for m in set(map(int, MCID_RX.findall(_fbytes(d['form'])))): info['sources'][m] += 1
+        for m in tagfix.form_mcids(d['form'], d['form'].get('/Resources') or res, _fbytes(d['form'])): info['sources'][m] += 1
         nested(d['form'], d['form'].get('/Resources') or res, 1)
     return info
 def _form_check(pno, m, f, n=None):
@@ -1540,11 +1539,11 @@ def _form_check(pno, m, f, n=None):
     if ins is None: return "the form's content is not readable"
     if f.objgen not in _FPROPS:                    # each run's marks and character count, once per form (not one scan per run)
         props = {}
-        for x in ins:
-            mm = mcsplit._mcid(x)
-            if mm is not None and mm not in props: props[mm] = mcsplit._props(x)
         res = f.get('/Resources') or _inherited(pages[pno - 1], '/Resources') or {}
-        _FPROPS[f.objgen] = props; _FCOUNT[f.objgen] = mcsplit.count_all(ins, res.get('/Font'), res.get('/XObject') or {})
+        for x in ins:
+            mm = mcsplit._mcid(x, res)                 # a named property list too, through the form's own resources (review 06 §2)
+            if mm is not None and mm not in props: props[mm] = mcsplit._props(x, res)
+        _FPROPS[f.objgen] = props; _FCOUNT[f.objgen] = mcsplit.count_all(ins, res.get('/Font'), res.get('/XObject') or {}, res=res)
     pr = _FPROPS[f.objgen].get(m)
     if pr is not None and any(k in pr for k in ('/ActualText', '/Alt', '/E')): return 'the text has its own spoken text'
     if n is None: return None
@@ -4010,6 +4009,7 @@ def fix_language_parts():
                 if fi is None: return 'unknown'
                 streams[f.objgen] = list(fi); fobj[f.objgen] = f
             return f.objgen
+        def sres(k): return res if k is None else (fobj[k].get('/Resources') or res)   # the stream's resources (named runs, review 06 §2)
         dropped = 0
         drop = set(job['drop'])
         for g, grp in job['groups'].items():
@@ -4020,14 +4020,14 @@ def fix_language_parts():
             if k == 'unknown': LANG['marks_stream_unknown'] = LANG.get('marks_stream_unknown', 0) + 1; continue
             by_stream[k].append(m)
         for k, ms in by_stream.items():            # one pass per stream (a form's runs number in the thousands)
-            streams[k], ch = mcsplit.drop_lang_many(streams[k], ms); dropped += ch
+            streams[k], ch = mcsplit.drop_lang_many(streams[k], ms, res=sres(k)); dropped += ch
             if ch: changed.add(k)
         plans, refused = [], {}
         todo = {m: ps for m, ps in job['split'].items() if unit(job, m) in act}
         if todo:
             # new MCIDs avoid every number on the page (its content, every form it reaches, both indexes), since pdfplumber
             # and verify key characters by (page, MCID), and land past the target stream's index array (review 09, R4)
-            used = set(_page_forms(pno)['sources']) | mcsplit.drawn_mcids(pins) | owned_on[pno] | fowned_on[pno]
+            used = set(_page_forms(pno)['sources']) | mcsplit.drawn_mcids(pins, res) | owned_on[pno] | fowned_on[pno]
             nxt = [max(used | {-1}) + 1]
             for m, parts in sorted(todo.items()):
                 k = key_of(m)
@@ -4042,7 +4042,7 @@ def fix_language_parts():
                     return m_
                 fonts = res.get('/Font') if k is None else (fobj[k].get('/Resources') or res).get('/Font')
                 try:
-                    ins2, pieces = mcsplit.split_run(streams[k], fonts, m, [(p['first'], p['last']) for p in parts], new_mcid, expect_n=len(run_chars(pno, m)))
+                    ins2, pieces = mcsplit.split_run(streams[k], fonts, m, [(p['first'], p['last']) for p in parts], new_mcid, expect_n=len(run_chars(pno, m)), res=sres(k))
                 except mcsplit.Refuse as e: refused[unit(job, m)] = str(e); continue
                 # the blank pieces a phrase's split leaves inside it (after its first segment, before its last) lose their /Lang too
                 for k_, (mc, kind, ci) in enumerate(pieces):
@@ -4052,7 +4052,7 @@ def fix_language_parts():
                     inner = pieces[k_ + 1:] if pos_ < len(ph['segs']) - 1 else []
                     inner += pieces[:k_] if pos_ > 0 else []
                     for mc2, kind2, _ in inner:
-                        if kind2 == 'run': ins2, ch = mcsplit.drop_lang(ins2, mc2); dropped += ch
+                        if kind2 == 'run': ins2, ch = mcsplit.drop_lang(ins2, mc2, res=sres(k)); dropped += ch
                 streams[k] = ins2; changed.add(k); plans.append((m, pieces, parts))
         if not changed: return None, plans, dropped, refused
         new = {'page': pdf.make_stream(pikepdf.unparse_content_stream(streams[None])) if None in changed else None,

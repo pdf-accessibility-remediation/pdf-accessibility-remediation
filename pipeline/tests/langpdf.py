@@ -195,7 +195,7 @@ def build_across_pages(path, page1, page2, kids_a, kids_b, doc_lang='en'):
 
 def build_in_form(path, lines, doc_lang='en', page_lines=(), draws=1, second_page=False, do_inside=None, form_resources=True,
                   page_refs=(), only_page_refs=(), page_mcid=None, at_marks=(), two_forms_share=None, no_structparents=False,
-                  form_rules=0, no_ref=()):
+                  form_rules=0, no_ref=(), named=False):
     """Text drawn inside one form XObject (#165), the way an auto-tagged OCR layer is: the page's content only draws the
     form; the form holds the runs, each its own marked content (MCID from 0, `/Lang (en-US)` in the marks unless a piece
     says otherwise); the tag tree names them with /MCR … /Stm and no /Pg (the element's /Pg gives the page); the form has
@@ -212,10 +212,13 @@ def build_in_form(path, lines, doc_lang='en', page_lines=(), draws=1, second_pag
       no_structparents  the form has no /StructParents
       form_rules      how many untagged rules (a stroked line each) the form draws after its text (fix_paths' case)
       no_ref          form MCIDs no tree reference names at all (neither /Stm nor a page kid)
+      named           each of the form's runs names its property list (/Span /MC<n> BDC, the dictionary in the form's own
+                      /Resources /Properties) instead of writing it inline (review 06 §2)
     Returns the path."""
     pdf = pikepdf.new()
     F = fonts(pdf)
     out, y, n, kids, order, langs = ['BT', '72 740 Td'], 740, 0, {}, [], {}
+    named_props = {}
     for line in lines:
         cur = None
         for pc in line:
@@ -224,6 +227,7 @@ def build_in_form(path, lines, doc_lang='en', page_lines=(), draws=1, second_pag
             if pc.get('gap'): out.append(f'[-{pc["gap"]}] TJ')
             lang = pc.get('lang', 'en-US')
             props = f'<</MCID {n}' + (f' /Lang ({lang})' if lang else '') + (' /ActualText (x)' if n in at_marks else '') + '>>'
+            if named: named_props[f'/MC{n}'] = props; props = f'/MC{n}'
             out += [f'/Span {props} BDC', show(font, pc['text']), 'EMC']
             key = pc.get('parent', 'P0')
             if key not in kids: kids[key] = []; order.append(key)
@@ -234,6 +238,9 @@ def build_in_form(path, lines, doc_lang='en', page_lines=(), draws=1, second_pag
     form = pdf.make_stream('\n'.join(out).encode('latin-1'))
     form.Type = pikepdf.Name.XObject; form.Subtype = pikepdf.Name.Form; form.BBox = [0, 0, 612, 792]
     if form_resources: form.Resources = pikepdf.Dictionary(Font=F)
+    if named:                                      # each dictionary parsed from the same text the inline form would carry
+        form.Resources.Properties = pikepdf.Dictionary({k: next(x.operands[1] for x in pikepdf.parse_content_stream(
+            pdf.make_stream(f'/Span {v} BDC EMC'.encode('latin-1')))) for k, v in named_props.items()})
     if not no_structparents: form.StructParents = 1
     nform = n
     extra = None

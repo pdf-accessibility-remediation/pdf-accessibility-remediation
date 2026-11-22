@@ -31,7 +31,7 @@ The rules (`rules`, a set; lib/langcands.RULES):
 """
 import re, statistics, collections, unicodedata
 import pikepdf
-from lib import ocrwords
+from lib import ocrwords, tagfix
 
 GAP, FRAG_GAP = 2.0, 0.15
 OPEN = set('‘“"([{«„‚\'')
@@ -70,13 +70,13 @@ def single_use_forms(pdf):
             x = xs.get('/' + nm.decode('latin-1'))
             if x is None: continue
             uses[x.objgen] += 1
-            if depth == 0: direct.setdefault(pno, {})[x.objgen] = x
+            if depth == 0: direct.setdefault(pno, {})[x.objgen] = (x, x.get('/Resources') or res)
             if depth < 4: walk(raw(x), x.get('/Resources') or res, depth + 1, pno)
     for pno, page in enumerate(pdf.pages, 1):
         walk(raw(page.obj.get('/Contents')), res_of(page), 0, pno)
     out = {}
     for pno, fs in direct.items():
-        keep = [x for og, x in fs.items() if uses[og] == 1 and b'/MCID' in raw(x)]
+        keep = [x for og, (x, xres) in fs.items() if uses[og] == 1 and tagfix.form_has_mcids(x, xres, raw(x))]   # named too (review 06 §2)
         if keep: out[pno] = keep
     _SINGLE.clear(); _SINGLE.update(pdf=pdf, out=out)
     return out

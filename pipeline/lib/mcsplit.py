@@ -3,7 +3,7 @@ on a page's content-stream instructions (pikepdf); apply.py writes the structure
 
     split_run(ins, fonts_at, mcid, cuts, new_mcid)  -> (instructions, pieces)  or raises Refuse(reason)
     drop_lang(ins, mcid)                             -> (instructions, True if a /Lang was removed)
-    drawn_mcids(ins)                                 -> MCIDs drawn in these instructions
+    drawn_mcids(ins, res=None)                       -> MCIDs drawn in these instructions (res: see _props)
 
 A place is found by counting character codes, never by decoding text (review 02, H2): `cuts` are (first, last) indexes
 of the run's characters, counted as pdfplumber lists them (one character per character code, in content order; the codes
@@ -26,6 +26,7 @@ A boundary inside a glyph (a ligature) or inside a spoken-text span, or a place 
 `pieces` lists the run's new marked-content sequences in content order: (mcid, 'run' | 'span', index of the cut or None).
 """
 import pikepdf
+from lib import tagfix
 
 I, Op = pikepdf.ContentStreamInstruction, pikepdf.Operator
 SHOW = {'Tj', 'TJ', "'", '"'}
@@ -33,19 +34,22 @@ DRAW = {'f', 'F', 'f*', 'B', 'B*', 'b', 'b*', 'S', 's', 'sh', 'Do', 'BI', 'INLIN
 
 class Refuse(Exception): pass
 
-def _props(x):
-    return x.operands[1] if str(x.operator) == 'BDC' and len(x.operands) > 1 and isinstance(x.operands[1], pikepdf.Dictionary) else None
+# res (review 06 §2, S1): the /Resources of the stream these instructions come from. With it, a BDC that names its
+# property list (/P /MC0 BDC) is read through res's /Properties, as tagfix.bdc_props reads it; without it (None), only an
+# inline dictionary counts, as before. A run whose properties are named is rewritten with an inline copy when edited.
+def _props(x, res=None):
+    return tagfix.bdc_props(x.operands, res) if str(x.operator) == 'BDC' and len(x.operands) > 1 else None
 
-def _mcid(x):
-    p = _props(x)
+def _mcid(x, res=None):
+    p = _props(x, res)
     return int(p.MCID) if p is not None and '/MCID' in p else None
 
-def drawn_mcids(ins):
-    return {m for m in (_mcid(x) for x in ins) if m is not None}
+def drawn_mcids(ins, res=None):
+    return {m for m in (_mcid(x, res) for x in ins) if m is not None}
 
-def find_run(ins, mcid):
+def find_run(ins, mcid, res=None):
     """(start, end): indexes of the run's BDC and its matching EMC, or None when it is not drawn here."""
-    start = next((i for i, x in enumerate(ins) if _mcid(x) == mcid), None)
+    start = next((i for i, x in enumerate(ins) if _mcid(x, res) == mcid), None)
     if start is None: return None
     d = 0
     for k in range(start, len(ins)):
@@ -56,13 +60,13 @@ def find_run(ins, mcid):
             if d == 0: return start, k
     raise Refuse("the text's marked content is not closed")
 
-def count_codes(ins, fonts, mcid, xobjects=None):
+def count_codes(ins, fonts, mcid, xobjects=None, res=None):
     """How many character codes run `mcid` shows in these instructions, nested marked content and spoken-text spans
     included: the count pdfplumber gives its MCID when the run is drawn here. Raises Refuse only when the run is not
     drawn here, or its codes can't be counted (a font with an unknown encoding, a form drawn inside it). Unlike
     split_run, nothing else refuses: a run with a path, an image, its own ActualText or a " operator is still counted
     (review 06, M1: apply.py's check that a tag lands on the run pdfplumber read)."""
-    se = find_run(ins, mcid)
+    se = find_run(ins, mcid, res)
     if se is None: raise Refuse('the text is not drawn in the page content')
     start, end = se
     cur = _font_state(ins, start, fonts); q = []; n = 0
@@ -87,7 +91,7 @@ def count_codes(ins, fonts, mcid, xobjects=None):
             n += sum(len(bytes(y)) // nb for y in strs)
     return n
 
-def count_all(ins, fonts, xobjects=None):
+def count_all(ins, fonts, xobjects=None, res=None):
     """{mcid: count, or the reason count_codes would refuse} for every run in these instructions, in one pass (#165: a
     form's text is thousands of runs, and count_codes scans the whole list for each). The same rules as count_codes: a
     run's own codes and those of marked content nested in it; the first run of a number only (find_run's); the font in
@@ -100,7 +104,7 @@ def count_all(ins, fonts, xobjects=None):
     for x in ins:
         op = str(x.operator)
         if op in ('BDC', 'BMC'):
-            m = _mcid(x)
+            m = _mcid(x, res)
             if m is not None and m in seen: m = None            # a second run of the same number: find_run takes the first
             if m is not None: seen.add(m); out[m] = 0
             open_.append((len(open_), m)); continue
@@ -130,14 +134,14 @@ def count_all(ins, fonts, xobjects=None):
         if m is not None: out[m] = "the text's marked content is not closed"
     return out
 
-def drop_lang_many(ins, mcids):
+def drop_lang_many(ins, mcids, res=None):
     """drop_lang for several runs in one pass: (instructions, how many /Lang were removed)."""
     ins, n, todo = list(ins), 0, set(mcids)
     for i, x in enumerate(ins):
         if not todo: break
-        m = _mcid(x)
+        m = _mcid(x, res)
         if m in todo:
-            todo.discard(m); p = _props(x)
+            todo.discard(m); p = _props(x, res)
             if '/Lang' in p:
                 ins[i] = I([x.operands[0], pikepdf.Dictionary({k: v for k, v in p.items() if k != '/Lang'})], Op('BDC')); n += 1
     return ins, n
@@ -153,12 +157,12 @@ def code_bytes(font):
         raise Refuse('vertical writing' if enc == '/Identity-V' else 'two-byte font with another encoding')
     return 1
 
-def drop_lang(ins, mcid):
+def drop_lang(ins, mcid, res=None):
     """The run's BDC without /Lang (the structure element carries the language: review 02, H1)."""
     ins = list(ins)
     for i, x in enumerate(ins):
-        if _mcid(x) == mcid:
-            p = _props(x)
+        if _mcid(x, res) == mcid:
+            p = _props(x, res)
             if '/Lang' not in p: return ins, False
             d = pikepdf.Dictionary({k: v for k, v in p.items() if k != '/Lang'})
             ins[i] = I([x.operands[0], d], Op('BDC'))
@@ -175,17 +179,17 @@ def _font_state(ins, upto, fonts):
         elif op == 'Q' and gs: cur = gs.pop()
     return cur
 
-def split_run(ins, fonts, mcid, cuts, new_mcid, expect_n=None):
+def split_run(ins, fonts, mcid, cuts, new_mcid, expect_n=None, res=None):
     """ins: the page's instructions. fonts: the page's /Font resources. cuts: [(first, last), …], indexes of the run's
     characters, not overlapping. new_mcid(): the next free MCID on the page. expect_n: how many characters pdfplumber
     lists for this MCID; any other count of codes here refuses the run (the content changed since, or a code the two
     count differently).
     Returns (new instructions, pieces) with pieces [(mcid, kind, cut index or None)], or raises Refuse."""
     ins = list(ins)
-    se = find_run(ins, mcid)
+    se = find_run(ins, mcid, res)
     if se is None: raise Refuse('the text is not drawn in the page content')
     start, end = se
-    p0 = _props(ins[start]); tag = ins[start].operands[0]
+    p0 = _props(ins[start], res); tag = ins[start].operands[0]
     if '/ActualText' in p0 or '/Alt' in p0: raise Refuse('the text has its own spoken text')
     bt = 0
     for x in ins[:start]:
