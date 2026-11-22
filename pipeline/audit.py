@@ -98,9 +98,11 @@ def first_page(e):
     if e['mcids']: return min(p for p, _ in e['mcids'])
     ps = [first_page(k) for k in e['kids']]; ps = [p for p in ps if p]
     return min(ps) if ps else e['page']
+_ROOT = {}
 def siblings(e):
     par = e['par']
-    sib = [x for x in (info[par.objgen]['kids'] if par is not None else [x for x in elems if x['par'] is None])]
+    if par is None and 'root' not in _ROOT: _ROOT['root'] = [x for x in elems if x['par'] is None]   # #167: once, not per heading
+    sib = info[par.objgen]['kids'] if par is not None else _ROOT['root']
     i = next(i for i, x in enumerate(sib) if x is e)
     return (sib[i - 1] if i > 0 else None), (sib[i + 1] if i + 1 < len(sib) else None)
 def brief(e): return None if e is None else {'style': e['style'], 'text': clip(text_of(e), 80)}

@@ -535,6 +535,7 @@ def _empty_pg(n, par):                     # a tag with nothing inside
     return p if p is not None or par is None else _own_pg(par)
 el_type, empty_el, fig_only, cap_loose = {}, [], [], []
 stk = [(k, None) for k in reversed(_kids(st))]
+_SIB = {}
 while stk:
     n, par = stk.pop()
     if not _is_el(n): continue
@@ -545,7 +546,9 @@ while stk:
         fig_only.append({'page': _holder_pg(n), 'tag': str(n.S).lstrip('/'), 'figures': len(els)})
     if s_ == 'Caption':
         pt_ = mapped(str(par.S).lstrip('/')) if par is not None else 'root'
-        sib = [mapped(str(k.S).lstrip('/')) for k in _kids(par) if _is_el(k)] if par is not None else []
+        if par is not None and par.objgen not in _SIB:      # #167: a parent's kid types once, not once per caption
+            _SIB[par.objgen] = [mapped(str(k.S).lstrip('/')) for k in _kids(par) if _is_el(k)]
+        sib = _SIB[par.objgen] if par is not None else []
         if pt_ not in ('Figure', 'Table', 'L', 'TOC', 'Formula') and not any(x in ('Figure', 'Table', 'Formula') for x in sib):
             cap_loose.append({'page': _holder_pg(n), 'parent': pt_})
     for k in reversed(ks): stk.append((k, n))
