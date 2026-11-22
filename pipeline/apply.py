@@ -18,7 +18,7 @@ title, the XMP and the tags are the same as without it); Acrobat shows it under 
 """
 import sys, os, json, re, collections, hashlib, unicodedata
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from lib import plumb_fix, listrule, gaptext, langtag, support, plpages, readorder, scripts, fontname, tablegrid, pagereads, mcsplit, langreq, keptscans, strays  # plumb_fix first: it patches pdfplumber
+from lib import plumb_fix, listrule, gaptext, langtag, support, plpages, readorder, scripts, fontname, tablegrid, pagereads, mcsplit, langreq, keptscans, strays, tagfix  # plumb_fix first: it patches pdfplumber
 from lib import peak  # noqa: F401  #167: this step's peak memory, written at exit when run_api.sh asks (PEAK_FILE)
 from lib.sections import excerpt
 import pikepdf, pdfplumber
@@ -449,8 +449,9 @@ def artifact_form(form, props, label):
     """Every marked run in this form matched a decoration rule: mark them all as artifacts inside the form,
     and take the form's content out of the tag tree (MCRs with /Stm pointing at it)."""
     out, n = [], 0
+    fres = form.get('/Resources')
     for ins in pikepdf.parse_content_stream(form):
-        if str(ins.operator) == 'BDC' and len(ins.operands) == 2 and isinstance(ins.operands[1], pikepdf.Dictionary) and '/MCID' in ins.operands[1]:
+        if str(ins.operator) == 'BDC' and len(ins.operands) == 2 and tagfix.bdc_mcid(ins.operands, fres) is not None:   # named too (review 04 H1)
             out.append(pikepdf.ContentStreamInstruction([pikepdf.Name('/Artifact'), props], pikepdf.Operator('BDC'))); n += 1
         else: out.append(ins)
     form.write(pikepdf.unparse_content_stream(out))
@@ -627,10 +628,11 @@ def op_artifacts(spec):
                 continue
             arr = pt_form_arr(owner_)
         out, hit = [], set()
+        ores = (_inherited(owner_, '/Resources') or {}) if sk is None else owner_.get('/Resources')
         for ins in pikepdf.parse_content_stream(owner_):
-            if str(ins.operator) == 'BDC' and len(ins.operands) == 2 and isinstance(ins.operands[1], pikepdf.Dictionary) \
-                    and '/MCID' in ins.operands[1] and int(ins.operands[1].MCID) in ms and int(ins.operands[1].MCID) not in hit:
-                m = int(ins.operands[1].MCID)
+            m_ = tagfix.bdc_mcid(ins.operands, ores) if str(ins.operator) == 'BDC' and len(ins.operands) == 2 else None   # named too (H1)
+            if m_ is not None and m_ in ms and m_ not in hit:
+                m = m_
                 out.append(pikepdf.ContentStreamInstruction([pikepdf.Name('/Artifact'), targets[(pg, sk, m)][2]], pikepdf.Operator('BDC')))
                 hit.add(m)
             else: out.append(ins)
@@ -801,7 +803,7 @@ def fix_offpage_text(_spec=None):
                 elif o == 'Q': font = fstack.pop() if fstack else font
                 elif o == 'Tf': font = fonts.get(str(a[0]))
                 elif o in ('BDC', 'BMC'):
-                    m = int(a[1].MCID) if o == 'BDC' and len(a) > 1 and isinstance(a[1], pikepdf.Dictionary) and '/MCID' in a[1] else None
+                    m = tagfix.bdc_mcid(a, resources) if o == 'BDC' else None          # a named property list too (review 04 H1)
                     mc.append((str(a[0]), m))
                 elif o == 'EMC':
                     if mc: mc.pop()
@@ -831,8 +833,8 @@ def fix_offpage_text(_spec=None):
             res['rejected'].append({'page': pno, 'why': f'not changed: {e}'}); reject(f'off-page text {PG(pno)}', str(e)); continue
         bdc_at = {}
         for idx, ins in enumerate(ops):
-            if str(ins.operator) == 'BDC' and len(ins.operands) > 1 and isinstance(ins.operands[1], pikepdf.Dictionary) and '/MCID' in ins.operands[1]:
-                bdc_at[int(ins.operands[1].MCID)] = idx
+            m_ = tagfix.bdc_mcid(ins.operands, res_) if str(ins.operator) == 'BDC' else None    # named too (review 04 H1)
+            if m_ is not None: bdc_at[m_] = idx
         runs = collections.defaultdict(list)
         for idx, (m, art) in ctx.items():
             if m is not None and not art: runs[m] += op_chars[idx]
@@ -897,9 +899,8 @@ def op_adopt_orphans(spec):
     for rule in spec:
         label = rule.get('label', 'orphan content')
         for pno in range(rule['pages'][0], rule['pages'][1] + 1):
-            in_stream = {int(ins.operands[1].MCID) for ins in pikepdf.parse_content_stream(pages[pno - 1])
-                         if str(ins.operator) == 'BDC' and len(ins.operands) == 2 and isinstance(ins.operands[1], pikepdf.Dictionary)
-                         and '/MCID' in ins.operands[1]}      # only the page's own marked content, never a form XObject's
+            pres = _inherited(pages[pno - 1], '/Resources') or {}     # only the page's own marked content, never a form XObject's
+            in_stream = {m_ for m_ in (tagfix.bdc_mcid(ins.operands, pres) for ins in pikepdf.parse_content_stream(pages[pno - 1], 'BDC')) if m_ is not None}
             order, by = [], collections.defaultdict(list)
             for c in PL.pages[pno - 1].chars:
                 m = c.get('mcid')
@@ -1485,10 +1486,11 @@ def _page_forms(pno):
     if _CONTENT[pno] is None: info['ok'] = False; return info
     res = _inherited(pages[pno - 1], '/Resources') or {}
     xs, stack = _xforms(res), []
+    pres = res
     for x in _CONTENT[pno]:
         op = str(x.operator)
         if op in ('BDC', 'BMC'):
-            props = x.operands[1] if op == 'BDC' and len(x.operands) > 1 else None
+            props = tagfix.bdc_props(x.operands, pres) if op == 'BDC' else None     # a named property list too (review 04 H1)
             if isinstance(props, pikepdf.Dictionary) and '/MCID' in props: info['page_mcids'].add(int(props.MCID)); stack.append('mc')
             else: stack.append('art' if x.operands and str(x.operands[0]) == '/Artifact' else 'x')
         elif op == 'EMC':
@@ -2640,8 +2642,9 @@ def _reference_map():
     def drawn_in(stream_like, key):
         if key not in drawn:
             try:
-                drawn[key] = {int(ins.operands[1].MCID) for ins in pikepdf.parse_content_stream(stream_like)
-                              if str(ins.operator) == 'BDC' and len(ins.operands) == 2 and isinstance(ins.operands[1], pikepdf.Dictionary) and '/MCID' in ins.operands[1]}
+                r_ = stream_like.get('/Resources') if isinstance(stream_like, pikepdf.Stream) else (_inherited(stream_like, '/Resources') or {})
+                drawn[key] = {m_ for m_ in (tagfix.bdc_mcid(ins.operands, r_) for ins in pikepdf.parse_content_stream(stream_like, 'BDC'))
+                              if m_ is not None}                 # a named property list too (review 04 H1)
             except Exception: drawn[key] = set()
         return drawn[key]
     def pt_walk(node):
@@ -2977,7 +2980,7 @@ def fix_paths():
             if start is not None and op not in PATH_OPS and op not in PAINT_OPS and op != 'n':
                 start, pts = None, []            # something other than path building inside a path: leave that path alone
             if op in ('BDC', 'BMC'):
-                props = ops[1] if len(ops) > 1 else None
+                props = (tagfix.bdc_props(ops, res) or (ops[1] if len(ops) > 1 else None)) if op == 'BDC' else None   # named too (H1)
                 stack.append('art' if str(ops[0]) == '/Artifact' else 'mc' if isinstance(props, pikepdf.Dictionary) and '/MCID' in props
                              else 'props' if props is not None else 'plain'); continue
             if op == 'EMC':
@@ -3165,7 +3168,7 @@ def _page_text_ops(page, no_decoder=None, spanned=None, state=None):
             if op == 'Tr' and ops: tr = int(ops[0])
             elif op == 'Tz' and ops: tz = float(ops[0])
             if op in ('BDC', 'BMC'):
-                props = ops[1] if len(ops) > 1 and isinstance(ops[1], pikepdf.Dictionary) else None
+                props = tagfix.bdc_props(ops, res) if op == 'BDC' else None        # a named property list too (review 04 H1)
                 stack.append('art' if str(ops[0]) == '/Artifact' else 'at' if props is not None and '/ActualText' in props
                              else 'mc' if props is not None and '/MCID' in props else 'x')
             elif op == 'EMC':

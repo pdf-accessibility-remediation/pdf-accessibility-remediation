@@ -245,3 +245,18 @@ def test_runs_named_twice_lead_what_needs_a_person_without_blocking():
     g = G.glance({'verify': {'tree': {'runs_named_twice': 0, 'kids_not_drawn': 3}}}, md('0 missing · 0 mismatched · 3 references to text not drawn there'))
     assert g['safety_ok'] and not [x for x in g['issues'] if 'named by two tags' in x['text'] and x['rank'] == 1]
     assert [x['rank'] for x in g['issues'] if 'Tag tree consistent' in x['text']] == [2]
+
+
+def test_a_named_bdc_is_tagged_content_everywhere(tmp_path):
+    """Review 04 H1 (hawaii3's three runs): a run whose BDC names its properties (/P /MC0 BDC) is tagged content for every
+    reader: not untagged characters, not an untagged object, and its ParentTree entry is not stale."""
+    content = 'BT /F1 11 Tf 72 700 Td /P /MC0 BDC (Named) Tj EMC ET\n' + text_ops([1], y=650)
+    b = Book([{'content': content, 'props': {'/MC0': pikepdf.Dictionary(MCID=0)}}])
+    p = b.el('P', 1, [0]); q = b.el('P', 1, [1]); b.index(0, 0, p); b.index(0, 1, q)
+    src = b.save(str(tmp_path / 'src.pdf'))
+    wo = tmp_path / 'wo.json'; wo.write_text('{}')
+    out = tmp_path / 'out.pdf'
+    run('apply.py', src, wo, out); run('verify.py', src, out)
+    v = json.load(open(str(out) + '.verify.json'))
+    assert v['untagged_chars'] == 0 and not (v.get('untagged_objects') or {}).get('total'), (v['untagged_chars'], v.get('untagged_objects'))
+    assert v['index']['stale_entries'] == 0 and v['tree']['content_mcids_not_in_tree'] == 0

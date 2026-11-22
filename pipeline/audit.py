@@ -18,7 +18,7 @@ included as data for Claude to read, never as instructions.
 """
 import sys, os, re, json, hashlib, collections
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__))); import vera
-from lib import plumb_fix, listrule, gaptext, support, plpages, readorder, scripts, ocrwords, tablegrid, pagereads, langcands, keptscans, lowres  # plumb_fix first: it patches pdfplumber
+from lib import plumb_fix, listrule, gaptext, support, plpages, readorder, scripts, ocrwords, tablegrid, pagereads, langcands, keptscans, lowres, tagfix  # plumb_fix first: it patches pdfplumber
 from lib import peak  # noqa: F401  #167: this step's peak memory, written at exit when run_api.sh asks (PEAK_FILE)
 import pikepdf, pypdfium2 as pdfium
 
@@ -238,7 +238,7 @@ def page_inventory(page):
             op, ops = str(ins.operator), ins.operands
             if op in ('BDC', 'BMC'):
                 if str(ops[0]) == '/Artifact': inv['artifact'] += 1
-                if len(ops) > 1 and isinstance(ops[1], pikepdf.Dictionary) and '/MCID' in ops[1]: inv['mcid'] += 1
+                if op == 'BDC' and tagfix.bdc_mcid(ops, res) is not None: inv['mcid'] += 1     # a named property list too (review 04 H1)
             elif op == 'q': gs.append(tr)
             elif op == 'Q': tr = gs.pop() if gs else tr
             elif op == 'Tr': tr = int(ops[0])

@@ -1,7 +1,7 @@
 """Verify work/remediated.pdf against the original. Read-only."""
 import sys, json, re, collections
 import os; sys.path.insert(0, os.path.dirname(os.path.abspath(__file__))); import vera
-from lib import plumb_fix, readorder, fontname, langtag, strays, contentops as CO  # noqa: F401  plumb_fix before pdfplumber reads a page: it patches pdfplumber
+from lib import plumb_fix, readorder, fontname, langtag, strays, tagfix, contentops as CO  # noqa: F401  plumb_fix before pdfplumber reads a page: it patches pdfplumber
 from lib import peak  # noqa: F401  #167: this step's peak memory, written at exit when run_api.sh asks (PEAK_FILE)
 import pikepdf, pdfplumber, pypdfium2 as pdfium
 import fontTools.cffLib, fontTools.ttLib  # noqa: F401  required: a font that can't be read must not pass as OK
@@ -150,12 +150,14 @@ content_mcids = _CM                                # collected in the single pas
 form_mc = set(); page_mc_seen = set()
 if any(isinstance(o, pikepdf.Stream) and o.get('/Subtype') == '/Form' and '/StructParents' in o for o in pdf.objects):
     def _mc(owner_, res, pno, form, depth):
+        owner_res = owner_.get('/Resources') if isinstance(owner_, pikepdf.Stream) else res
         try: ops = pikepdf.parse_content_stream(owner_)
         except Exception: return
         for a, o in ops:
             o = str(o)
-            if o == 'BDC' and len(a) > 1 and isinstance(a[1], pikepdf.Dictionary) and '/MCID' in a[1]:
-                (form_mc.add((form.objgen, pno, int(a[1].MCID))) if form is not None else page_mc_seen.add((pno, int(a[1].MCID))))
+            mm = tagfix.bdc_mcid(a, owner_res) if o == 'BDC' else None        # a named property list too (review 04 H1)
+            if mm is not None:
+                (form_mc.add((form.objgen, pno, mm)) if form is not None else page_mc_seen.add((pno, mm)))
             elif o == 'Do' and depth < 4 and res is not None:
                 x = (res.get('/XObject') or {}).get(a[0])
                 if x is not None and x.get('/Subtype') == '/Form':
@@ -245,7 +247,7 @@ def _walk(stream, pno, resources, inherited, tr=0, top=False):
     for operands, op in pikepdf.parse_content_stream(stream, CO.FILTER):     # only those operators (#93 C1): the rest never reach Python
         op = str(op)
         if op in ('BDC', 'BMC'):
-            props = operands[1] if len(operands) > 1 else None
+            props = tagfix.bdc_props(operands, resources) if op == 'BDC' else None     # a named property list too (review 04 H1)
             if top and isinstance(props, pikepdf.Dictionary) and '/MCID' in props and '/Lang' in props: _BDC_LANG[(pno, int(props.MCID))] = str(props.Lang)
             elif not top and isinstance(stream, pikepdf.Stream) and isinstance(props, pikepdf.Dictionary) and '/MCID' in props and '/Lang' in props:
                 _BDC_LANG_F[(stream.objgen, int(props.MCID))] = str(props.Lang)
@@ -325,8 +327,8 @@ def _run_form():
         for x in ins:
             op = str(x.operator)
             if op in ('BDC', 'BMC'):
-                pr = x.operands[1] if op == 'BDC' and len(x.operands) > 1 else None
-                if isinstance(pr, pikepdf.Dictionary) and '/MCID' in pr: pm.add(int(pr.MCID)); stack.append('mc')
+                mm = tagfix.bdc_mcid(x.operands, res) if op == 'BDC' else None       # a named property list too (review 04 H1)
+                if mm is not None: pm.add(mm); stack.append('mc')
                 else: stack.append('art' if x.operands and str(x.operands[0]) == '/Artifact' else 'x')
             elif op == 'EMC':
                 if stack: stack.pop()
@@ -588,8 +590,8 @@ dangling, stale = [], 0
 drawn_cache = {}
 def _drawn(i):
     if i not in drawn_cache:
-        drawn_cache[i] = {int(ins.operands[1].MCID) for ins in pikepdf.parse_content_stream(pages[i - 1])
-                          if str(ins.operator) == 'BDC' and len(ins.operands) == 2 and isinstance(ins.operands[1], pikepdf.Dictionary) and '/MCID' in ins.operands[1]}
+        res_ = strays._res(pages[i - 1])                    # the page's resources: a named property list too (review 04 H1)
+        drawn_cache[i] = {m for m in (tagfix.bdc_mcid(ins.operands, res_) for ins in pikepdf.parse_content_stream(pages[i - 1], 'BDC')) if m is not None}
     return drawn_cache[i]
 for key, v in PT.items():
     if isinstance(v, pikepdf.Array):

@@ -178,7 +178,8 @@ class Structure:
             out = {}
             try:
                 page = self.pdf.pages[pno - 1]
-                srcs = [(page, page.obj.get('/Resources', {}).get('/Properties', {}) or {})]
+                from lib import strays                 # the page's resources, inherited ones too (review 04 H1)
+                srcs = [(page, (strays._res(page) or {}).get('/Properties', {}) or {})]
                 srcs += [(f, (f.get('/Resources') or {}).get('/Properties', {}) or {}) for f in single_use_forms(self.pdf).get(pno, [])]
                 for obj, props in srcs:
                     if obj is page:

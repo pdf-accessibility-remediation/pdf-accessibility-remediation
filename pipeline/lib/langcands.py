@@ -712,14 +712,15 @@ def existing(pdf, PL, doc_lang, limit=300):
             if c.get('mcid') is not None: runs[pno].setdefault(c['mcid'], []).append(c['text'])
     found = {}
     pidx = {p.obj.objgen: i for i, p in enumerate(pdf.pages, 1)}
-    from lib import langjoin
+    from lib import langjoin, tagfix, strays
     forms_on = langjoin.single_use_forms(pdf)           # #165: a form drawn once, from this page, is read like the page;
     for pno, page in enumerate(pdf.pages, 1):          # a form drawn in several places is not (its runs are never tagged)
         page_ms = set()
         for obj in [page] + forms_on.get(pno, []):
             try:
+                ores = strays._res(page) if obj is page else obj.get('/Resources')
                 for x in pikepdf.parse_content_stream(obj, 'BDC'):
-                    pr = x.operands[1] if len(x.operands) > 1 else None
+                    pr = tagfix.bdc_props(x.operands, ores)          # a named property list too (review 04 H1)
                     if not (isinstance(pr, pikepdf.Dictionary) and '/MCID' in pr): continue
                     m = int(pr.MCID)
                     if obj is page: page_ms.add(m)

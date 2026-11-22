@@ -96,6 +96,18 @@ def _props(a, res):
     return p if isinstance(p, pikepdf.Dictionary) else None
 
 
+def bdc_props(operands, res):
+    """The property list of a BDC: inline, or named (/P /MC0 BDC) and resolved through the stream's /Properties in res.
+    #166, review 04 H1: the one way every reader asks what a BDC carries, so a named run is never read as untagged."""
+    return _props(list(operands), res)
+
+
+def bdc_mcid(operands, res):
+    """The MCID a BDC gives (inline or through a named property list), or None."""
+    p = _props(list(operands), res)
+    return int(p.MCID) if p is not None and '/MCID' in p else None
+
+
 def _spans(ops, res, empty=None):
     """Spans carrying RESTORE_KEYS: [(props {key: value}, glyph start, glyph end)], the stream's glyph bytes, and whether
     it uses ' or ". empty: a list that receives the props of each such span holding no glyph bytes (an image, a path or
