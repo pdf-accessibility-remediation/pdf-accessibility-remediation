@@ -386,15 +386,33 @@ def page_places(pno, chars, page_chars=None, italic=None, doc_lang=None, spoken=
         form = ' '.join(x.get('form', x['text']) for n_, x in enumerate(grp)
                         if (n_ == 0 or 'joined_from' not in x) and (x.get('form') or x['text']))   # a rejoined half once; a slash never
         return form, [c for x in grp for c in x['cls']]
+    def candidate(x): return bool(set(x.get('cls') or []) - {'title'})   # a class of its own, not only growth's
+    def run_pieces(k0, j0):
+        """Words k0..j0 in stretches of one run each (a word with no characters stays with the stretch it is in):
+        [((first, last), words)] for the stretches that hold a candidate."""
+        out_, cur, cur_m = [], [], None
+        for n_ in range(k0, j0 + 1):
+            x = words[n_]
+            m_ = idx[id(x['chars'][0])][0] if x['chars'] else cur_m
+            if cur and m_ != cur_m: out_.append(cur); cur = []
+            cur.append(n_); cur_m = m_
+        if cur: out_.append(cur)
+        return [((ns[0], ns[-1]), [words[n_] for n_ in ns]) for ns in out_ if any(candidate(words[n_]) for n_ in ns)]
     def emit(grp, wi, form, cls, first_m=None):
         """One place for the phrase grp (words wi[0]..wi[1]): `segments` when growth went on into another run of the
-        element (proposal 20 (b)), [run, first, last] per run in reading order."""
+        element (proposal 20 (b)), [run, first, last] per run in reading order. A run that comes back after another
+        (interleaved MCIDs) can't be one place: each stretch of one run that holds a candidate is a place of its own
+        (review 24 §5), as Reading.map refuses a repeated run."""
         segs = []
         for x in grp:
             for c in x['chars']:
                 m_, k_ = idx[id(c)]
                 if segs and segs[-1][0] == m_: segs[-1][2] = k_
                 elif not segs or m_ not in {s[0] for s in segs}: segs.append([m_, k_, k_])
+                else:                                # the run again: one place per stretch of one run
+                    for (a, b), piece in run_pieces(wi[0], wi[1]):
+                        emit(piece, (a, b), *form_cls(piece), first_m if a == wi[0] else None)
+                    return
         it = all(x.get('italic') for x in grp if x['text'])
         place(segs[0][0], segs[0][1], segs[-1][2] if len(segs) == 1 else segs[0][2], cls, form, it, wi)
         if len(segs) > 1:
@@ -416,15 +434,17 @@ def page_places(pno, chars, page_chars=None, italic=None, doc_lang=None, spoken=
                 """Word i is in the title's run, or growth may go on into its run (proposal 20 (b)): the next run of the
                 same element (`adjacent`, from the tag tree; italic titles only, step ≠ 0), entered at a clean break: the
                 earlier word doesn't end a phrase (. , ; : ! ? or a closing bracket or quote) and the later one doesn't
-                open one. Two titles one after the other ("Kokinshū, Shinkokinshū") stay two."""
+                open one. Two titles one after the other ("Kokinshū, Shinkokinshū") stay two. Adjacency is asked of the
+                run of the word before, in growth's direction (proposal 23 §3), so a title over three lines grows from a
+                seed in any of them."""
                 m = words[i]['mcid']
                 if m == m0: return True
-                if adjacent is None or m is None or step == 0 or not adjacent(m0, m): return False
+                if adjacent is None or m is None or step == 0: return False
                 p = i - step
                 while slash(p): p -= step
                 if not 0 <= p < len(words): return False
                 if words[p]['mcid'] == m: return True               # already inside the next run
-                if words[p]['mcid'] != m0: return False
+                if words[p]['mcid'] is None or not adjacent(words[p]['mcid'], m): return False   # chained from the run before
                 a, b = (words[p], words[i]) if step > 0 else (words[i], words[p])   # a: the earlier in reading order
                 return not RUN_END.search(a['all']) and not RUN_OPEN.match(b['all'])
             def same(i, step=0):

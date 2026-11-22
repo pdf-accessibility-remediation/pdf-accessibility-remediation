@@ -115,3 +115,43 @@ def test_a_title_grown_out_of_a_passages_run_keeps_its_piece_after_it(tmp_path, 
     lines = [[mixed([('F6', 'tsuki hana yuki kaze nami sora Shoku gosen')])], [mixed([('F6', 'wakashu'), ('F1', ' for the poems.')])]]
     on, off = with_and_without_adjacency(tmp_path, monkeypatch, lines)
     assert on == off == [(0, 'tsuki hana yuki kaze nami sora Shoku gosen', 'passage', None), (1, 'wakashu', 'unknown', None)]
+
+
+THREE = [[mixed([('F1', 'See '), ('F6', 'Shoku')])], [mixed([('F6', 'gosen')])], [mixed([('F6', 'wakashu'), ('F1', ' here.')])]]
+
+
+def test_a_title_over_three_lines_seeded_in_the_first_is_one_place(tmp_path):
+    """Proposal 23 §3 (review 22's probe 4, review 24's probe C): with the italics rule on, the seed is "Shoku" in line 1;
+    adjacency is asked of the run of the word before, so growth chains through all three lines. One Span, verify matching."""
+    src = langpdf.build_lines(str(tmp_path / 'c.pdf'), THREE)
+    with pikepdf.open(src) as pdf: c = langcands.book(plpages.Pages(src), doc_lang='en', grow=True, pdf=pdf)
+    (p,) = c['places']
+    assert p['form'] == 'Shoku gosen wakashu' and p['segments'] == [[0, 4, 8], [1, 0, 4], [2, 0, 6]]
+    _, out, log, v = apply_verify(tmp_path, THREE, wo_of([(p['form'], 'ja-Latn', [[1, p['segments']]])]), name='c2.pdf')
+    sp = spans(out)
+    assert len(sp) == 1 and sp[0][0] == 'ja-Latn' and sorted(sp[0][1]) == [1, 2, 3], sp
+    assert not log['language_parts']['refused'] and not log.get('failed'), log['language_parts']
+    assert v['language']['all_match'] and v['pixel_pages_differing'] == [] and v['text_pages_changed'] == []
+    assert v['index']['dangling'] == 0 and not (v.get('fonts') or {}).get('unreadable')
+
+
+def test_an_english_word_in_the_middle_line_still_stops_the_chain(tmp_path):
+    """Review 24's probe D: growth's word test stops at "house"; the chain adds no reach past it."""
+    lines = [[mixed([('F1', 'See '), ('F6', 'Shoku')])], [mixed([('F6', 'house')])], [mixed([('F6', 'wakashu'), ('F1', ' here.')])]]
+    assert [x[1] for x in places(tmp_path, lines, 'd.pdf')] == ['Shoku', 'wakashu']
+
+
+def test_a_run_that_comes_back_after_another_gives_one_place_per_stretch(tmp_path):
+    """Review 24 §5: interleaved MCIDs (the third line's run numbered as the first's). One place can't hold a run twice,
+    so each stretch of one run is a place of its own; before, the later characters fell out of `segments`."""
+    src = langpdf.build_lines(str(tmp_path / 'i.pdf'), THREE)
+    with pikepdf.open(src, allow_overwriting_input=True) as pdf:
+        pg = pdf.pages[0]
+        pg.obj.Contents = pdf.make_stream(pg.obj.Contents.read_bytes().replace(b'/MCID 2', b'/MCID 0'))
+        el = pdf.Root.StructTreeRoot.K[0].K[0]
+        el.K = pikepdf.Array([0, 1])
+        pdf.Root.StructTreeRoot.ParentTree.Nums[1] = pdf.make_indirect(pikepdf.Array([el, el]))
+        pdf.save(src)
+    with pikepdf.open(src) as pdf: c = langcands.book(plpages.Pages(src), doc_lang='en', grow=True, pdf=pdf)
+    got = [(p['mcid'], p['first'], p['last'], p['form'], p.get('segments')) for p in c['places']]
+    assert got == [(0, 4, 8, 'Shoku', None), (0, 9, 15, 'wakashu', None), (1, 0, 4, 'gosen', None)], got
