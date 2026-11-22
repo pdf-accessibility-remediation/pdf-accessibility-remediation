@@ -247,6 +247,12 @@ def repair(pdf, empties='leave', reader=None):
     rec = {'removed': {'page_kids': 0, 'stm_kids': 0, 'slots_cleared': 0, 'elements': 0}, 'kept': 0, 'kept_listed': [],
            'pages': [], 'emptied': [], 'skipped': dict(F['skipped'])}
     pt = _pt(pdf)
+    used = {int(pg.obj.StructParents) for pg in R.pages if '/StructParents' in pg.obj}      # keys a page, a form or an
+    for o in pdf.objects:                                                                   # annotation uses; an array under
+        if isinstance(o, (pikepdf.Stream, pikepdf.Dictionary)):                             # any other key maps nothing
+            for k in ('/StructParents', '/StructParent'):
+                if k in o and isinstance(o.get(k), int): used.add(int(o[k]))
+    unused = [v for key, v in pt.items() if key not in used and isinstance(v, pikepdf.Array)]
     pages = set()
     by_el = collections.defaultdict(list)
     for s in F['strays']:
@@ -273,8 +279,9 @@ def repair(pdf, empties='leave', reader=None):
             owner = R.pages[s['page'] - 1].obj if s['kind'] == 'page' and s['page'] else s.get('form')
             arr = pt.get(int(owner.StructParents)) if owner is not None and '/StructParents' in owner else None
             m = s['mcid']
-            if isinstance(arr, pikepdf.Array) and m < len(arr) and isinstance(arr[m], pikepdf.Dictionary) and arr[m].objgen == og:
-                arr[m] = None; rec['removed']['slots_cleared'] += 1
+            for a in ([arr] if isinstance(arr, pikepdf.Array) else []) + unused:   # its own stream's array, and any array no
+                if m < len(a) and isinstance(a[m], pikepdf.Dictionary) and a[m].objgen == og:   # stream uses (Sample N: one per
+                    a[m] = None; rec['removed']['slots_cleared'] += 1             # blank-page Figure, review of pass p168)
     if empties == 'remove' and rec['emptied']:
         cands = {og for og in rec['emptied']}
         els = {og: pdf.get_object(og) for og in cands}
