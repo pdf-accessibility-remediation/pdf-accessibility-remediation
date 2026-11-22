@@ -37,6 +37,17 @@ def test_a_mark_reads_its_page_words_not_the_characters_verify_checks():
     assert r['snippets'][0]['text'] == 'See [[1|La Maison Chinoise]] for more .' and p['text'] == 'LaMaisonChinoise'
     assert langreq.mark_text(p, 'See La [Maison] Chinoise'.split()) == 'LaMaisonChinoise'
 
+def test_a_mark_keeps_the_place_s_own_letters_and_end_punctuation():
+    """Review 24 §3: the page words only respace p['text']. Their end punctuation gives way to p['text']'s own, a word
+    with letters p['text'] lacks keeps p['text'], and a space put inside a one-run word that p['text'] holds whole does too."""
+    def mark(text, words, seg=False):
+        p = {'text': text, 'w0': 0, 'w1': len(words.split()) - 1, **({'segments': [[0, 0, 1], [1, 0, 1]]} if seg else {})}
+        return langreq.mark_text(p, words.split())
+    assert mark('cun', 'cun,') == 'cun' and mark('gen ari', '(gen ari') == 'gen ari' and mark('Zhong', 'Zhong-') == 'Zhong'
+    assert mark('DengXiaoping', 'Deng Xiaoping.', seg=True) == 'Deng Xiaoping'
+    assert mark('“Hōshasei,”', '“Hōshasei,”') == '“Hōshasei,”'
+    assert mark('Enchin', 'Enchin’s') == 'Enchin' and mark('Round', 'Ro und') == 'Round' and mark('aŋӓrriba', 'aŋӓ rriba') == 'aŋӓrriba'
+
 def test_body_temperature_as_decide_sends_it():
     r = {'book': {}, 'snippets': [], 'items': []}
     assert langreq.body(r, 'anthropic/claude-sonnet-5.5', 'p', 100)['temperature'] == 0          # model list not known

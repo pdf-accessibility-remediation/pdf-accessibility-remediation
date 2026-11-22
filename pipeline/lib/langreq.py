@@ -201,12 +201,21 @@ def sent_contexts(reqs, ctx=None):
     return out
 
 def mark_text(p, pw):
-    """A place's text inside its [[id|…]] mark: its page words joined by spaces, as place_text shows it (review 22, L2: a
-    place across runs, or words drawn with no space character, read "LaMaisonChinoise" from p['text'], which stays the
-    characters verify checks). p['text'] when the words aren't there or hold a mark's own brackets or bar."""
-    if p.get('w0') is None or p.get('w1') is None or not 0 <= p['w0'] <= p['w1'] < len(pw): return p['text']
-    t = ' '.join(pw[p['w0']:p['w1'] + 1]).strip()
-    return t if t and not re.search(r'[\[\]|]', t) else p['text']
+    """A place's text inside its [[id|…]] mark (review 22, L2; review 24 §3). p['text'] is the characters verify checks:
+    a place across runs, or words drawn with no space character, reads "LaMaisonChinoise" there. The page words joined by
+    spaces ("La Maison Chinoise") are used instead only when they spell the same letters (rule U's loose key: "Enchin’s"
+    for "Enchin" keeps p['text']), with p['text']'s own end punctuation in place of theirs ("cun," → "cun"), and not when
+    they put a space inside a word p['text'] holds whole in one run ("Ro und"). Else, and when the words aren't there or
+    hold a mark's own brackets or bar, p['text']."""
+    t0 = p['text']
+    if p.get('w0') is None or p.get('w1') is None or not 0 <= p['w0'] <= p['w1'] < len(pw): return t0
+    m, m0 = _ENDS.match(' '.join(pw[p['w0']:p['w1'] + 1]).strip()), _ENDS.match(t0)
+    t = m0.group(1) + m.group(2) + m0.group(3)
+    if not m.group(2) or re.search(r'[\[\]|]', t) or _loose(t) != _loose(t0): return t0
+    if not p.get('segments') and ' ' in m.group(2) and ' ' not in m0.group(2): return t0
+    return t
+
+_ENDS = re.compile(r'^(\W*)(.*?)(\W*)$', re.S)          # end punctuation (no letter, digit or mark), the core, end punctuation
 
 def _snippets(items, words, ctx=None):
     """Snippets for these (form, place) pairs: the context (span()) around each shown place, merged where they meet on a
