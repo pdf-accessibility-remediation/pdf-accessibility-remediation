@@ -573,6 +573,15 @@ def op_artifacts(spec):
                     blocker = line_blocker(pno, m, cs, band_match[pno] | own)
                     if blocker is not None:
                         guard.append({'page': pno, 'rule': label, 'text': norm_ws(raw), 'line': blocker}); continue
+                    # review 04 M4: a line part of which is a matched form run that can't be hidden is held whole, so a
+                    # running head is never half hidden (the page's half hidden, the form's half refused)
+                    t0, b0 = min(c['top'] for c in cs), max(c['bottom'] for c in cs)
+                    held = next((r for r in band_match[pno] if r != m and r[1] is not None and r in by
+                                 and min(b0, max(c['bottom'] for c in by[r])) - max(t0, min(c['top'] for c in by[r])) > 0.05
+                                 and form_run_why(r)), None)
+                    if held is not None:
+                        guard.append({'page': pno, 'rule': label, 'text': norm_ws(raw), 'line': norm_ws(''.join(c['text'] for c in by[held])),
+                                      'why': f'part of its line is drawn inside a form that can\'t be changed: {form_run_why(held)}'}); continue
                 if m[1] is not None:                # #166: a run inside a form is hidden inside it, or refused (never counted
                     fwhy = form_run_why(m)          #   as matched when it can't be hidden)
                     if fwhy:
@@ -587,7 +596,10 @@ def op_artifacts(spec):
                         in_band(band, min(c['top'] for c in by[r]), pno) and (r[1] is None or not form_run_why(r)) for r in ms):
                     for pm in ms: targets[pm] = (n, par, props, label)      # a running head split into several runs, all in the band
                 else: take(n, par, ms, props, label)
-        if matched == 0:
+        if matched == 0 and any(x['rule'] == label for x in log.get('text_rules_refused') or []):   # review 04 M4: it did match
+            log['deferred'].append({'what': f'text rule "{label}" hid nothing on {PGR(rule["pages"][0], rule["pages"][1])}',
+                                    'why': 'matched text drawn inside a form that can\'t be changed (listed with each reason)'})
+        elif matched == 0:
             log['deferred'].append({'what': f'text rule "{label}" matched no text on {PGR(rule["pages"][0], rule["pages"][1])}',
                                     'why': 'nothing was hidden by this rule; check its pattern against the page (spacing, split runs)'})
     gone = set().union(*forms_done.values()) if forms_done else set()

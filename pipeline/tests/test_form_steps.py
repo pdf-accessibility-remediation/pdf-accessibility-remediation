@@ -108,7 +108,8 @@ def test_a_running_head_inside_a_form_drawn_on_two_pages_is_refused_not_counted_
     src, out, log, v = apply_verify(tmp_path, b, wo)
     assert [x['why'] for x in log['text_rules_refused']] == ['the text is drawn inside a form used in more than one place']
     assert not any('artifact' in k for k in log['applied'])
-    assert any('matched no text' in d['what'] for d in log['deferred'])            # never counted as matched
+    assert [d['why'] for d in log['deferred'] if 'running head' in d['what']] == [
+        "matched text drawn inside a form that can't be changed (listed with each reason)"]     # matched, never counted as hidden
 
 
 def test_a_merge_moves_a_form_run_with_its_form_index_entry(tmp_path):
@@ -148,3 +149,21 @@ def test_a_table_title_row_inside_a_shared_form_stays_with_the_reason(tmp_path):
     src, out, log, v = apply_verify(tmp_path, b, table_wo(title_rows=1))
     assert [r['why'] for r in log['rejected'] if r['op'].startswith('tables')] == ['a title or note row stays in the table: the text is drawn inside a form used in more than one place']
     with pikepdf.open(out) as pdf: assert slot(pdf, 100, 0) == 'TD'
+
+
+
+def test_a_running_head_half_in_a_shared_form_is_held_whole(tmp_path):
+    """Review 04 M4: "RUNNING" in the page's content and "HEAD" in a form drawn on two pages, on one line. The form's half
+    can't be hidden, so the page's half is held too, with the reason: never half hidden."""
+    form = 'BT /F1 9 Tf 150 770 Td /P <</MCID 0>> BDC (HEAD) Tj EMC ET'
+    page1 = 'BT /F1 9 Tf 72 770 Td /P <</MCID 0>> BDC (RUNNING) Tj EMC ET\n' + text_ops([1])
+    b = Book([{'content': page1, 'form': form}, {'content': text_ops([0])}])
+    b.pdf.pages[1].obj.Resources.XObject = pikepdf.Dictionary(Fm0=b.forms[0])
+    b.pdf.pages[1].obj.Contents = b.pdf.make_stream(text_ops([0], y=100).encode() + b'\nq /Fm0 Do Q')
+    r1 = b.el('P', 1, [0]); r2 = b.el('P', 1, [b.stm(1, 0)]); body = b.el('P', 1, [1]); p2 = b.el('P', 2, [0])
+    b.index(0, 0, r1); b.index(100, 0, r2); b.index(0, 1, body); b.index(1, 0, p2)
+    wo = {'artifacts': {'text_rules': [{'regex': 'RUNNING|HEAD', 'band': 'top', 'pages': [1, 1], 'label': 'running head'}]}}
+    src, out, log, v = apply_verify(tmp_path, b, wo)
+    assert not any('artifact' in k for k in log['applied'])
+    held = [g for g in log['text_rule_guard'] if g.get('why')]
+    assert held and held[0]['text'] == 'RUNNING' and "form that can't be changed" in held[0]['why'], log['text_rule_guard']
