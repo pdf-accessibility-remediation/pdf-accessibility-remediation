@@ -243,8 +243,8 @@ switches once, not mid-title. `LANG_GROW=off` turns it off.
   - Growth crosses a slash only when the word beyond it is not on the English list, and never crosses into another run.
   - A slash with no spaces ("and/or", "1/2", "http://"), a double slash, and a slash before a number or an English word
     change nothing.
-- **Titles broken at a line end:** when an italic title reaches the end of its run, and the next run belongs to the same
-  tag and sits next to it there (each line its own run), growth goes on into it.
+- **Titles broken at a line end:** when an italic title reaches the end of its run, and the run before or after it
+  belongs to the same tag and sits next to it there (each line its own run), growth goes on into it.
   - The title is one tag across both runs, so the voice switches once.
   - It needs a clean break: a word ending a phrase (". , ; :" or a closing bracket or quote) or a word opening one stops
     it, and so do English words, so two titles one after the other stay two.
