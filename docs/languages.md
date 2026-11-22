@@ -359,6 +359,15 @@ language; the list gives their pages." The review page shows the same under "Lan
 condition of Ready (Patrick, 2026-11-19). A place the executor refuses late (the page would look different, …) is not
 counted here: it is in "Not placed by the executor".
 
+**A letter in its own child tag is no longer a reason** (#170). A publisher's export may put one letter of a word (an
+accented "ô" drawn in another font) in its own Span inside the paragraph: P [ "… Ky" ‖ Span [ "ô" ] ‖ "nggi …" ]. Such a
+word is now an ordinary candidate, sent to the language step and decided on its row in "Languages", and one Span with
+the language is written over the whole word, the child moved inside. The child must be a Span (after the role map)
+carrying nothing but its class and an ID nothing refers to (no table header names it), hold only letters, have no
+spoken text in or around its marks, and be covered whole by the word; a /Lang in its marks is removed with the
+word's. Other shapes (a word split between a list label and its body, a child holding other text or tags) are still
+listed here. On the test books this moved clans' list from 573 words to 8, and translation's from 13 to 0.
+
 ### Sending, retries and interruptions
 
 #135 (parallel requests):

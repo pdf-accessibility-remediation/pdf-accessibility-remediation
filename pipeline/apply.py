@@ -18,7 +18,7 @@ title, the XMP and the tags are the same as without it); Acrobat shows it under 
 """
 import sys, os, json, re, collections, hashlib, unicodedata
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from lib import plumb_fix, listrule, gaptext, langtag, support, plpages, readorder, scripts, fontname, tablegrid, pagereads, mcsplit, langreq, keptscans, strays, tagfix  # plumb_fix first: it patches pdfplumber
+from lib import plumb_fix, listrule, gaptext, langtag, support, plpages, readorder, scripts, fontname, tablegrid, pagereads, mcsplit, langreq, keptscans, strays, tagfix, langjoin  # plumb_fix first: it patches pdfplumber
 from lib import peak  # noqa: F401  #167: this step's peak memory, written at exit when run_api.sh asks (PEAK_FILE)
 from lib.sections import excerpt
 import pikepdf, pdfplumber
@@ -1641,6 +1641,30 @@ def language_parts(parts):
         _LANG_SPLITS[(pno, m)].append({**p, 'text': text})
     return done
 _REWRITTEN_PAGES = {}
+CHILD_RULE = langjoin.ChildRule(pdf)              # #170: the finder's own rule for a letters-only child tag (lib/langjoin)
+_SPOKEN = {}
+def run_spoken(pno, m, f):
+    """#170: run m (in the page's content, or in form f) has spoken text of its own in its marks, or sits inside a span that
+    does (named property lists read too)."""
+    key = (pno, None if f is None else f.objgen)
+    if key not in _SPOKEN:
+        if f is None:
+            if pno not in _CONTENT:
+                try: _CONTENT[pno] = list(pikepdf.parse_content_stream(pages[pno - 1]))
+                except Exception: _CONTENT[pno] = None
+            ins, res = _CONTENT[pno], _inherited(pages[pno - 1], '/Resources') or {}
+        else: ins, res = _form_ins(f), f.get('/Resources') or _inherited(pages[pno - 1], '/Resources') or {}
+        out, stack = {}, []
+        for x in ins or []:
+            op = str(x.operator)
+            if op == 'BMC': stack.append(False)
+            elif op == 'BDC':
+                pr = tagfix.bdc_props(x.operands, res); own = pr is not None and '/ActualText' in pr
+                if pr is not None and '/MCID' in pr: out.setdefault(int(pr.MCID), own or any(stack))
+                stack.append(own)
+            elif op == 'EMC' and stack: stack.pop()
+        _SPOKEN[key] = out if ins is not None else None
+    return True if _SPOKEN[key] is None else _SPOKEN[key].get(m, False)
 # #172: a grown place (title growth joined words across runs) that apply.py refuses is not lost whole: it is split at its
 # "word" breaks (the finder's `breaks`, review 02 M6) and each group goes on as a place of its own, one run through the
 # single-run path (language_parts: its own rules still refuse what applies to a piece), several joined inside a word all
@@ -1700,23 +1724,51 @@ def plan_phrase(p, explicit, doc_lang, spec):
         what = 'tag' if (pno, m) in explicit else (scripts.action(k, t, doc_lang, spec.get('kana_runs'))[0] if k else None)
         if what == 'tag': return no('text inside it is tagged by a fixed rule')
         os_.append(o); texts.append(''.join(c['text'] for c in cs[a:b + 1])); fs_[stream_key(f)] = f
-    if len({o.objgen for o in os_}) != 1: return no('its words sit under different tags')
     if len(fs_) != 1: return no('its words sit in different content streams')
     (sk, fx), = fs_.items()
-    o = os_[0]
+    children = {}                                   # #170: a letters-only child tag of the place's element is one slot of it
+    if len({o_.objgen for o_ in os_}) != 1:
+        def slot_owner(o_):
+            par = parent_of.get(o_.objgen)
+            if par is None or CHILD_RULE.why(o_): return o_
+            return par if len(own_runs(o_, eff_pg.get(o_.objgen))) == len(kids(o_)) else o_
+        sos = [slot_owner(o_) for o_ in os_]
+        if len({x.objgen for x in sos}) != 1: return no('its words sit under different tags')
+        for (m, _a, _b), o_, so in zip(segs, os_, sos):
+            if o_.objgen != so.objgen: children.setdefault(o_.objgen, (o_, []))[1].append(m)
+        o = sos[0]
+        if o.objgen in children: return no('its words sit under different tags')
+        for og_, (e_, ms_) in children.items():
+            rs = [r for r in own_runs(e_, eff_pg.get(e_.objgen))]
+            if sorted(r[2] for r in rs) != sorted(ms_) or any(r[0] != pno or r[1] != (None if fx is None else skey(fx)) for r in rs):
+                return no('the child tag holds more than this word')
+            if not langjoin.letters_only(''.join(c['text'] for m_ in ms_ for c in run_chars(pno, m_)).strip()):
+                return no('the child tag holds more than letters')
+            if any(run_spoken(pno, m_, fx) for m_ in ms_): return no('the child tag\'s text has its own spoken text')
+    else: o = os_[0]
     why = unspoken_owner(o)
     if why: return no(why)
-    idx = [mc_entry_index(o, pno, m, sk) for m, _, _ in segs]
-    if None in idx or any(b_ <= a_ for a_, b_ in zip(idx, idx[1:])): return no('its pieces of text are not next to each other in the tag tree')
-    ks, blank = kids(o), []
+    ks = kids(o)
+    def slot_at(m):                                 # (index in the element's /K, index inside a child or -1)
+        for og_, (e_, ms_) in children.items():
+            if m in ms_:
+                i_ = next((j for j, k in enumerate(ks) if is_elem(k) and k.objgen == og_), None)
+                return None if i_ is None else (i_, mc_entry_index(e_, pno, m, sk))
+        i_ = mc_entry_index(o, pno, m, sk)
+        return None if i_ is None else (i_, -1)
+    idx = [slot_at(m) for m, _, _ in segs]
+    if None in idx or any(x is None for t in idx for x in t) or any(b_ <= a_ for a_, b_ in zip(idx, idx[1:])):
+        return no('its pieces of text are not next to each other in the tag tree')
+    blank = []
     info = _page_forms(pno) if fx is not None else None
-    for i0, i1 in zip(idx, idx[1:]):
+    for (i0, _), (i1, _) in zip(idx, idx[1:]):
         for k in ks[i0 + 1:i1]:
             kk = kid_key(o, k, pno)                 # a blank run between the pieces, in the same stream (review 09, R1)
             if kk is None or kk[0] != sk or mc_text(pno, kk[1]).strip(): return no('its pieces of text are not next to each other in the tag tree')
             if info is not None and (kk[1] in info['page_mcids'] or info['sources'][kk[1]] != 1): return no("the text's number is used twice on the page")
             blank.append(kk[1]); _STREAM[(pno, kk[1])] = fx
     plan, texts = [], []
+    in_child = {m for _e, ms_ in children.values() for m in ms_}
     for n_, (m, a, b) in enumerate(segs):
         cs = run_chars(pno, m)
         before, after = ''.join(c['text'] for c in cs[:a]), ''.join(c['text'] for c in cs[b + 1:])
@@ -1724,9 +1776,11 @@ def plan_phrase(p, explicit, doc_lang, spec):
         # a piece is its whole run when nothing outside it is a letter or digit: the single-run rule (language_parts), so a
         # title ending "isshu." covers its run, period and all, with no split (review 02 §4: teika PDF 216's render refusal)
         whole = not re.search(r'[^\W_]', before) and not re.search(r'[^\W_]', after)
+        if m in in_child and not whole: return no('the child tag holds more than this word')   # #170: the child is covered whole
         plan.append((m, a, b, whole)); texts.append(''.join(c['text'] for c in (cs if whole else cs[a:b + 1])))
     ph = {'gid': len(_LANG_PHRASES), 'page': pno, 'owner': o, 'segs': plan, 'blank': blank, 'lang': lang, 'form': p.get('form'),
-          'text': ''.join(texts), 'stream': sk, 'fx': fx, 'place': p}
+          'text': ''.join(texts), 'stream': sk, 'fx': fx, 'place': p,
+          'children': {og_: ms_ for og_, (_e, ms_) in children.items()}}
     for m, a, b, whole in plan:
         if not whole: _LANG_SPLITS[(pno, m)].append({**{k: v for k, v in p.items() if k != 'segments'}, 'mcid': m, 'first': a, 'last': b,
                                                      'text': ''.join(c['text'] for c in run_chars(pno, m)[a:b + 1]), 'phrase': ph['gid']})
@@ -4113,12 +4167,22 @@ def fix_language_parts():
         figure order may have moved entries since op_language)."""
         for ph in job['groups'][g]['phrases']:
             o, sk = ph['owner'], ph['stream']
-            e0 = elem_of(pno, ph['segs'][0][0])
-            if e0 is None or not same(e0, o): return False
-            idx = [mc_entry_index(o, pno, m, sk) for m, _, _, _ in ph['segs']]
-            if None in idx or any(b_ <= a_ for a_, b_ in zip(idx, idx[1:])): return False
+            chil = ph.get('children') or {}            # #170: a child tag's runs sit in the child, which sits in the owner
             ks = kids(o)
-            for i0, i1 in zip(idx, idx[1:]):
+            def slot(m):
+                for og_, ms_ in chil.items():
+                    if m in ms_:
+                        i_ = next((j for j, k in enumerate(ks) if is_elem(k) and k.objgen == og_), None)
+                        e_ = elem_of(pno, m)
+                        if i_ is None or e_ is None or e_.objgen != og_: return None
+                        return (i_, mc_entry_index(e_, pno, m, sk))
+                e_ = elem_of(pno, m)
+                if e_ is None or not same(e_, o): return None
+                i_ = mc_entry_index(o, pno, m, sk)
+                return None if i_ is None else (i_, -1)
+            idx = [slot(m) for m, _, _, _ in ph['segs']]
+            if None in idx or any(x is None for t in idx for x in t) or any(b_ <= a_ for a_, b_ in zip(idx, idx[1:])): return False
+            for (i0, _), (i1, _) in zip(idx, idx[1:]):
                 for k in ks[i0 + 1:i1]:
                     kk = kid_key(o, k, pno)
                     if kk is None or kk[0] != sk or kk[1] not in ph['blank']: return False
@@ -4163,16 +4227,20 @@ def fix_language_parts():
                     o = ph['owner']
                     toks = []                              # the owner's /K after the splits, as MCIDs (None: anything else)
                     split_of = {m: pieces for (m, pieces, _), (oo, *_r) in zip(plans, built) if same(oo, o)}
+                    chil = ph.get('children') or {}        # #170: a letters-only child tag is one token, ('el', its objgen)
+                    tok_of = {m: ('el', og_) for og_, ms_ in chil.items() for m in ms_}
                     for k in kids(o):                      # an element may run across pages: an MCID counts only on this page,
+                        if is_elem(k) and k.objgen in chil: toks.append(('el', k.objgen)); continue
                         kk = kid_key(o, k, pno)            # and only in the phrase's own stream (review 09, R1)
                         mm = kk[1] if kk is not None and kk[0] == ph['stream'] else None
                         toks += [x for x, _, _ in split_of[mm]] if mm in split_of else [mm]
-                    first = ph['segs'][0][0] if ph['segs'][0][3] else phrase_mc[ph['gid']].get(ph['segs'][0][0])
-                    last = ph['segs'][-1][0] if ph['segs'][-1][3] else phrase_mc[ph['gid']].get(ph['segs'][-1][0])
+                    first = tok_of.get(ph['segs'][0][0]) or (ph['segs'][0][0] if ph['segs'][0][3] else phrase_mc[ph['gid']].get(ph['segs'][0][0]))
+                    last = tok_of.get(ph['segs'][-1][0]) or (ph['segs'][-1][0] if ph['segs'][-1][3] else phrase_mc[ph['gid']].get(ph['segs'][-1][0]))
                     if first is None or last is None or first not in toks or last not in toks: raise ValueError(f'phrase on page {pno}: a piece is missing')
                     i0, i1 = toks.index(first), toks.index(last)
                     inside = toks[i0:i1 + 1]
-                    allowed = {phrase_mc[ph['gid']].get(m) for m, _, _, _ in ph['segs']} | {m for m, _, _, w in ph['segs'] if w} | set(ph['blank'])
+                    allowed = {phrase_mc[ph['gid']].get(m) for m, _, _, _ in ph['segs']} | {m for m, _, _, w in ph['segs'] if w} | set(ph['blank']) \
+                        | set(tok_of.values())
                     for m, _, _, w in ph['segs']:          # the blank pieces a split leaves inside the phrase
                         if not w: allowed |= {x for x, kind, _ in split_of.get(m, []) if kind == 'run'}
                     if i1 < i0 or any(x is None or x not in allowed for x in inside):
@@ -4198,13 +4266,23 @@ def fix_language_parts():
                 sp['mcids'] = [mc for mc, _, _ in pieces]
         for ph, inside in phrase_plans:                    # one Span over the phrase, at its first piece's place in the owner's /K
             o, sk, fx = ph['owner'], ph['stream'], ph['fx']; ks = kids(o)
-            i0 = mc_entry_index(o, pno, inside[0], sk); i1 = mc_entry_index(o, pno, inside[-1], sk)
-            sp = new_elem('Span', o, [kid_for(pno, mc, fx, ks[i0]) for mc in inside], pg=pno, Lang=pikepdf.String(ph['lang']))
+            def at(t):                                     # a token's index in the owner's /K: a run's entry, or a child tag (#170)
+                if isinstance(t, tuple): return next(j for j, k in enumerate(ks) if is_elem(k) and k.objgen == t[1])
+                return mc_entry_index(o, pno, t, sk)
+            i0, i1 = at(inside[0]), at(inside[-1])
+            tmpl = next((ks[at(t)] for t in inside if not isinstance(t, tuple)), None)
+            els = {t[1]: pdf.get_object(t[1]) for t in inside if isinstance(t, tuple)}
+            sp = new_elem('Span', o, [els[t[1]] if isinstance(t, tuple) else kid_for(pno, t, fx, tmpl) for t in inside], pg=pno, Lang=pikepdf.String(ph['lang']))
             ks[i0:i1 + 1] = [sp]; set_kids(o, ks)
-            for mc in inside: pt_set(pno, mc, sp, fx); index_set(pno, mc, sp, fx)
+            for t in inside:
+                if isinstance(t, tuple): tree_set(els[t[1]], '/P', sp); parent_of[t[1]] = sp     # the child moves in whole: its runs
+                else: pt_set(pno, t, sp, fx); index_set(pno, t, sp, fx)                          #   and their entries stay its own
             eff_pg[sp.objgen] = pno; parent_of[sp.objgen] = o
-            LANG['spans'].append({'page': pno, 'mcid': inside[0], 'mcids': list(inside), 'lang': ph['lang'], 'text': ph['text'], 'whole': False,
-                                  'segments': len(ph['segs']), 'parent_type': S(o)})
+            mc_list = [t for t in inside if not isinstance(t, tuple)]
+            LANG['spans'].append({'page': pno, 'mcid': mc_list[0] if mc_list else ph['segs'][0][0], 'mcids': mc_list, 'lang': ph['lang'], 'text': ph['text'], 'whole': False,
+                                  'segments': len(ph['segs']), 'parent_type': S(o),
+                                  **({'children': [{'obj': f'{og_[0]} {og_[1]}', 'mcids': list((ph.get('children') or {})[og_]), 'at': n_}
+                                                    for n_, t in enumerate(inside) if isinstance(t, tuple) for og_ in [t[1]]]} if ph.get('children') else {})})
             LANG['phrases'] = LANG.get('phrases', 0) + 1; ok(f'language: {ph["lang"]} Span (a place across {len(ph["segs"])} runs)')
     LANG['render_check_seconds'] = round(LANG.get('render_check_seconds', 0) + time.time() - t0, 2)
     if FB['late'] and not FB['second'] and FB['ctx'] is not None:  # #172: the late refusals' groups, in one more, smaller pass

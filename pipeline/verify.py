@@ -380,7 +380,14 @@ def _lang_section():
         k = (sp['page'], sp['mcid']); by_lang[sp['lang']] += 1
         if sp.get('segments'):                     # one Span over several runs (#150, #161; review 02 M2): checked exactly, no walk up
             keys = [(sp['page'], x) for x in sp.get('mcids') or []]
+            chil = sp.get('children') or []              # #170: letters-only child tags moved in whole, at their place in the Span
+            ch_el = []
+            for ch in chil:
+                try: ch_el.append((ch, pdf.get_object(tuple(int(v) for v in ch['obj'].split()))))
+                except Exception: ch_el.append((ch, None))
             ogs = {own_of(kk) for kk in keys}
+            if not keys and ch_el and ch_el[0][1] is not None and isinstance(ch_el[0][1].get('/P'), pikepdf.Dictionary):
+                ogs = {ch_el[0][1].P.objgen}
             el = pdf.get_object(next(iter(ogs))) if len(ogs) == 1 and None not in ogs else None
             par = el.get('/P') if el is not None else None
             kk_ = el.get('/K') if el is not None else None
@@ -388,10 +395,29 @@ def _lang_section():
             kid_m = [(None, int(x)) if isinstance(x, int) else ((x.Stm.objgen if '/Stm' in x else None), int(x.MCID))
                      for x in (list(kk_) if isinstance(kk_, pikepdf.Array) else [kk_])
                      if isinstance(x, int) or (isinstance(x, pikepdf.Dictionary) and '/MCID' in x)] if el is not None else []
-            pos_ = [first_at.get(kk) for kk in keys]
-            got = ''.join(t for kk in keys for t in _TXT.get(kk, ()))
+            ch_why = None
+            if ch_el and el is not None:                 # each child: at its place in the Span's /K, its /P the Span, its own runs
+                elk = list(el.get('/K')) if isinstance(el.get('/K'), pikepdf.Array) else [el.get('/K')]
+                for ch, e_ in ch_el:
+                    ek = (list(e_.get('/K')) if isinstance(e_.get('/K'), pikepdf.Array) else [e_.get('/K')]) if e_ is not None else []
+                    em = [int(x) if isinstance(x, int) else int(x.MCID) for x in ek if isinstance(x, int) or (isinstance(x, pikepdf.Dictionary) and '/MCID' in x)]
+                    if e_ is None or not (0 <= ch['at'] < len(elk)) or not (isinstance(elk[ch['at']], pikepdf.Dictionary) and elk[ch['at']].objgen == e_.objgen):
+                        ch_why = 'a child tag is not where the place had it'; break
+                    if not (isinstance(e_.get('/P'), pikepdf.Dictionary) and e_.P.objgen == el.objgen) or em != ch['mcids']:
+                        ch_why = 'a child tag holds other runs'; break
+                order = []                               # every run the Span reads, in its order: its own and its children's
+                for x in elk:
+                    if isinstance(x, int) or (isinstance(x, pikepdf.Dictionary) and '/MCID' in x): order.append((sp['page'], int(x) if isinstance(x, int) else int(x.MCID)))
+                    elif isinstance(x, pikepdf.Dictionary):
+                        ch = next((c for c, e_ in ch_el if e_ is not None and e_.objgen == x.objgen), None)
+                        if ch: order += [(sp['page'], m_) for m_ in ch['mcids']]
+                all_keys = order
+            else: all_keys = keys
+            pos_ = [first_at.get(kk) for kk in all_keys]
+            got = ''.join(t for kk in all_keys for t in _TXT.get(kk, ()))
             why = None
             if el is None: why = 'not in the tag tree' if None in ogs else 'its runs sit under different tags'
+            elif ch_why: why = ch_why
             elif str(el.get('/Lang', '')) != sp['lang']: why = f'its tag says {str(el.get("/Lang", "")) or "no language"}'
             elif kid_m != [(run_form.get(kk), kk[1]) for kk in keys]: why = 'its tag holds other runs'
             elif par is None or (sp.get('parent_type') and str(par.get('/S', '')).lstrip('/') != sp['parent_type']) \
@@ -399,8 +425,8 @@ def _lang_section():
                 why = 'its tag is not where the place was'
             elif None in pos_ or pos_ != sorted(pos_): why = 'its runs are not in reading order'
             elif squash(got) != squash(sp['text']): why = 'its marked content holds other text'
-            elif any(marks_lang(kk) and not same_lang(marks_lang(kk), sp['lang']) for kk in keys):
-                why = f'its marked content says {next(marks_lang(kk) for kk in keys if marks_lang(kk))}'
+            elif any(marks_lang(kk) and not same_lang(marks_lang(kk), sp['lang']) for kk in all_keys):
+                why = f'its marked content says {next(marks_lang(kk) for kk in all_keys if marks_lang(kk))}'
             if why: mism.append({'page': sp['page'], 'mcid': sp['mcid'], 'lang': sp['lang'], 'text': sp['text'][:80], 'why': why})
             continue
         og = own_of(k); el = pdf.get_object(og) if og else None
