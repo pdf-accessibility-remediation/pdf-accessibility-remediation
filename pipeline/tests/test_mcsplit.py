@@ -154,3 +154,25 @@ def test_an_expansion_stays_on_the_first_piece_only(tmp_path):
     out, pieces = mcsplit.split_run(ins, page.obj.Resources.Font, 0, [(11, 15)], iter(range(1, 9)).__next__, expect_n=26)
     es = [('/E' in x.operands[1], int(x.operands[1].MCID)) for x in out if str(x.operator) == 'BDC']
     assert es == [(True, 0), (False, 1), (False, 2)]
+
+
+def test_count_all_agrees_with_count_codes_on_every_run(tmp_path):
+    """#165: count_all gives every run's count in one pass, as count_codes gives it run by run (refusals included), and
+    drop_lang_many removes the same /Lang values as drop_lang does one run at a time."""
+    import json as _j
+    runs = [{'text': 'Plain text.', 'lang': 'en-US'}, {'font': 'F2', 'text': '地獄と極楽', 'lang': 'en-US'},
+            {'font': 'F3', 'text': 'mappō', 'lang': 'en-US'}, {'text': 'Outside run.', 'outside': True, 'lang': 'fr'},
+            {'body': ['[(Ker) -120 (ned) 33 (text)] TJ'], 'lang': 'en-US'}, {'text': 'No lang here.'}]
+    src = langpdf.build(str(tmp_path / 'c.pdf'), runs)
+    pdf = pikepdf.open(src); page = pdf.pages[0]
+    ins = list(pikepdf.parse_content_stream(page)); fonts = page.Resources.Font
+    got = mcsplit.count_all(ins, fonts, page.Resources.get('/XObject') or {})
+    for m in sorted(mcsplit.drawn_mcids(ins)):
+        try: want = mcsplit.count_codes(ins, fonts, m, page.Resources.get('/XObject') or {})
+        except mcsplit.Refuse as e: want = str(e)
+        assert got[m] == want, (m, got[m], want)
+    one, n1 = ins, 0
+    for m in (0, 1, 3, 5):
+        one, ch = mcsplit.drop_lang(one, m); n1 += ch
+    many, n2 = mcsplit.drop_lang_many(ins, [0, 1, 3, 5])
+    assert n1 == n2 == 3 and pikepdf.unparse_content_stream(one) == pikepdf.unparse_content_stream(many)

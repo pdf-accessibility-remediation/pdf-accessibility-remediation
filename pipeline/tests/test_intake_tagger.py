@@ -105,7 +105,7 @@ def test_the_watcher_records_the_taggers_process(tmp_path, monkeypatch):
         stop = threading.Event(); w = threading.Thread(target=intake._tagger_children, args=(stop, s), daemon=True); w.start()
         kid = subprocess.Popen(['sleep', '5']); t0 = time.time()
         assert wait_for(lambda: f'{kid.pid} sleep' in (tmp_path / 'slot0.lock').read_text())
-        assert time.time() - t0 < 0.3                                             # review 06 M1, 08 L1: within the fast polling (0.1 s), not a second later
+        assert time.time() - t0 < 0.9 * intake.WATCH_SLOW                         # review 06 M1, 08 L1: the fast polling (0.1 s) found it, not the slow (1 s); 0.3 s failed once under CI load (#164)
         stop.set(); w.join(3); kid.kill(); kid.wait()
     assert (tmp_path / 'slot0.lock').read_text() == ''                            # cleared when the slot is given back
 

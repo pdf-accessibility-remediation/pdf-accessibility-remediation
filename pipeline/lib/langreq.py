@@ -80,6 +80,8 @@ def forms(places, skip=LOCAL, unknown_italic_only=False, group=False):
         f = by.setdefault(key, {'form': p['form'], 'group': g, 'class': sorted(set(p['class'])), 'places': [], 'italic_any': False, 'roman_any': False,
                                 **({'current': p['current']} if p.get('current') else {})})
         f['places'].append(p); f['italic_any'] |= bool(p.get('italic')); f['roman_any'] |= not p.get('italic')
+        if p.get('latin_list'): f['latin_list'] = True                          # proposal 14: the dictionary marks, from
+        if p.get('latin_phrase') and not f.get('latin_phrase'): f['latin_phrase'] = p['latin_phrase']   # any place (the first phrase)
         if p.get('carried'): f['carried'] = p['carried'] if f.get('carried') in (None, p['carried']) else 'mixed'   # review 12, C
     out = list(by.values())
     out.sort(key=lambda f: (ORDER.index(f['group']) if f['group'] in ORDER else 99, f['places'][0]['page']))
@@ -198,6 +200,23 @@ def sent_contexts(reqs, ctx=None):
                 out[fid] = ' '.join(keep(left, size, True) + ['[' + m.group(2) + ']'] + keep(right, size, False))
     return out
 
+def mark_text(p, pw):
+    """A place's text inside its [[id|…]] mark (review 22, L2; review 24 §3). p['text'] is the characters verify checks:
+    a place across runs, or words drawn with no space character, reads "LaMaisonChinoise" there. The page words joined by
+    spaces ("La Maison Chinoise") are used instead only when they spell the same letters (rule U's loose key: "Enchin’s"
+    for "Enchin" keeps p['text']), with p['text']'s own end punctuation in place of theirs ("cun," → "cun"), and not when
+    they put a space inside a word p['text'] holds whole in one run ("Ro und"). Else, and when the words aren't there or
+    hold a mark's own brackets or bar, p['text']."""
+    t0 = p['text']
+    if p.get('w0') is None or p.get('w1') is None or not 0 <= p['w0'] <= p['w1'] < len(pw): return t0
+    m, m0 = _ENDS.match(' '.join(pw[p['w0']:p['w1'] + 1]).strip()), _ENDS.match(t0)
+    t = m0.group(1) + m.group(2) + m0.group(3)
+    if not m.group(2) or re.search(r'[\[\]|]', t) or _loose(t) != _loose(t0): return t0
+    if not p.get('segments') and ' ' in m.group(2) and ' ' not in m0.group(2): return t0
+    return t
+
+_ENDS = re.compile(r'^(\W*)(.*?)(\W*)$', re.S)          # end punctuation (no letter, digit or mark), the core, end punctuation
+
 def _snippets(items, words, ctx=None):
     """Snippets for these (form, place) pairs: the context (span()) around each shown place, merged where they meet on a
     page when ctx['join'], each candidate inside marked [[id|text]] (every candidate of this request found in it, not only
@@ -207,10 +226,9 @@ def _snippets(items, words, ctx=None):
     marks = collections.defaultdict(list)
     for fid, p, shown in items:
         if p.get('w0') is None: continue
-        marks[p['page']].append((p['w0'], p['w1'], fid, p['text']))
-        if shown:
-            pw = words.get(str(p['page'])) or []
-            if p['w0'] < len(pw): win[p['page']].append(span(pw, p['w0'], p['w1'], c))
+        pw = words.get(str(p['page'])) or []
+        marks[p['page']].append((p['w0'], p['w1'], fid, mark_text(p, pw)))
+        if shown and p['w0'] < len(pw): win[p['page']].append(span(pw, p['w0'], p['w1'], c))
     out = []
     for page, ws in sorted(win.items()):
         ws.sort(); merged = []
@@ -387,6 +405,39 @@ def needs_person(f, d):
     non_latin = any(c.startswith(NON_LATIN) for c in f['class'])
     return f['group'] == 'existing' or not d or (non_latin and (not d.get('lang') or d.get('confidence') == 'low'))
 
+# ---- the rows of language_parts, version 2 and 3: the one reader (review 02, H2). Every other module reads rows through
+# rows() and has_forms(), never by a row's length or the version number: a version 3 row is [page, [[mcid, first, last],
+# …], form index] (#150, #161: one place across several runs), a version 2 row [page, mcid, first, last, form index].
+def _whole(v): return isinstance(v, int) and not isinstance(v, bool)
+
+def has_forms(lp):
+    """True for language_parts with forms and rows (version 2, or 3 with segmented rows)."""
+    return isinstance(lp, dict) and lp.get('version') in (2, 3)
+
+def parse_row(r):
+    """(page, segments [[mcid, first, last], …], form index), or (None, why) for a row of neither shape."""
+    if isinstance(r, list) and len(r) == 5 and all(_whole(x) for x in r): return r[0], [[r[1], r[2], r[3]]], r[4]
+    if isinstance(r, list) and len(r) == 3 and _whole(r[0]) and _whole(r[2]) and isinstance(r[1], list) and len(r[1]) >= 2 \
+            and all(isinstance(x, list) and len(x) == 3 and all(_whole(v) for v in x) for x in r[1]):
+        return r[0], [list(x) for x in r[1]], r[2]
+    return None, ('segments not lists of three whole numbers' if isinstance(r, list) and len(r) == 3 and isinstance(r[1], list) else 'not five whole numbers')
+
+def segments_problem(segs):
+    """None, or why a row's segments are out of order: a run index below 0, a character range not in order, a run twice."""
+    if any(m < 0 or not 0 <= f <= l for m, f, l in segs): return 'run or character indexes not in order'
+    if len({m for m, _, _ in segs}) != len(segs): return 'a run appears twice in one place'
+    return None
+
+def rows(lp):
+    """Yields (page, segments, form index) for every row of a usable shape whose form exists; others are skipped, as each
+    reader skipped them before (workorder_check reports them: row_problem)."""
+    if not has_forms(lp): return
+    n = len(lp.get('forms') or [])
+    for r in lp.get('parts') or []:
+        page, segs, *fi = parse_row(r)
+        if page is None or not fi or not 0 <= fi[0] < n: continue
+        yield page, segs, fi[0]
+
 def to_rows(fs, decisions, tag_conf=('high', 'medium'), readings=None, reasons=None):
     """Decisions → language_parts, version 2 (review 06, record size): one entry per form, with the AI's answer and whether
     it is tagged (`tag`: high or medium confidence with a language), and the places as rows [page, mcid, first, last,
@@ -405,30 +456,37 @@ def to_rows(fs, decisions, tag_conf=('high', 'medium'), readings=None, reasons=N
              **({'carried': f['carried']} if f.get('carried') else {}),
              **({'no_answer': (reasons or {})[f['id']]} if not d and (reasons or {}).get(f['id']) in NO_ANSWER else {}),
              'tag': bool(f['group'] != 'existing' and d.get('lang') and d.get('confidence') in tag_conf),
-             **({'person': True} if needs_person(f, d) else {}), 'places': len(f['places'])}
+             **({'person': True} if needs_person(f, d) else {}), 'places': len(f['places']),
+             **({'latin_list': True} if f.get('latin_list') else {}),                        # proposal 14 (review 15, M1):
+             **({'latin_phrase': f['latin_phrase']} if f.get('latin_phrase') else {})}       # shown by the review page only
         i = len(forms); forms.append(e)
-        for p in f['places']: rows.append([p['page'], p['mcid'], p['first'], p['last'], i])
-    return {'version': 2, 'forms': forms, 'parts': rows}
+        for p in f['places']:
+            rows.append([p['page'], [list(x) for x in p['segments']], i] if p.get('segments') else [p['page'], p['mcid'], p['first'], p['last'], i])
+    return {'version': 3 if any(len(r) == 3 for r in rows) else 2, 'forms': forms, 'parts': rows}   # version 2 byte for byte with no segments
 
 def to_decide(forms):
     """The indexes of the version-2 forms a person decides on the review page: those the AI tagged or left to a person;
     when the AI proposed no tag at all, every form, so a person confirms what it left untagged (Patrick, 2026-11-14:
-    never Not Applicable after the step ran). One rule for the review page's rows and the Language Tags line."""
+    never Not Applicable after the step ran). One rule for the review page's rows and the Language Tags line.
+    A form inside a whole known Latin phrase (`latin_phrase`, proposal 14 option A) is added to the tagged-or-person list,
+    so a person decides it; it never shrinks the every-form fallback (review 15, M2)."""
     fs = [f if isinstance(f, dict) else {} for f in forms or []]
     pick = [i for i, f in enumerate(fs) if f.get('tag') or f.get('person')]
-    return pick if pick else list(range(len(fs)))
+    if not pick: return list(range(len(fs)))
+    return sorted(set(pick) | {i for i, f in enumerate(fs) if f.get('latin_phrase')})
 
 def expand(lp):
-    """language_parts of either version → the parts to tag, as dicts {page, mcid, first, last, lang, form, text?}: version 1
-    as written (every part tagged), version 2 the rows of forms with `tag` true. apply.py and the checks read this."""
+    """language_parts of any version → the parts to tag, as dicts {page, mcid, first, last, lang, form, text?}: version 1
+    as written (every part tagged), versions 2 and 3 the rows of forms with `tag` true. A version 3 row across several runs
+    carries `segments` [[mcid, first, last], …] (mcid, first, last: its first segment's). apply.py and the checks read this."""
     if not isinstance(lp, dict): return []
-    if lp.get('version') != 2: return list(lp.get('parts') or [])
+    if not has_forms(lp): return list(lp.get('parts') or [])
     forms = lp.get('forms') or []
     out = []
-    for r in lp.get('parts') or []:
-        if not (isinstance(r, list) and len(r) == 5 and isinstance(r[4], int) and 0 <= r[4] < len(forms)): continue
-        f = forms[r[4]]
+    for page, segs, fi in rows(lp):
+        f = forms[fi]
         if f.get('tag') and f.get('lang'):
-            out.append({'page': r[0], 'mcid': r[1], 'first': r[2], 'last': r[3], 'lang': f['lang'], 'form': f.get('form'),
-                        'class': f.get('class'), 'confidence': f.get('confidence')})
+            m, a, b = segs[0]
+            out.append({'page': page, 'mcid': m, 'first': a, 'last': b, 'lang': f['lang'], 'form': f.get('form'),
+                        'class': f.get('class'), 'confidence': f.get('confidence'), **({'segments': segs} if len(segs) > 1 else {})})
     return out

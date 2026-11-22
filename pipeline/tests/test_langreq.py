@@ -12,7 +12,7 @@ def place(page, mcid, first, last, text, cls, w0, italic=False):
 
 WORDS = {'1': 'The term mappō and the name 源信 appear here in the text , and mappō again'.split(),
          '2': 'Nothing here but ゆめ in kana .'.split()}
-PLACES = [place(1, 0, 9, 13, 'mappō', ['marks'], 2), place(1, 0, 30, 31, '源信', ['cjk:han_only'], 6), place(1, 1, 0, 4, 'mappō', ['marks'], 13),
+PLACES = [place(1, 0, 9, 13, 'mappō', ['marks'], 2), place(1, 0, 30, 31, '源信', ['cjk:han_only'], 6), place(1, 1, 0, 4, 'mappō', ['marks'], 14),
           place(2, 0, 17, 18, 'ゆめ', ['cjk:kana'], 3)]
 
 def test_forms_group_and_skip_kana():
@@ -26,6 +26,27 @@ def test_each_snippet_once_with_every_candidate_marked():
     s = r['snippets'][0]['text']
     assert s.count('[[') == 3 and '[[1|源信]]' in s and s.count('|mappō]]') == 2
     assert [i['id'] for i in r['items']] == ['1', '2'] and r['items'][1]['places'] == 2
+
+def test_a_mark_reads_its_page_words_not_the_characters_verify_checks():
+    """Review 22, L2: a place across runs (or drawn with no space character) has p['text'] "LaMaisonChinoise"; its mark
+    reads the page words, "La Maison Chinoise", and p['text'] is left as it is. A word holding a bracket keeps p['text']."""
+    words = {'1': 'See La Maison Chinoise for more .'.split()}
+    p = {'page': 1, 'mcid': 0, 'first': 0, 'last': 1, 'text': 'LaMaisonChinoise', 'form': 'La Maison Chinoise', 'class': ['title'],
+         'italic': True, 'w0': 1, 'w1': 3, 'segments': [[0, 0, 1], [1, 0, 6], [2, 0, 7]]}
+    [r] = langreq.requests({'title': 'T', 'language': 'en'}, langreq.forms([p]), words)
+    assert r['snippets'][0]['text'] == 'See [[1|La Maison Chinoise]] for more .' and p['text'] == 'LaMaisonChinoise'
+    assert langreq.mark_text(p, 'See La [Maison] Chinoise'.split()) == 'LaMaisonChinoise'
+
+def test_a_mark_keeps_the_place_s_own_letters_and_end_punctuation():
+    """Review 24 §3: the page words only respace p['text']. Their end punctuation gives way to p['text']'s own, a word
+    with letters p['text'] lacks keeps p['text'], and a space put inside a one-run word that p['text'] holds whole does too."""
+    def mark(text, words, seg=False):
+        p = {'text': text, 'w0': 0, 'w1': len(words.split()) - 1, **({'segments': [[0, 0, 1], [1, 0, 1]]} if seg else {})}
+        return langreq.mark_text(p, words.split())
+    assert mark('cun', 'cun,') == 'cun' and mark('gen ari', '(gen ari') == 'gen ari' and mark('Zhong', 'Zhong-') == 'Zhong'
+    assert mark('DengXiaoping', 'Deng Xiaoping.', seg=True) == 'Deng Xiaoping'
+    assert mark('“Hōshasei,”', '“Hōshasei,”') == '“Hōshasei,”'
+    assert mark('Enchin', 'Enchin’s') == 'Enchin' and mark('Round', 'Ro und') == 'Round' and mark('aŋӓrriba', 'aŋӓ rriba') == 'aŋӓrriba'
 
 def test_body_temperature_as_decide_sends_it():
     r = {'book': {}, 'snippets': [], 'items': []}

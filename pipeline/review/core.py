@@ -209,10 +209,9 @@ def build_items(wo, digest, order=None, ro=None):
         add(f'adopt_orphans:{i}', 'adopt_orphans', 'Reading order', ['adopt_orphans', i], r, (r or {}).get('label') or 'Orphan text',
             page=ps[0] if ps else None, pages=ps, orphans=runs[:6])
     lp = wo.get('language_parts') or {}
-    if lp.get('version') == 2:                                   # #118: one row per word form a person decides (review 06, stage D)
+    if langreq.has_forms(lp):                                    # #118: one row per word form a person decides (review 06, stage D)
         pages_of = collections.defaultdict(set)
-        for r in lp.get('parts') or []:
-            if isinstance(r, list) and len(r) == 5: pages_of[r[4]].add(r[0])
+        for pg_, _segs, fi_ in langreq.rows(lp): pages_of[fi_].add(pg_)
         rows = set(langreq.to_decide(lp.get('forms')))            # Latin-script names and English words left untagged: listed, not decided,
         for i, f in enumerate(lp.get('forms') or []):              # unless the AI tagged nothing at all (then every form is a row)
             if i not in rows: continue
@@ -229,14 +228,15 @@ def build_items(wo, digest, order=None, ro=None):
                 form_key=f.get('key'), bulk=bulk or None, needs_person=bool(f.get('person')) or None, confidence=f.get('confidence'),
                 guess=f.get('lang') if not f.get('tag') and f.get('lang') else None,   # an untagged answer's language (review 14, 2)
                 rule=f.get('rule'), reading=rd, reading_bulk=reading_bulk or None, rule_bulk=rule_bulk or None,   # #123, #124, #132
-                no_answer=f.get('no_answer'))                                           # #137: why there is no AI answer
+                no_answer=f.get('no_answer'),                                           # #137: why there is no AI answer
+                latin_list=f.get('latin_list') or None, latin_phrase=f.get('latin_phrase') or None)   # proposal 14: the dictionary marks
     if wo.get('notes_for_reviewer'):
         refs = sorted({int(m.group(1)) for m in PAGE_REF.finditer(wo['notes_for_reviewer']) if 1 <= int(m.group(1)) <= N})
         add('notes_for_reviewer', 'notes_for_reviewer', 'Deferred by the AI', ['notes_for_reviewer'], wo['notes_for_reviewer'],
             'Note to the reviewer from the AI', page=refs[0] if refs else None, page_refs=refs)
     listed = {'retype', 'rolemap', 'actual_text', 'merges', 'document', 'alt', 'page_figures', 'tables', 'flatten', 'keep_lists',
               'artifacts', 'ocr_words', 'page_readings', 'deferrals', 'notes_for_reviewer', 'schema', *READING} | workorder_check.META
-    if lp.get('version') == 2: listed.add('language_parts')
+    if langreq.has_forms(lp): listed.add('language_parts')
     if figures_card(ro): listed.add('fix_figure_order')            # the Figures Moved card is that decision
     for k, v in wo.items():
         if k not in listed:
@@ -353,8 +353,8 @@ def run_apply(pdf, wo, out, timeout=1800, env=None, low=False, on_start=None):
         raise TreeIndexStale(next(l for l in ((so or '') + '\n' + (se or '')).splitlines() if TREE_STALE_MARK in l))
     return p.returncode, load(out + '.log.json')
 
-TREE_CHECK_ENV = ('APPLY_TREE_CHECK', 'APPLY_TREE_STALE_LOG', 'APPLY_TEST_LOSE_ENTRY', 'APPLY_FAIL_LANG_PAGE')   # set by the tests only, never in production (#93 C2; #118 review 06 M6, review 08 L1)
-DRYRUN_ENV = ('APPLY_DRAFT', 'ALLOW_PDF20') + TREE_CHECK_ENV            # every variable apply.py and lib/ read (a test keeps this list whole)
+TREE_CHECK_ENV = ('APPLY_TREE_CHECK', 'APPLY_TREE_STALE_LOG', 'APPLY_TEST_LOSE_ENTRY', 'APPLY_FAIL_LANG_PAGE', 'APPLY_TEST_PIXEL_FAIL_RUN', 'APPLY_TEST_PIXEL_FAIL_PAGE', 'APPLY_TEST_TEXT_FAIL_RUN')   # set by the tests only, never in production (#93 C2; #118 review 06 M6, review 08 L1; #150 H3)
+DRYRUN_ENV = ('APPLY_DRAFT', 'ALLOW_PDF20', 'LANG_FINDER_RULES') + TREE_CHECK_ENV   # every variable apply.py and lib/ read (a test keeps this list whole)
 DRYRUN_PKGS = ('pikepdf', 'pdfplumber', 'pypdfium2', 'pillow', 'fonttools')   # as apply.py's _versions()
 
 def dryrun_code():
@@ -1038,6 +1038,7 @@ def language_rows(items, group, start=0, n=LANG_PAGE, contexts=None):
                     'pages': c.get('page_list'), 'snippet': c.get('snippet') or (contexts or {}).get(c.get('form_key')),
                     'bulk': bool(c.get('bulk')), 'needs_person': bool(c.get('needs_person')), 'written': lang_written(it), 'guess': c.get('guess'), 'guess_name': langtag.name(c['guess']) if c.get('guess') else None,
                     'rule': c.get('rule'), 'reading_bulk': bool(c.get('reading_bulk')), 'rule_bulk': bool(c.get('rule_bulk')), 'no_answer': c.get('no_answer'),
+                    'latin_list': bool(c.get('latin_list')), 'latin_phrase': c.get('latin_phrase'),   # proposal 14: shown, never decided
                     **({'reading': {'text': rd.get('text'), 'lang': rd.get('lang'), 'langs': rd.get('langs') or [],
                                     'names': [langtag.name(x) or x for x in rd.get('langs') or []], 'with': rd.get('with'), 'places': rd.get('places')}} if rd else {}),
                     **current_words(c.get('current'))})
@@ -1501,6 +1502,24 @@ def held_back_info(R, run_dir=None):
             'forms': hb.get('forms') or [],
             'sentence': AS.held_back_words(est, after=True) or '', 'reason': G.held_back_reason(hb),   # review 31 L3: after the run, in the past tense
             'accepted': acc if acc.get('by') and acc.get('count') == hb['count'] and acc.get('sha') == hb.get('sha') else None}
+
+def unplaced_info(R, run_dir=None):
+    """#161 addition 3: the words the finder could not place (record.json language_status.unplaced once the report ran,
+    else the audit's lang_candidates.json while the run waits for its first review), for the review page's read-only
+    "Words Not Tagged" fold: {count, forms: [[form, [pages]]]}, or None. Never a condition of Ready (Patrick, 2026-11-19)."""
+    run_dir = run_dir or R
+    rec = load(os.path.join(run_dir, 'record.json')) or {}
+    st = rec.get('language_status') if isinstance(rec.get('language_status'), dict) else None
+    up = (st or {}).get('unplaced')
+    if up is None and not st:
+        lc = load(os.path.join(R, '_audit', 'lang_candidates.json')) or load(os.path.join(run_dir, '_audit', 'lang_candidates.json'))
+        rows = (lc or {}).get('unplaced') if isinstance(lc, dict) else None
+        if rows:
+            by = collections.OrderedDict()
+            for u in rows: by.setdefault(u.get('form'), set()).add(u.get('page'))
+            up = {'count': len(rows), 'forms': [{'form': f, 'pages': sorted(p for p in ps if isinstance(p, int))} for f, ps in list(by.items())[:200]]}
+    if not up or not up.get('count'): return None
+    return {'count': up['count'], 'forms': [[u['form'], u.get('pages') or []] for u in up.get('forms') or []]}
 
 def language_review(items, decisions):
     """The Languages section's decisions, counted for the record (record language_review; lib/glance.py's Language Tags

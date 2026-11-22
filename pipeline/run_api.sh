@@ -51,11 +51,11 @@ PAGE_READS=${PAGE_READS:-1}; [[ $PAGE_READS == 0 || $PAGE_READS == no ]] && PAGE
 [[ $PAGE_READS == 1 || $PAGE_READS == all || $PAGE_READS == off ]] || { echo "PAGE_READS is 1 (the default), all or off: $PAGE_READS"; exit 1; }
 LANG_TAGS=${LANG_TAGS:-on}; [[ $LANG_TAGS == 0 || $LANG_TAGS == no ]] && LANG_TAGS=off      # the language step (#118): on unless LANG_TAGS=off
 [[ $LANG_TAGS == on || $LANG_TAGS == 1 || $LANG_TAGS == off ]] || { echo "LANG_TAGS is on (the default) or off: $LANG_TAGS"; exit 1; }
-# LANG_GROW=on: a title's whole extent is tagged; LANG_GROUP=on: adjacent single Chinese characters are one form (review 08,
-# M6). Both off by default, read by name_languages.py; title growth stays off until the Windows check of a title in pieces.
-for v in LANG_GROW LANG_GROUP; do
-  case ${!v:-off} in on|off|1|0) ;; *) echo "$v is on or off (the default): ${!v}"; exit 1;; esac
-done
+# LANG_GROW: a title's whole extent is tagged, on by default (#136, Patrick 2026-11-20; LANG_GROW=off turns it off);
+# LANG_GROUP=on: adjacent single Chinese characters are one form, off by default (review 08, M6). Read by audit.py and
+# name_languages.py.
+case ${LANG_GROW:-on} in on|off|1|0) ;; *) echo "LANG_GROW is on (the default) or off: $LANG_GROW"; exit 1;; esac
+case ${LANG_GROUP:-off} in on|off|1|0) ;; *) echo "LANG_GROUP is on or off (the default): $LANG_GROUP"; exit 1;; esac
 abs_path() { python3 -c 'import os,sys; print(os.path.abspath(sys.argv[1]))' "$1"; }   # no folder needed; ".." and a final "/" go
 for v in RUNS_DIR RUN_DIR REPLY LANG_REPLY COST_HISTORY; do   # absolute, before the cd below: R is compared with other paths (#144)
   [[ -z ${!v:-} ]] || printf -v "$v" '%s' "$(abs_path "${!v}")"

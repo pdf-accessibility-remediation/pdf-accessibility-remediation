@@ -307,7 +307,8 @@ def serve(R, date, port=8765, open_browser=True, files=None, return_to=None, run
                 warmed.wait(WARM_WAIT)
                 oc = ocr_section()
                 light = {**data, 'items': [it for it in data['items'] if it.get('kind') != core.LANG_KIND],   # #118: the language rows come
-                         'languages': {**core.language_summary(data['items']), 'held_back': None if ocr_only else core.held_back_info(R, run_dir)}}   # by /languages.json; #159
+                         'languages': {**core.language_summary(data['items']), 'held_back': None if ocr_only else core.held_back_info(R, run_dir),
+                                       'unplaced': None if ocr_only else core.unplaced_info(R, run_dir)}}   # by /languages.json; #159, #161
                 boot = json.dumps({**light, 'saved': saved, 'date': date, 'return_to': return_to, 'ocr': oc,
                                    'check': first_check(), 'draft': None if ocr_only else draft_state(), 'ocr_text': first_texts(oc),
                                    'img_sizes': img_sizes()},

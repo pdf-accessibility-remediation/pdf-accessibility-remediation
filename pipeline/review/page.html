@@ -1777,6 +1777,18 @@ function langUntagged(r) {
   if (r.guess && r.confidence === 'low') bits.push('low confidence; its guess: ' + esc(r.guess_name || r.guess));
   return 'The AI left it untagged' + (bits.length ? ' (' + bits.join('; ') + ')' : '');
 }
+// The dictionary marks (#141, proposal 14): a fact beside the AI's answer, never a decision and never a default. Latin
+// only: a quiet line when the AI named Latin and every word is in the Latin list; a note when the AI left a form untagged
+// that sits inside a whole known Latin phrase, quoted as the book prints it. Nothing on any other language.
+function langDict(r) {
+  const latin = !!r.ai && String(r.ai).split('-')[0].toLowerCase() === 'la';
+  if (latin && r.latin_list) return '<div class="lang-meta lang-dict">Also found in a Latin dictionary.</div>';
+  // the AI's own low-confidence guess is Latin: "used in English text" would pull the other way (review 17; Patrick, 2026-11-20)
+  const guessLatin = r.confidence === 'low' && !!r.guess && String(r.guess).split('-')[0].toLowerCase() === 'la';
+  if (!r.ai && !r.current && r.latin_phrase) return '<div class="lang-meta lang-dict">Part of the Latin phrase "' + esc(r.latin_phrase) +
+    '"' + (guessLatin ? '' : ', used in English text') + '. Decide whether it should be tagged as Latin.</div>';
+  return '';
+}
 function langRowHtml(r) {
   const d = state.decisions[r.id] || {};
   // #159 (scale check): the full list is built when the control is reached (langFillSelect): 92 options on each of
@@ -1796,7 +1808,7 @@ function langRowHtml(r) {
   return '<div class="lang-row" id="lang-' + esc(r.id) + '" data-id="' + esc(r.id) + '"' + (d.status ? ' data-status="' + esc(d.status) + '"' : '') + '>' +
     '<div class="lang-left"><div class="lang-form" lang="' + esc(r.ai || '') + '">' + esc(r.form) + '</div>' +   // the status outside the lang element
     '<div class="lang-meta lang-status" role="status">' + langStatusHtml(r, d) + '</div></div>' +
-    '<div class="lang-info"><div>' + what + '</div>' + (r.snippet ? '<div class="lang-ctx">' + esc(r.snippet) + '</div>' : '') +
+    '<div class="lang-info"><div>' + what + '</div>' + langDict(r) + (r.snippet ?'<div class="lang-ctx">' + esc(r.snippet) + '</div>' : '') +
     (reading ? '<div class="lang-meta">' + reading + '</div>' : '') +
     '<div class="lang-meta">' + esc(r.places || 0) + ' place' + (r.places === 1 ? '' : 's') + (pagesTxt ? ' · ' + esc(pagesTxt) : '') +
     (r.evidence && !(r.rule && reading) ? ' · Evidence: ' + esc(r.evidence) : '') + '</div></div>' +   // #123: a rule row's reading, shown once
@@ -1900,12 +1912,21 @@ function langHeld(h) {
     (acc ? '<p>' + acc + '</p>' : '') +
     (h.accepted && !HELD_ACCEPT ? '' : '<button type="button" id="langHeldAccept">' + (HELD_ACCEPT ? 'Undo the Acceptance' : 'Accept Without the Word Forms Not Sent') + '</button>') + '</div>';   // review 31 L3: a name with its context
 }
+// #161 addition 3: words the finder could not place: read-only, never a condition of Ready (Patrick, 2026-11-19)
+function langUnplaced(u) {
+  if (!u || !u.count) return '';
+  return '<div class="pp-note" id="langUnplaced"><details id="langUnplacedList"><summary>Words Not Tagged (' + fmtN(u.count) + ')</summary>' +
+    '<p>Each is printed as one word, but the PDF stores its letters in separate places, so no language tag can cover it. ' +
+    'They may be in another language; the list gives their pages.</p>' +
+    (u.forms.length ? '<p>' + u.forms.map(f => esc(f[0]) + ' (' + f[1].slice(0, 3).map(p => 'PDF page ' + p).join(', ') + (f[1].length > 3 ? ' …' : '') + ')').join(' · ') + '</p>' : '') +
+    '</details></div>';
+}
 function renderLanguages() {
-  if ((!LANGS.total && !LANGS.held_back) || OCR_ONLY) { langBox.hidden = true; return; }
+  if ((!LANGS.total && !LANGS.held_back && !LANGS.unplaced) || OCR_ONLY) { langBox.hidden = true; return; }
   const open = new Set([...langBox.querySelectorAll('details[open]')].map(d => d.dataset.group));
   langBox.hidden = false;
   langBox.innerHTML = '<h2 id="langTitle">Languages' + (LANGS.total ? ' (' + fmtN(LANGS.total) + ')' : '') + '</h2>' +   // review 31 L3: no "(0)" when every form was held back
-    '<p>' + LANG_INTRO + '</p>' + langHeld(LANGS.held_back) +
+    '<p>' + LANG_INTRO + '</p>' + langHeld(LANGS.held_back) + langUnplaced(LANGS.unplaced) +
     LANGS.groups.map(langFold).join('');
   langBox.querySelectorAll('details').forEach(d => { if (open.has(d.dataset.group)) d.open = true; });
 }

@@ -211,6 +211,12 @@ It opens with one paragraph, the same on every PDF:
   reviewed"), and the counts update. An undecided row doesn't show it.
 - **The status** reads "Not reviewed", "Approved: Chinese · zh", "Tagged: Chinese · zh" (after "Change Language"),
   "Kept: Hawaiian · haw" or "Removed: Hawaiian · haw" (a publisher's tag), or "Left untagged".
+- **Dictionary marks** (#141, Latin only; see [Dictionary Marks](languages.md#dictionary-marks)): a row the AI tagged
+  Latin whose every word is in the Latin list shows "Also found in a Latin dictionary."; a form the AI left untagged
+  inside a whole known Latin phrase becomes a row under "Left Untagged by the AI" and shows "Part of the Latin phrase
+  "prima facie", used in English text. Decide whether it should be tagged as Latin." (without "used in English text"
+  where the AI's low-confidence guess is Latin). Neither changes the AI's answer,
+  the default choice or "Approve All Shown".
 - **A form the AI left untagged** says why in plain words: "a name", "part of English", "not a word of a known
   language", "not sure", "it varies", or, for a low-confidence answer (never tagged), "low confidence; its guess:
   Japanese · ja". A reason with no such wording is not shown, and no reason shows no parentheses.
