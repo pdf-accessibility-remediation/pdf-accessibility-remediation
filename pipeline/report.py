@@ -77,6 +77,12 @@ ri = load('review_items.json') if rv else None        # what the review page sho
 rv_unexplained = [g for g in (rv or {}).get('gaps') or [] if str(g.get('reason') or '').startswith('hand edit: no reason asked for')]
 # a PDF edited by hand and brought back (handedit.py import): its link to the run it came from; a re-apply keeps the record's
 he = (prev.get('hand_edit') if prev is not None else None) or load('hand_edit.json', base=os.path.join(os.path.dirname(INTAKE_DIR) if INTAKE_DIR else R, '_handedit'))
+if he and not he.get('ai_check'):                      # the AI's check of the hand edit (#100): kept in the record, with its cost and answers
+    from lib import hecheck
+    _ck = hecheck.summary(hecheck.saved(os.path.join(os.path.dirname(INTAKE_DIR) if INTAKE_DIR else R)))
+    if _ck: he = dict(he, ai_check=_ck)
+from lib import hecheck as _hc
+cost_check = _hc.total((he or {}).get('ai_check'))     # a re-apply repeats it from the earlier record, once
 wo_ai = load('workorder.ai.json') if rv else None     # the AI's version: kept in record.json for every reviewed run          # earlier paid calls in this folder whose reply couldn't be used
 cost_this = (run.get('usage') or {}).get('cost_usd') or 0
 cost_earlier = round(sum(a.get('cost_usd') or 0 for a in attempts), 6)
@@ -209,7 +215,7 @@ record = {
     'verify': {k: v for k, v in ver.items() if k != 'verapdf'},
     'verapdf': {'before': vera_before, 'after': ver.get('verapdf')}, 'timing_seconds': timing, 'raw_reply': reply,
     **({'raw_reply_passes': passes} if passes else {}), 'environment': log.get('environment'),
-    'earlier_attempts': attempts, 'cost_total_usd': round(cost_this + cost_earlier + cost_pages + cost_lang, 6),
+    'earlier_attempts': attempts, 'cost_total_usd': round(cost_this + cost_earlier + cost_pages + cost_lang + cost_check, 6),
     **({'language_run': {k: v for k, v in lr_run.items() if k not in ('requests', 'language_parts', 'contexts')}       # the parts are in workorder.language_parts
                         | {'requests': [{k: v for k, v in x.items() if k not in ('text', 'keys', 'ids', 'id_marks')} for x in lr_run.get('requests') or []]}} if lr_run else {}),
     **({'page_reads': {k: v for k, v in pr_run.items() if k != 'pages'} | {'pages': [{k: v for k, v in x.items() if k != 'text'} for x in pr_run.get('pages') or []]}}
@@ -600,9 +606,9 @@ L = [f'# Remediation Review: {src.get("file") or "file name not recorded"}', '',
      + (f'{run["no_model"]} · ' if run.get('no_model') else         # decide.py --no-model: a PDF edited by hand
         (f'model `{mp["model"]}`' if mp.get('model') else 'model not recorded') + ' · '
         + (f'prompt `{mp["prompt_file"]}` ({mp.get("prompt_sha256") or "hash not recorded"})' if mp.get('prompt_file') else 'prompt not recorded') + ' · ')
-     + ('AI cost $0' if run.get('no_model') else f'AI cost {origin.words(ai)[0]} · this run: no new AI request' if run.get('response_from')
+     + (('AI cost $0 for the work order' + (f'; the AI\'s check of the hand edit cost ${cost_check:.3f}' if cost_check else '')) if run.get('no_model') else f'AI cost {origin.words(ai)[0]} · this run: no new AI request' if run.get('response_from')
         else f'AI cost {origin.words(ai)[0]}' if ai.get('cost_usd') is not None else 'cost: AI request did not finish') + ' · '
-     + ('no tokens' if run.get('no_model') else f'{u["prompt_tokens"]} in / {u["completion_tokens"]} out tokens' if u.get('prompt_tokens') is not None and u.get('completion_tokens') is not None
+     + ('no tokens for the work order' if run.get('no_model') and cost_check else 'no tokens' if run.get('no_model') else f'{u["prompt_tokens"]} in / {u["completion_tokens"]} out tokens' if u.get('prompt_tokens') is not None and u.get('completion_tokens') is not None
         else 'tokens: saved reply reused, not counted' if run.get('response_from') else 'tokens: AI request did not finish')
      + (f' · plus ${sum(a.get("cost_usd") or 0 for a in a_bad):.3f} for {len(a_bad)} previous AI request(s) whose reply was cut off or unusable' if a_bad else '')
      + (f' · plus ${sum(a.get("cost_usd") or 0 for a in a_stop):.3f} for {len([a for a in a_stop if a.get("cost_usd") is not None])} AI request(s) from a run '
@@ -658,7 +664,7 @@ if he:                                                # handedit.py import: what
     L += [f'### {n}. Edited by hand', '',
           line(f'{he.get("by") or "The person (name not given)"} edited the ' + ('remediated result' if he.get('base') == 'output' else 'original')
                + f' of run `{"/".join(os.path.normpath(par["run"]).split(os.sep)[-2:]) if par.get("run") else "run not recorded"}` by hand on {DT.day(he.get("when"))} and brought it back'
-               + (' for review, with no AI call' if he.get('to') == 'review' else ' through the whole pipeline') + '. ',
+               + ((' for review, with no AI request for the work order' if he.get('ai_check') else ' for review, with no AI call') if he.get('to') == 'review' else ' through the whole pipeline') + '. ',
                'Note: ', nolink(he.get('note') or 'no note given'), key='hand_edit'), '',
           f'- File before the edit: sha256 `{he.get("base_sha256") or "not recorded"}`; after: `{(he.get("edited") or {}).get("sha256") or "not recorded"}`. '
           'Neither file was changed by this run.']
@@ -666,26 +672,30 @@ if he:                                                # handedit.py import: what
         L += ['- Carried from that run\'s work order, since the pages are the same: '
               + ' and '.join({'sections': 'which pages are contents, notes and index', 'links': 'its fixes to contents link text'}.get(k, f'`{k}`')
                              for k in run['carried_from_parent']) + ' (applied without a review card: nothing to decide). Its other decisions are already in the file.']
+    who_ = (rv or {}).get('reviewer') or 'the reviewer'
+    def drafted(it):
+        """An alt text the AI drafted (hand_edit.ai_check) and the reviewer approved or changed, in words; '' for any other."""
+        return {'approved': f' (drafted by the AI, approved by {who_})', 'changed': f' (drafted by the AI, changed by {who_})'}.get(it.get('ai_draft'), '')
     if fc:
         new_alt = collections.defaultdict(list)
         for it in wo.get('alt') or []:
-            if (figs.get(it.get('obj')) or {}).get('page'): new_alt[figs[it['obj']]['page']].append(it.get('alt'))
+            if (figs.get(it.get('obj')) or {}).get('page'): new_alt[figs[it['obj']]['page']].append(it)
         L += [f'- {len(fc)} figure{"s hold" if len(fc) != 1 else " holds"} a new image, so the alt text written for the old one was removed before this run:', '',
               '| Page | Alt text removed | Alt text on that page in this run |', '|---|---|---|']
         L += [f'| {pg(f.get("page"))} | ' + (f'"{excerpt(f["alt"], n=120)}"' if f.get('alt') else 'none') + ' | '
-              + ('; '.join(f'"{excerpt(a, n=120)}"' for a in new_alt.get(f.get('page'), [])) or '**none written: write it**') + ' |' for f in fc]
+              + ('; '.join(f'"{excerpt(a.get("alt"), n=120)}"{drafted(a)}' for a in new_alt.get(f.get('page'), [])) or '**none written: write it**') + ' |' for f in fc]
     fl = he.get('figures_lost') or []
     if fl:                                            # Acrobat's Edit PDF can rewrite a page nobody touched and drop its tags
         on_page = collections.defaultdict(list)
         for it in wo.get('alt') or []:
-            if (figs.get(it.get('obj')) or {}).get('page'): on_page[figs[it['obj']]['page']].append(it.get('alt'))
-        for it in wo.get('page_figures') or []: on_page[it.get('page')].append(it.get('alt'))
+            if (figs.get(it.get('obj')) or {}).get('page'): on_page[figs[it['obj']]['page']].append(it)
+        for it in wo.get('page_figures') or []: on_page[it.get('page')].append(it)
         L += ['', line(f'- **{len(fl)} figure{"s" if len(fl) != 1 else ""} lost {"their tags" if len(fl) != 1 else "its tag"} in the edit**: the image is now untagged. '
                        'A page left with no tags gets whole-page alt text on the review page; otherwise re-tag it in Acrobat, or check it is meant to be decoration.',
                        key='hand_edit:figures_lost', pages=[f.get('page') for f in fl]), '',
               '| Page | Alt text it had | Alt text on that page in this run |', '|---|---|---|']
         L += [f'| {pg(f.get("page"))} | ' + (f'"{excerpt(f["alt"], n=120)}"' if f.get('alt') else 'none') + ' | '
-              + ('; '.join(f'"{excerpt(a, n=120)}"' for a in on_page.get(f.get('page'), []) if a) or '**none written**') + ' |' for f in fl]
+              + ('; '.join(f'"{excerpt(a.get("alt"), n=120)}"{drafted(a)}' for a in on_page.get(f.get('page'), []) if a.get('alt')) or '**none written**') + ' |' for f in fl]
     if he.get('outside_figures'):
         L += ['', f'- New images that no figure holds, on {pgs([x["page"] for x in he["outside_figures"]])}: check whether each needs to be a figure or decoration.']
     tp = he.get('text_pages') or []
@@ -696,6 +706,21 @@ if he:                                                # handedit.py import: what
     if diff:
         L += ['', line(f'- **CHECK: the text reads differently after the edit on {pgs(diff)}.** Compare these pages with the run it came from '
                        'and with the print.', key='hand_edit:text_changed', pages=diff)]
+    ck = he.get('ai_check')
+    if ck:                                            # #100: what the AI was asked, what it said, and who decided
+        from lib import hecheck
+        L += ['', line(f'- **The AI checked the edit before the review** ({hecheck.words(ck)}; model `{ck.get("model") or "not recorded"}` · prompt '
+                       f'`{ck.get("prompt_file") or "not recorded"}` ({ck.get("prompt_sha256") or "hash not recorded"}) · ${_hc.total(ck):.3f}). '
+                       'Its answers were suggestions on the review page: a person approved or changed each alt text, and nothing was applied without that review.',
+                       key='hand_edit:ai_check', entry=False)]
+        tv = (ck.get('kept') or {}).get('text_pages') or []
+        if tv:
+            L += ['', '| Page | What the AI said about the changed text | Why |', '|---|---|---|']
+            L += [f'| {pg(t["page"])} | {({"correction": "a correction", "damage": "damage", "unsure": "not sure"}).get(t["verdict"], t["verdict"])} | {excerpt(t["why"], n=160)} |' for t in tv]
+            L += ['', 'These readings are suggestions: compare each page with the print.']
+        elif ck.get('outcome') != 'done': L += ['', f'- The AI check gave no suggestions: {hecheck.words(ck)}.']
+        for d in hecheck.answers(ck)['deferrals']:                 # what the AI could not decide: information, nothing was applied for it
+            L += ['', f'- The AI left this to a person: **{excerpt(d["what"], n=120)}**' + (f' ({pgs(d["pages"])})' if d['pages'] else '') + (f': {excerpt(d["why"], n=240)}' if d['why'] else '') + '.']
     if (he.get('pages') or [None, None])[0] != (he.get('pages') or [None, None])[1]:
         L += ['', f'- Pages: {he["pages"][0]} before the edit, {he["pages"][1]} after.']
     L.append('')

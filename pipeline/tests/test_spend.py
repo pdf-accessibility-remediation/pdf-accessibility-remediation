@@ -187,7 +187,7 @@ def test_every_route_job_keeps_the_rule():
         p = os.path.join(HERE, 'webapp', f)
         if os.path.exists(p): assert "'AUTO'" not in open(p, encoding='utf-8').read(), f
     sp = open(os.path.join(HERE, 'webapp', 'spend.py'), encoding='utf-8').read()
-    assert sp.count("'AUTO': '1'") == 4 and 'personal' not in sp           # the tick was removed (Patrick, 2026-11-06)
+    assert sp.count("'AUTO': '1'") == 5 and 'personal' not in sp           # the tick was removed (Patrick, 2026-11-06); #151's retry and #100's check of a hand edit are the newest two
 
 # ------------------------------------------------------------------ needs-spend has a way out (03 §1)
 def test_restart_needs_spend_then_a_new_estimate_then_spend(setup):

@@ -788,12 +788,18 @@ function handSummary() {
   row('Edited by', esc(he.by || 'name not given') + (he.when ? ', ' + esc(fmtDay(he.when)) : ''));
   row('Note', he.note ? '“' + esc(he.note) + '”' : 'none given');
   row('Edited file', he.base === 'original' ? 'the original PDF' : 'the remediated PDF');
+  const ck = he.ai_check;
+  if (ck) row('AI check', esc(ck.outcome === 'done' ? 'Drafted by the AI before this review: ' + (ck.words || 'checked') : 'The AI check did not give a draft: ' + (ck.words || 'not finished'))
+    + (ck.cost_usd ? ' · $' + Number(ck.cost_usd).toFixed(3) : '') + '. Every draft is a suggestion: add it as it is, or change it first.');
+  else if (he.ai_estimate != null) row('AI check', 'Not asked yet. A draft of the alt text and a reading of the changed text would cost up to $' + Number(he.ai_estimate).toFixed(2) + '. To ask for it, close this page and select Draft with the AI on the run page, or ask for it from the terminal (see Editing the PDF by hand).');
   const li = [];
   if (he.alt_removed) li.push(plural(he.alt_removed, 'figure holds', 'figures hold') + ' a new image (' + esc(pp(he.figure_pages)) + '): the old alt text was removed.');
   if ((he.lost || []).length) li.push(plural(he.lost.length, 'figure', 'figures') + ' lost the tag (' + esc(pp(he.lost.map(f => f.page))) + '): screen readers skipped it until it gets alt text again.');
   if ((he.outside_pages || []).length) li.push('New images that no figure holds: ' + esc(pp(he.outside_pages)) + '. Check whether each is a figure or decoration.');
   if (he.text_same) li.push('Text changed on ' + plural(he.text_same, 'page', 'pages') + ': only the spaces between words, so it reads the same.');
   if ((he.text_differs || []).length) li.push('<b>The text reads differently on ' + esc(pp(he.text_differs)) + ': compare it with the print.</b>');
+  for (const d of he.ai_deferrals || []) li.push('Left to you by the AI' + ((d.pages || []).length ? ' (' + esc(pp(d.pages)) + ')' : '') + ': <b>' + esc(d.what) + '</b>. ' + esc(d.why));
+  for (const x of he.text_checks || []) li.push('Suggested by the AI, PDF ' + esc(x.page) + ': <b>' + esc({ correction: 'a correction', damage: 'damage', unsure: 'not sure' }[x.verdict] || x.verdict) + '</b>. ' + esc(x.why) + ' Compare it with the print.');
   return '<div class="he-sum"><dl class="fields">' + rows.join('') + '</dl><h3>' + esc(tc('What the edit changed')) + '</h3>' +
     (li.length ? '<ul>' + li.map(x => '<li>' + x + '</li>').join('') + '</ul>' : '<p class="ctx">No figure, image or text change was found.</p>') +
     ((he.carried || []).length ? '<p>Carried from the earlier run, no action needed: ' + esc(he.carried.map(c => c.what).join('; ')) +
@@ -822,7 +828,9 @@ function handCard(t) {
   row('What happened', t.why === 'lost_tag'
     ? 'This figure lost its tag in the edit, so a screen reader skipped it. It is now read as ' + (t.kind === 'page_figures' ? 'the whole page.' : 'a figure again.')
     : 'This figure holds a new image from the edit. Its old alt text described the old image, so it was removed.');
-  if (t.old_alt) row('Alt text it had', '“' + esc(t.old_alt) + '”' + (t.why === 'lost_tag' ? ' (suggested as the start of its new alt text)' : ''));
+  if (t.old_alt) row('Alt text it had', '“' + esc(t.old_alt) + '”' + (t.why === 'lost_tag' && !t.ai ? ' (suggested as the start of its new alt text)' : ''));
+  if (t.ai) row('Suggested by the AI', '“' + esc(t.suggest) + '”' + (t.old_alt && t.suggest === t.old_alt ? ' (the AI says the old alt text still fits)' : ''));
+  else if (t.ai_decoration) row('Suggested by the AI', 'This looks like decoration (' + esc(t.ai_decoration) + '). Add alt text only if it shows something a reader needs.');
   row('Now', a ? 'Added: “' + esc(String(a.value).slice(0, 160)) + '” · <a href="#card-' + esc(aid(a)) + '" data-card="card-' + esc(aid(a)) + '">' + esc(tc('go to your addition')) + '</a>'
                : 'No alt text yet.');
   return '<article class="card hand"' + (a ? ' data-done="1"' : '') + ' id="hand-' + esc(t.kind + '-' + t.target) + '"><dl class="fields">' + rows.join('') + '</dl>' +
@@ -1555,6 +1563,8 @@ function fillDetail() {
   row(WHAT[t.kind] || 'Decision', '<b>' + esc(t.label) + '</b>');
   targetRows(t, row);
   if (t.kind === 'move_section') moveRowsFor(t.default, t.context, ' (suggested: change the pages after adding; the preview follows)', row);
+  if (t.context && t.context.suggested_by_ai) row('Suggested by the AI', 'a draft written from the new image. Check it against the image, then add it or change it first.');
+  if (t.context && t.context.ai_decoration) row('Suggested by the AI', 'this looks like decoration (' + esc(t.context.ai_decoration) + '). Add alt text only if it shows something a reader needs.');
   if (t.context && t.context.suggested_from_before_edit) row('Suggested', 'the alt text this figure had before the edit. Check it still fits the image.');
   const blk = blockedBy(t);
   let h = '<dl class="fields">' + rows.join('') + '</dl>' + imagesHtml(t);

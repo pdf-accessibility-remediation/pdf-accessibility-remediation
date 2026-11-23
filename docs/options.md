@@ -95,6 +95,8 @@ what it left out under "Max Estimated Cost".
 
 `handedit.py import` sets it for a PDF edited by hand and brought back for review (see [Editing the PDF by hand](hand-edits.md)).
 
+`handedit.py import … --ai-check` and `handedit_check.py` ask the AI to check a PDF edited by hand: one small request, with the usual y/N question, `MAX_USD` and `BOOK_MAX_USD`, and `ESTIMATE=1` for the estimate only (see [Asking the AI to check the edit](hand-edits.md#asking-the-ai-to-check-the-edit)). The model is `--model` or `MODEL=`, else the default of the work order; an `auto:` choice is refused.
+
 ### The trial run at the review stop
 
 At the review stop, the pipeline runs `apply.py` once as a trial. It works out which figures the executor moves, and whether it makes the AI's section move. It takes about as long as the apply step: about 2 minutes for a 250-page PDF.

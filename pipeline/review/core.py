@@ -886,6 +886,54 @@ def hand_edit_targets(he, adds):
             if it.get('page') == p: take(it, 'new_image', old.get(p))
     return sorted(out, key=lambda t: (t['page'] or 0, t['kind']))
 
+def _ai_saved(R):
+    """The AI's check of the hand edit (#100) for run folder R: _handedit/ai_check.json, else, when R is the run's reviews/
+    folder (reviewing again), the summary record.json keeps in hand_edit.ai_check. None when there is none."""
+    from lib import hecheck
+    s = hecheck.saved(R)
+    if s is None and os.path.basename(os.path.normpath(R)) == 'reviews':
+        s = (((load(os.path.join(os.path.dirname(os.path.normpath(R)), 'record.json')) or {}).get('hand_edit') or {}).get('ai_check'))
+    return s if isinstance(s, dict) else None
+
+def hand_edit_ai(R, data):
+    """Put the AI's check of a PDF edited by hand into the page data (in place; the same again changes nothing): each answer is
+    the default of its figure's addition, marked context.suggested_by_ai, so a person still adds (approves) or edits it; nothing
+    here is a decision. Also he['ai_check'] (what was asked, when, the cost), he['ai_estimate'] (an estimate made and not yet
+    spent), he['text_checks'] (the AI's reading of each changed page), he['ai_deferrals'] (what it left to a person) and, on a target, `ai` and `ai_decoration`.
+    Returns whether the data changed."""
+    from lib import hecheck
+    he = data.get('hand_edit')
+    if not isinstance(he, dict): return False
+    s = _ai_saved(R)
+    if not s:
+        est = load(os.path.join(R, hecheck.ESTIMATE))
+        if isinstance(est, dict) and isinstance(est.get('worst_case_usd'), (int, float)) and he.get('ai_estimate') != est['worst_case_usd']:
+            he['ai_estimate'] = est['worst_case_usd']; return True
+        return False
+    ans = hecheck.answers(s)
+    by_id = {it['id']: it for its in (data.get('addable') or {}).values() for it in its}
+    for t in he.get('targets') or []:
+        it = by_id.get(f'add:{t["kind"]}:{t["target"]}')
+        if not it: continue
+        txt = (ans['alt'] if t['kind'] == 'alt' else ans['page_figures']).get(t['target'])
+        if txt:
+            t['ai'] = True; t['suggest'] = txt; it['default'] = txt
+            it['context'].pop('suggested_from_before_edit', None); it['context']['suggested_by_ai'] = True
+        elif t['kind'] == 'alt' and t['target'] in ans['decoration']:
+            t['ai_decoration'] = it['context']['ai_decoration'] = ans['decoration'][t['target']] or 'it says nothing'
+    he.pop('ai_estimate', None)
+    he['ai_check'] = {'model': s.get('model'), 'cost_usd': hecheck.total(s), 'date': s.get('date'), 'outcome': s.get('outcome'), 'words': hecheck.words(s)}
+    he['text_checks'] = [{'page': p, **v} for p, v in sorted(ans['text'].items())]
+    he['ai_deferrals'] = ans['deferrals']          # what the AI left to a person: shown in the summary, never applied
+    return True
+
+def refresh_ai_check(R):
+    """After handedit_check.py saved its answers: put them into review_items.json, so the review page and a later apply read the
+    same defaults. Returns whether the file changed."""
+    p = os.path.join(R, 'review_items.json'); data = load(p)
+    if not isinstance(data, dict) or not hand_edit_ai(R, data): return False
+    save(p, data); return True
+
 EARLIER_STATUS = {'approved': 'approved', 'changed': 'changed by the reviewer', 'rejected': 'rejected (not applied)',
                   'seen': 'seen', 'accepted_unreviewed': 'accepted without review'}
 
@@ -1090,6 +1138,7 @@ def prepare(R, pdf):
             it = by_id.get(f'add:{t["kind"]}:{t["target"]}')
             if t['suggest'] and it: it['default'] = t['suggest']; it['context']['suggested_from_before_edit'] = True
         data['hand_edit'] = he
+        hand_edit_ai(R, data)                       # the AI's check, when it was made (#100)
     save(os.path.join(R, 'review_items.json'), data)
     return data
 
@@ -1158,6 +1207,12 @@ def _int(v):
     try: return int(v)
     except (TypeError, ValueError): return v                # left as it is: the check refuses it with its reason
 
+def ai_mark(t, v):
+    """{'ai_draft': 'approved'} for an alt text the person added as the AI drafted it (the card's default, #100), 'changed' when
+    they edited it, {} for an addition that was never the AI's: report.py says "drafted by the AI, approved by …" from it."""
+    d = ((t.get('context') or {}).get('suggested_by_ai') and t.get('default')) or ''
+    return {'ai_draft': 'approved' if str(v).strip() == str(d).strip() else 'changed'} if str(d).strip() else {}
+
 def add_entries(wo, additions, adds, reviewer='', mark=False):
     """The person's own decisions added to wo (in place), each in the shape the AI writes. Returns what was refused:
     [{id, why}]. Only targets listed by addable() are taken, and never one that wo already decides. mark: each added
@@ -1182,9 +1237,9 @@ def add_entries(wo, additions, adds, reviewer='', mark=False):
             if any(it.get('obj') == target for it in (wo.get('artifacts') or {}).get('elements') or []):
                 no('the AI marked this figure as decoration: reject that decision first'); continue
             if any(it.get('obj') == target for it in wo.get('alt') or []): no('already decided: change it on its card'); continue
-            wo.setdefault('alt', []).append({'obj': target, 'alt': v, 'why': why, **tag})
+            wo.setdefault('alt', []).append({'obj': target, 'alt': v, 'why': why, **ai_mark(t, v), **tag})
         elif k == 'page_figures':
-            wo.setdefault('page_figures', []).append({'page': target, 'alt': v, 'why': why, **tag})
+            wo.setdefault('page_figures', []).append({'page': target, 'alt': v, 'why': why, **ai_mark(t, v), **tag})
         elif k == 'tables':
             v = v if isinstance(v, dict) else {}
             wo.setdefault('tables', []).append({'obj': target, 'header_rows': _int(v.get('header_rows', 0)),

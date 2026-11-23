@@ -3,7 +3,7 @@
     python handedit.py export RUN_DIR [--to PATH] [--by NAME]                    # the remediated result, for editing
     python handedit.py export RUN_DIR --original --pdf ORIGINAL.pdf [--to PATH] [--by NAME]
     python handedit.py import RUN_DIR EDITED.pdf --by NAME --note "what changed" [--label LABEL] [--to review|pipeline]
-                              [--base output|original] [--base-pdf ORIGINAL.pdf] [--no-run]
+                              [--base output|original] [--base-pdf ORIGINAL.pdf] [--no-run] [--ai-check]
 
 export copies the file (never the run's own) and logs it in RUN_DIR/hand_edits.json. Edit the copy, never the run's PDF:
 its sha256 is what the release checks count.
@@ -21,6 +21,10 @@ Then it runs run_api.sh on it:
                    the review page, where each changed figure shows as a figure with no alt; rerun the printed command
                    afterwards, or press Apply in the app
     --to pipeline  the whole pipeline: a new paid AI call (run_api.sh asks y/N first); ESTIMATE=1 and REPLY= work as usual
+    --ai-check     with --to review: after the review stop, one small paid AI request that drafts alt text for the figures the
+                   edit touched and says how each changed page reads (handedit_check.py, #100). It shows its estimate and asks
+                   y/N (MAX_USD and BOOK_MAX_USD apply; ESTIMATE=1 shows the estimate and sends nothing). The answers are
+                   suggestions on the review page's cards; nothing is applied without the review.
 --no-run prints the run_api.sh command instead. RUN_DIR's hand_edits.json lists the new run. Nothing in RUN_DIR other than
 hand_edits.json is written, except that RUN_DIR's review.html (and its batch's summary.html, in a batch) is drawn again
 from it, so the offline dashboards name the copy (#98): after the import, and again when run_api.sh stops for review. EDITED.pdf
@@ -116,6 +120,7 @@ def bring_back(argv):
     base, to = opt(argv, '--base', 'output'), opt(argv, '--to', 'review')
     if base not in ('output', 'original'): die('--base is output (the remediated result, the default) or original')
     if to not in ('review', 'pipeline'): die('--to is review (no AI call, the default) or pipeline (a new paid AI call)')
+    if '--ai-check' in argv and to != 'review': die('--ai-check goes with --to review: --to pipeline asks the AI about the whole PDF anyway')
     if not os.path.isfile(edited): die(f'no such PDF: {edited}')
     base_pdf, base_sha = output_of(R, rec) if base == 'output' else original_of(R, rec, opt(argv, '--base-pdf'), '--base-pdf')
     ed_sha = sha_file(edited)
@@ -177,9 +182,17 @@ def bring_back(argv):
     if to == 'review': env.update({'DECIDE': 'none', 'REVIEW': '1', 'PAGE_READS': 'off'})   # no AI call at all, page readings included
     cmd = ['bash', os.path.join(HERE, 'run_api.sh'), copy, name, label]
     shown = ' '.join(f'{k}={v}' for k, v in env.items() if v) + ' ' + ' '.join(f'"{x}"' if ' ' in x else x for x in cmd)
-    if '--no-run' in argv: print(f'next (from {HERE}):\n  {shown}'); return 0
+    check = f'python3 {os.path.join(HERE, "handedit_check.py")} "{C}"'
+    if '--no-run' in argv: print(f'next (from {HERE}):\n  {shown}' + (f'\nthen, to ask the AI to check the edit:\n  {check}' if '--ai-check' in argv else '')); return 0
     print(f'▶ {shown}', flush=True)                                   # before run_api.sh's own output
-    rc = subprocess.call(cmd, cwd=HERE, env={**os.environ, **{k: v for k, v in env.items() if v}})
+    run_env = {**os.environ, **{k: v for k, v in env.items() if v}}
+    if '--ai-check' in argv: run_env.pop('ESTIMATE', None)             # ESTIMATE=1 stops run_api.sh before the review stop; it is the check's own estimate here
+    rc = subprocess.call(cmd, cwd=HERE, env=run_env)
+    from lib import editlinks
+    if rc == 0 and '--ai-check' in argv and editlinks.waiting(C):
+        print('▶ AI check of the hand edit (nothing is sent before you say yes)', flush=True)
+        if subprocess.call([sys.executable, os.path.join(HERE, 'handedit_check.py'), C], cwd=HERE, env=os.environ):
+            print(f'note: the AI check did not run (above): the review works as before, without suggestions. To try again:\n  {check}')
     if not os.path.isfile(os.path.join(C, 'record.json')):            # stopped for review, failed or stopped: its state now
         import report_html                                            # (a finished copy: report.py already drew the parent)
         report_html.refresh_page(R)

@@ -9,6 +9,7 @@ page, the run page, the batch page) and, later, for run_api.sh and batch_api.sh.
                                                   the limit (02 M2)
     allowance(kind, forms)                      → a request's normal max tokens (decide.py; every kind has one line here)
     cost_words(a), after_line(R)                → "AI Cost: …" after a run, one wording for the pages and the terminal
+    estimate(R, 'handedit_check')               → the AI's check of a hand edit (#100): handedit_check.py's estimate file, in the same shape
 
 The estimate reads the run.json decide.py --dry-run wrote. Two shapes are read: main's (one request: worst_case_total_usd)
 and #63's (alt text past 100 images: estimate.passes, book_cap_usd, spent_before_usd, input_margin). `kind` names the paid
@@ -208,6 +209,18 @@ def language_paid(R):
     own = not (lr.get('response_from') and not lr.get('own_reply'))
     return round((lr.get('cost_usd') or 0 if own else 0) + (lr.get('earlier_cost_usd') or 0) + not_known(lr), 6)
 
+def check_paid(R):
+    """What the AI's check of a hand edit has cost this run folder (_handedit/ai_check.json, #100); report.py keeps it in the record."""
+    from lib import hecheck
+    return hecheck.paid(R)
+
+def _check_money(R, rec=None):
+    """(paid, calls) of the check of a hand edit: from the record's hand_edit.ai_check once the run has one, else the working file."""
+    ck = ((rec or {}).get('hand_edit') or {}).get('ai_check') if rec else None
+    from lib import hecheck
+    paid = hecheck.total(ck) if isinstance(ck, dict) else check_paid(R)
+    return paid, 1 if paid else 0
+
 def book_spent(R):
     """What this run folder has spent toward the PDF's limit so far, for every paid step's book check (review 06, M2):
     earlier attempts (a charge not known counts at its worst case), the work order's own paid call (run.json, unless its
@@ -216,7 +229,7 @@ def book_spent(R):
     s = sum((a.get('cost_usd') or 0) + (a.get('worst_usd') or 0) for a in att if isinstance(a, dict))
     run = _load(os.path.join(R, 'run.json')) or {}
     if not run.get('response_from') or run.get('own_reply'): s += (run.get('usage') or {}).get('cost_usd') or 0
-    return round(s + pages_paid(R) + language_paid(R), 6)
+    return round(s + pages_paid(R) + language_paid(R) + check_paid(R), 6)
 
 def _workorder(R):
     """The work-order call (decide.py): run.json's estimate; the fingerprint covers the estimate without the credit,
@@ -276,6 +289,7 @@ def estimate(R, kind='workorder', limits=None, credit_read=None):
     """The estimate of the paid step `kind` in run folder R, or None when there is none yet. limits: limits_of(settings).
     credit_read: a fresher credit read ("Check Credit Again", U8) used when the estimate's own couldn't be read; the same checks
     apply to it, and the fingerprint never covers the credit."""
+    if kind == 'handedit_check': return handedit_estimate(R, limits, credit_read)
     if kind not in KINDS: raise ValueError(f'unknown kind: {kind}')
     x = KINDS[kind](R)
     if x is None: return None
@@ -329,6 +343,39 @@ def estimate(R, kind='workorder', limits=None, credit_read=None):
                        **({'PAGE_READS_MAX_USD': bound(pr_total, per_book)} if pr else {}),
                        **({'LANGUAGE_MAX_USD': bound(le_total, per_book)} if le else {})}}
 
+def handedit_estimate(R, limits=None, credit_read=None):
+    """The estimate of the AI's check of a hand edit (#100) in cost-estimate/1's shape, from the estimate file handedit_check.py
+    --dry-run wrote (_handedit/ai_check_estimate.json), or None when there is none. One request: its worst case is the per-request
+    and the PDF's addition, held to the same limits and the credit as the work order. The fingerprint covers the file's request
+    (figures, pages, model, instructions) and the money already spent, never the credit."""
+    from lib import hecheck
+    e = _load(os.path.join(R, hecheck.ESTIMATE))
+    if not isinstance(e, dict) or not isinstance(e.get('worst_case_usd'), (int, float)): return None
+    L = limits or limits_of()
+    worst, model = float(e['worst_case_usd']), e.get('model') or ''
+    claude = model.startswith('anthropic/'); prices = bool(e.get('price_per_million'))
+    credit = e.get('credit_available_usd')
+    if credit is None and credit_read is not None: credit = credit_read
+    spent = round(book_spent(R), 6)
+    fits = {'per_call': worst <= L['per_call_usd'] if claude else None, 'per_book': (worst + spent) <= L['per_book_usd'] if claude else None,
+            'credit': None if credit is None else worst <= credit}
+    blocked = None
+    if not claude: blocked = {'code': 'model', 'words': 'The AI model set for the app isn\'t one whose cost the app can check, so it can\'t be sent from here.'}
+    elif not prices: blocked = {'code': 'offline', 'words': 'Prices and credit couldn\'t be checked, so the cost isn\'t known yet.'}
+    elif fits['per_call'] is False: blocked = {'code': 'per_call', 'words': f'This check could cost up to ${up(worst):.2f}, more than the limit of ${L["per_call_usd"]:.2f} per AI request.'}
+    elif fits['per_book'] is False: blocked = {'code': 'per_book', 'words': f'This PDF could cost up to ${up(worst + spent):.2f}'
+                                               + (f', including ${spent:.2f} already spent' if spent else '') + f', more than the limit of ${L["per_book_usd"]:.2f} per PDF.'}
+    elif fits['credit'] is False: blocked = {'code': 'credit', 'words': f'This check could cost up to ${up(worst):.2f}, more than the ${credit:.2f} of credit left.'}
+    elif credit is None: blocked = {'code': 'no_credit', 'words': 'The credit couldn\'t be checked, so the cost can\'t be compared with it.'}
+    covered = {'estimate': {k: v for k, v in e.items() if k not in ('credit_available_usd', 'cap_usd')}, 'spent': spent}
+    return {'schema': SCHEMA, 'kind': 'handedit_check', 'model': model, 'claude': claude, 'prices_checked': prices, 'prompt_sha256': e.get('prompt_sha256'),
+            'requests': 1, 'images': int(e.get('figures') or 0) + int(e.get('text_pages') or 0), 'figures': int(e.get('figures') or 0),
+            'text_pages': int(e.get('text_pages') or 0), 'input_tokens': e.get('input_est'), 'ceiling_usd': round(worst, 4), 'per_call_ceiling_usd': worst,
+            'spent_before_usd': spent, 'limits': {'per_call_usd': L['per_call_usd'], 'per_book_usd': L['per_book_usd']}, 'credit_usd': credit, 'fits': fits,
+            'blocked': blocked, 'expected': None, 'note': e.get('note'),
+            'fingerprint': hashlib.sha256(json.dumps(covered, sort_keys=True, ensure_ascii=False).encode()).hexdigest(),
+            'bounds': {'MAX_USD': bound(worst, L['per_call_usd']), 'BOOK_MAX_USD': bound(worst + spent, L['per_book_usd'])}}
+
 # ------------------------------------------------------------------ after the run
 def _retry_usd(run):
     """What the doubled retries of figure requests cut off cost (figure_passes.cut_off_retries)."""
@@ -379,6 +426,8 @@ def actual(R, rec=_READ):
         pages, page_calls, pr = _page_money(rec.get('page_reads'))
         lang, lang_calls = _language_money(rec.get('language_run'))
         pages, page_calls = round(pages + lang, 6), page_calls + lang_calls       # the language step is this folder's own money too
+        chk, chk_calls = _check_money(R, rec)                                      # the AI's check of a hand edit (#100): this folder's own money too
+        pages, page_calls = round(pages + chk, 6), page_calls + chk_calls
         reused = saved and not pages
         earlier = sum((a.get('cost_usd') or 0) for a in rec.get('earlier_attempts') or [] if isinstance(a, dict))
         this = pages + (0.0 if saved else ((run.get('usage') or {}).get('cost_usd') or 0.0))
@@ -392,12 +441,14 @@ def actual(R, rec=_READ):
                 'per_page_usd': round((this + earlier) / doc_pages, 6) if doc_pages and (this + earlier) else None, 'reused': reused,
                 'original_call': {'usd': ai.get('cost_usd'), 'date': ai.get('date')} if reused else None, 'finished': True,
                 'estimate_usd': _estimate_usd(run, pr),
-                'expected_usd': None if reused else _expected_usd(run, pr), 'retry_usd': 0.0 if saved else _retry_usd(run), 'no_model': nm}
+                'expected_usd': None if reused else _expected_usd(run, pr), 'retry_usd': 0.0 if saved else _retry_usd(run), 'no_model': nm, 'check_usd': chk}
     run = _load(os.path.join(R, 'run.json')) or {}
     saved = bool(run.get('response_from')) and not run.get('own_reply')
     pages, page_calls, pr = _page_money(_load(os.path.join(R, 'page_reads_run.json')))
     lang, lang_calls = _language_money(_load(os.path.join(R, 'language_run.json')))
     pages, page_calls = round(pages + lang, 6), page_calls + lang_calls
+    chk, chk_calls = _check_money(R)
+    pages, page_calls = round(pages + chk, 6), page_calls + chk_calls
     reused = saved and not pages
     decided = 0.0 if saved else ((run.get('usage') or {}).get('cost_usd') or 0.0)
     this = decided + pages
@@ -406,9 +457,10 @@ def actual(R, rec=_READ):
             'per_page_usd': None, 'reused': reused, 'original_call': None, 'finished': False,
             'estimate_usd': _estimate_usd(run, pr),
             'expected_usd': None if reused else _expected_usd(run, pr), 'retry_usd': 0.0 if saved else _retry_usd(run),
-            'no_model': run.get('no_model') or None}
+            'no_model': run.get('no_model') or None, 'check_usd': chk}
 
 NO_MODEL_WORDS = 'none (no AI request: a PDF edited by hand)'   # "AI Cost: …" for a run with no AI request at all
+CHECK_WORDS = 'the AI\'s check of a hand edit; no AI request for the decisions'   # #100: a hand edit that was checked by the AI
 
 def cost_words(a, so_far=False):
     """The words after "AI Cost:" or "Total Cost:", one source for the run page, the batch page and the terminal. a: {usd,
@@ -432,6 +484,7 @@ def after_line(R):
     """The terminal's line after a run, in the run page's words."""
     a = actual(R)
     if a.get('no_model') and not a['usd']: return 'AI Cost: ' + NO_MODEL_WORDS
+    if a.get('no_model') and a.get('check_usd'): return f'AI Cost: ${a["usd"]:.2f} ({CHECK_WORDS})'
     return 'AI Cost: none (a saved reply was used)' if a['reused'] else 'AI Cost: ' + cost_words(a)
 
 def still_trashed(B):

@@ -21,7 +21,7 @@ the settings copied from the estimate's own job (never from a form again), paid,
 Test mode (test_reply_dir / test_batch_from from --config): REPLY= (or FROM=) instead of the call; prices offline are
 allowed, a missing saved reply is refused, never sent instead.
 """
-import os, re, json, time, datetime
+import os, re, sys, json, time, datetime
 from lib import costs
 from . import config, jobs, books as BK
 
@@ -156,10 +156,44 @@ def uploaded_again(s, ej):
     p = RN.find_original(s, sha, os.path.basename(src))
     return p if p and _sha_now(p) == sha else None
 
+def current_check_prompt():
+    """The AI check of a hand edit's prompt (handedit_check_v1.md): its sha256[:16] as handedit_check.py computes it, or None."""
+    import hashlib
+    from lib import hecheck
+    p = hecheck.prompt_path(config.PIPELINE)                  # the one lookup handedit_check.py uses, so the two always read the same file
+    return hashlib.sha256(open(p, encoding='utf-8').read().encode()).hexdigest()[:16] if p else None
+
+def authorize_handedit_check(s, run, R, fingerprint):
+    """The AI's check of a hand edit (#100), for an edited copy waiting for its first review: the estimate shown is the one on disk
+    now, the model and instructions are the ones it used, and it fits the limits and the credit. The job runs handedit_check.py with
+    AUTO=1 and the estimate's caps (MAX_USD, BOOK_MAX_USD). Test mode: --reply with <test_reply_dir>/handedit_check.txt, no request."""
+    test = bool(s.get('test_reply_dir'))
+    est = costs.estimate(R, 'handedit_check', costs.limits_of(s), credit_read=credit_read(s))
+    if est is None: raise Refused('There is no estimate for this check yet: select "Get an Estimate".')
+    if fingerprint != est['fingerprint']: raise Refused(CHANGED)
+    model, _ = current_model_and_prompt()
+    if not est['claude'] or model != est['model'] or not est.get('prompt_sha256') or est['prompt_sha256'] != current_check_prompt(): raise Refused(OUT_OF_DATE)   # fails closed
+    b = est['blocked']
+    if b and not (test and b['code'] in ('offline', 'no_credit')): raise Refused(b['words'])
+    argv = [sys.executable, 'handedit_check.py', R]
+    if test:
+        reply = os.path.join(s['test_reply_dir'], 'handedit_check.txt')
+        if not os.path.isfile(reply): raise Refused('There is no saved test reply for this check.')
+        argv += ['--reply', reply]; env = {}
+    else:
+        env = {'AUTO': '1', 'MAX_USD': f'{est["bounds"]["MAX_USD"]:.2f}', 'BOOK_MAX_USD': f'{est["bounds"]["BOOK_MAX_USD"]:.2f}'}
+        argv += ['--model', est['model']]
+    extra = {'fingerprint': fingerprint, 'started_by_click': datetime.datetime.now().isoformat(timespec='seconds'),
+             'shown': {'ceiling_usd': est['ceiling_usd'], 'per_call_ceiling_usd': est['per_call_ceiling_usd'], 'expected_usd': None,
+                       'bounds': est['bounds'], 'model': est['model']}, 'test': test, 'what': 'The AI check of the hand edit' + (' (test: a saved reply)' if test else '')}
+    return {'argv': argv, 'env_set': env, 'extra': extra}
+
 def authorize(s, kind, run, R, fingerprint):
-    """A single run's Spend (kind 'workorder'), or "Ask the AI Again" for a run held at its review stop (kind 'retry',
-    #151). Returns {argv, env_set, extra} for jobs.create(kind='spend' or 'ai-retry', paid=True)."""
+    """A single run's Spend (kind 'workorder'), "Ask the AI Again" for a run held at its review stop (kind 'retry', #151), or
+    the AI's check of a hand edit (kind 'handedit_check', #100). Returns {argv, env_set, extra} for jobs.create(kind='spend' or
+    'ai-retry', paid=True)."""
     if kind == 'retry': return authorize_retry(s, run, R, fingerprint)
+    if kind == 'handedit_check': return authorize_handedit_check(s, run, R, fingerprint)
     if kind != 'workorder': raise Refused('This kind of AI step can\'t be sent from here yet.')
     test = bool(s.get('test_reply_dir'))
     L = costs.limits_of(s)

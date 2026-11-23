@@ -306,6 +306,7 @@ def serve(R, date, port=8765, open_browser=True, files=None, return_to=None, run
             if path in ('/', '/index.html'):
                 warmed.wait(WARM_WAIT)
                 oc = ocr_section()
+                core.hand_edit_ai(R, data)            # an AI check made while the page was closed (#100): its answers are the cards' defaults
                 light = {**data, 'items': [it for it in data['items'] if it.get('kind') != core.LANG_KIND],   # #118: the language rows come
                          'languages': {**core.language_summary(data['items']), 'held_back': None if ocr_only else core.held_back_info(R, run_dir),
                                        'unplaced': None if ocr_only else core.unplaced_info(R, run_dir)}}   # by /languages.json; #159, #161
