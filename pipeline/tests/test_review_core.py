@@ -376,3 +376,45 @@ def test_a_dropped_second_move_links_to_its_own_card():
     es, wo = two_away()
     its = core.build_items(wo, {'source': {'pages': 80}}, es)
     assert core.card_of(its, {'where': 'move_section', 'item': wo['move_section'][1], 'why': 'bad pages'}) == 'move_section:1'
+
+# #59: warnings (gaps), not refusals: the review can finish with a reason, and the report lists them
+def gap_digest(**kw):
+    return {'source': {'pages': 20}, 'document': {'title': 'A Book'}, 'styles': [{'style': 'H1', 'maps_to': 'H1', 'count': 1}],
+            'figures': [{'obj': 'f1', 'page': 3, 'alt': 'x', 'next': {'style': 'Caption', 'text': 'Figure 1. The harbor at dawn, seen from the old pier'}},
+                        {'obj': 'f2', 'page': 4, 'alt': 'x'}],
+            'headings': [{'obj': 'h1', 'style': 'H1', 'level': 'H1', 'page': 1, 'text': 'Title'}], **kw}
+
+def gap_ids(wo, dg=None): return {g['id']: g for g in core.gaps(wo, dg or gap_digest())}
+
+def test_no_document_title_is_a_gap():
+    assert 'no_title' not in gap_ids({})                                       # the PDF's own title stays
+    g = gap_ids({}, gap_digest(document={'title': '', 'xmp_title': ''}))['no_title']
+    assert g['add'] == {'kind': 'document', 'target': 'title'} and 'WCAG 2.4.2' in g['what']
+    assert 'no_title' not in gap_ids({'document': {'title': 'Set in Review'}}, gap_digest(document={}))
+
+def test_placeholder_file_name_caption_and_long_alt_are_gaps():
+    for alt, said in (('Image', 'placeholder'), ('figure 3', 'placeholder'), ('IMG_2041.JPG', 'file name'), ('scan_0012', 'file name'),
+                      ('Figure 1. The harbor at dawn, seen from the old pier.', 'caption'), ('A' * 301, '301 characters')):
+        g = gap_ids({'alt': [{'obj': 'f1', 'alt': alt}]})
+        assert said in g['weak_alt']['what'] and 'PDF 3' in g['weak_alt']['what'], alt
+    assert 'weak_alt' not in gap_ids({'alt': [{'obj': 'f1', 'alt': 'Fishing boats moored at a wooden pier at sunrise'}, {'obj': 'f2', 'alt': 'A' * 300}]})
+    assert 'placeholder' in gap_ids({'page_figures': [{'page': 7, 'alt': 'picture'}]})['weak_alt']['what']
+
+def test_heading_levels_that_skip_are_a_gap():
+    dg = gap_digest(styles=[{'style': 'H1', 'maps_to': 'H1'}, {'style': 'Sub', 'maps_to': 'P'}],
+                    headings=[{'obj': 'a', 'style': 'H1', 'level': 'H1', 'page': 1, 'text': 'Title'},
+                              {'obj': 'b', 'style': 'H2', 'level': 'H2', 'page': 2, 'text': 'Part'},
+                              {'obj': 'c', 'style': 'H4', 'level': 'H4', 'page': 3, 'text': 'Deep'}],
+                    heading_candidates=[{'obj': 'd', 'style': 'Sub', 'page': 2, 'text': 'Chapter'}])
+    g = gap_ids({}, dg)['heading_skips']
+    assert g['what'].startswith('1 heading level skipped') and 'H2 "Part" (PDF 2) then H4 "Deep" (PDF 3)' in g['what']
+    assert 'heading_skips' not in gap_ids({'retype': [{'obj': 'c', 'type': 'H3'}]}, dg)              # fixed by a retype
+    assert 'heading_skips' not in gap_ids({'rolemap': {'Sub': 'H3'}, 'retype': [{'obj': 'c', 'type': 'H3'}]}, dg)
+    assert 'heading_skips' in gap_ids({'retype': [{'obj': 'd', 'type': 'H5'}, {'obj': 'c', 'type': 'H3'}]}, dg)   # H2 → H5 on PDF 2
+
+def test_header_columns_the_executor_refuses_are_a_gap():
+    dg = gap_digest(tables=[{'obj': 't1', 'page': 9, 'cols': 3, 'first_rows': ['Year | Ships | Tons', 'Total | 12']},
+                            {'obj': 't2', 'page': 10, 'cols': 2, 'first_rows': ['A | B', 'C | D']}])
+    g = gap_ids({'tables': [{'obj': 't1', 'header_rows': 1, 'header_cols': 2}, {'obj': 't2', 'header_rows': 1, 'header_cols': 2}]}, dg)
+    assert g['header_cols_refused']['what'].startswith('2 tables') and 'PDF 9, PDF 10' in g['header_cols_refused']['what']
+    assert 'header_cols_refused' not in gap_ids({'tables': [{'obj': 't1', 'header_rows': 1, 'header_cols': 1}]}, dg)
