@@ -98,13 +98,14 @@ def _props(a, res):
 
 def bdc_props(operands, res):
     """The property list of a BDC: inline, or named (/P /MC0 BDC) and resolved through the stream's /Properties in res.
-    #166, review 04 H1: the one way every reader asks what a BDC carries, so a named run is never read as untagged."""
-    return _props(list(operands), res)
+    #166, review 04 H1: the one way every reader asks what a BDC carries, so a named run is never read as untagged.
+    The operands are indexed where they stand: list() converts every operand (about 70 us a BDC; report 07 §3)."""
+    return _props(operands, res)
 
 
 def bdc_mcid(operands, res):
     """The MCID a BDC gives (inline or through a named property list), or None."""
-    p = _props(list(operands), res)
+    p = _props(operands, res)
     return int(p.MCID) if p is not None and '/MCID' in p else None
 
 

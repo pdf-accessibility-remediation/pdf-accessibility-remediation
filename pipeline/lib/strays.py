@@ -74,7 +74,7 @@ class Reader:
         try:
             out = set()
             for ins in pikepdf.parse_content_stream(owner, 'BDC'):
-                p = tagfix._props(list(ins.operands), res)
+                p = tagfix.bdc_props(ins.operands, res)   # indexed in place: list() would convert every operand
                 if p is not None and '/MCID' in p: out.add(int(p.MCID))
             return out
         except Exception:
