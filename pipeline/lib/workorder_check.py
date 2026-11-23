@@ -115,12 +115,13 @@ def check(wo, digest, not_sent, words_sent, order=None):
             if why: drop('ocr_words', it, why); continue
             out.append({'id': i, 'text': words[i]['text'], 'reads': reads, 'count': words[i]['count']})
         if out: wo['ocr_words'] = out
-    if 'page_readings' in wo:                   # whole-page readings of scanned Hawaiian pages (read_pages.py): [{page, text}]
+    if 'page_readings' in wo:                   # whole-page readings of scanned pages (read_pages.py): [{page, text, kind?}], kind cjk for #119
         seen_p = set()
         def page_reading(it):
             if not isinstance(it, dict) or not isinstance(it.get('page'), int) or isinstance(it.get('page'), bool) or not 1 <= it['page'] <= N: return 'bad page'
             if not isinstance(it.get('text'), str) or not it['text'].strip(): return 'empty'
             if it['page'] in seen_p: return 'the same page twice'
+            if it.get('kind', 'haw') not in ('haw', 'cjk'): return 'kind is haw (Hawaiian) or cjk (Chinese, Japanese, Korean: #119)'
             seen_p.add(it['page']); it['text'] = unicodedata.normalize('NFC', it['text'])
         wo['page_readings'] = keep('page_readings', wo['page_readings'] if isinstance(wo['page_readings'], list) else [], page_reading)
         if not wo['page_readings']: del wo['page_readings']

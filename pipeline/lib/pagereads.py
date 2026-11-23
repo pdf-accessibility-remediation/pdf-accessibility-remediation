@@ -17,6 +17,7 @@ SHARE_MIN = 0.5            # a page is read when at least half its longer words 
 WORDS_MIN = 20             # longer words a page needs before its share counts
 LONG = 4                   # letters a word needs to count: short English words (he, me, no) have Hawaiian shape too
 PROMPT_NAME = 'page_reading_v1.md'
+CJK_PROMPT_NAME = 'page_reading_cjk_v1.md'   # CJK pages (#119)
 OKINA_LIKE = ocrwords.OKINA_LIKE + ocrwords.OKINA
 
 def hawaiian_share(words):

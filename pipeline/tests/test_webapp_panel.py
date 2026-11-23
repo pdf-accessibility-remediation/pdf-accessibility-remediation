@@ -513,7 +513,7 @@ def test_steps_in_plain_words():
     assert logs.plain('0/5 intake: not re-run; applying to the intake result saved before the review stop') == 'reading and tagging the PDF'
     assert logs.plain('1/5 audit: reusing the audit already in /x/_audit') == 'auditing the PDF'   # a waiting run's first apply
     # round 24: no step numbers or "via OpenRouter" on the page
-    assert logs.plain('3b/5 page readings via OpenRouter') == 'sending to the AI: Hawaiian page readings'
+    assert logs.plain('3b/5 page readings via OpenRouter') == 'sending to the AI: page readings'
     assert logs.plain('3c/5 language tags via OpenRouter') == 'sending to the AI: language tags'
     assert logs.plain('3c/5 language tags: saved decisions (no cost)') == 'using the saved language tags (no AI request)'
     assert logs.plain("3c/5 language tags: this run's own decisions (no cost)") == 'using the saved language tags (no AI request)'

@@ -116,7 +116,7 @@ def test_the_left_out_words_are_the_panels_with_no_names_in_quotes():
     """review 12, L1: no quoted names that appear on no screen, and no "app's settings" (a file, not a screen)."""
     le = {'worst_case_usd': 1.5}; pr = {'worst_case_usd': 1.0}
     out = {x['kind']: x['words'] for x in C.fit_optional(0, 4.5, [('page_reads', pr), ('language', le)], 5.0)[1]}
-    assert out['page_reads'].startswith('The AI reading of Hawaiian pages is left out of this run: ')
+    assert out['page_reads'].startswith('The AI reading of scanned pages is left out of this run: ')
     assert out['page_reads'].endswith('To include it, the app administrator can raise the limit per PDF.')
     assert out['language'].startswith('Language tags from the AI are left out of this run: ')
     assert out['language'].endswith('The PDF is processed without language tags from the AI. To include them, the app administrator can raise the limit per PDF.')

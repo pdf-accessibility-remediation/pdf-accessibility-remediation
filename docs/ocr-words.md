@@ -36,6 +36,8 @@ A born-digital Hawaiian text layer keeps both marks: one test book had 10,097 ʻ
 
 ## Pages read whole
 
+Scanned pages with Chinese, Japanese or Korean text are read whole by the same step, with their own prompt and model, and matched to the OCR's lines: see [CJK OCR](cjk-ocr.md).
+
 On a page that is mostly Hawaiian, the word sheets can't fix most errors: the ʻokina is dropped as often as it becomes a quote mark, and a dropped kahakō leaves a normal word. In one 93-page Hawaiian book, rendered and OCR'd with intake's settings (`eng`), none of the 14,417 words with an ʻokina or kahakō came out right. 62% of all its words share their letters with a differently marked word (`ʻo` / `o`, `ʻia` / `ia`, `no` / `nō`). So such pages are read whole.
 
 It is on by default in `run_api.sh`; `PAGE_READS=off` turns it off. In the app, the estimate includes it and Spend sends it. Command-line batches leave it off unless `PAGE_READS=1`.

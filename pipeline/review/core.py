@@ -1121,6 +1121,9 @@ def apply_decisions(ai_wo, items, decisions):
             elif st in ('approved', 'changed'): f['decided'] = 'tagged' if f.get('tag') else 'kept' if f.get('current') else 'untagged'   # "Keep the Tag" (review 08, M5)
             continue
         if it['loc'] is None: continue                   # a reading-order finding: not in the work order
+        if it['key'] == 'page_readings' and st in ('approved', 'changed'):   # #119: a person checked this page's reading
+            pr_ = wo['page_readings'][it['loc'][1]]
+            if isinstance(pr_, dict) and pr_.get('kind') == 'cjk': pr_['checked_by'] = 'person'   # apply.py attaches it even as a draft
         if st == 'rejected' and it['key'] not in SEEN_ONLY: drop.append(it['loc'])
         elif st == 'changed' and it['edit']:
             v = d.get('value')
@@ -1352,6 +1355,7 @@ FIX = {
     'no header rows or columns': 'Choose at least one header row or column. If the table has no headers, reject this choice.',
     'the same table twice': 'This table is decided twice. Keep one choice and reject or remove the other.',
     'the same page twice': 'This page has two readings. Keep one and reject the other.',
+    'kind is haw (Hawaiian) or cjk (Chinese, Japanese, Korean: #119)': 'Reject this reading: its page kind is not one the pipeline reads.',
     'not a BCP 47 language tag': 'Choose a language from the list, or choose Other and type a language tag such as en-US or haw.',
     'not a list the one-item rule would flatten': 'Nothing would flatten this list, so there is nothing to keep. Reject this choice.',
     'unknown style or direction': 'The book has no such style. Reject this choice.',
