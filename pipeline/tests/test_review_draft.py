@@ -99,7 +99,7 @@ def built(port, body):
 def drafts(): return set(glob.glob(os.path.join(tempfile.gettempdir(), server.DRAFT_PREFIX + '*')))
 
 BODY = {'reviewer': 'Kim', 'decisions': {ALT: {'status': 'changed', 'value': 'A red square'}}, 'additions': []}
-FINISH = dict(BODY, gaps_ack={'h1': 'later', 'figures_without_alt': 'later'}, accept_unreviewed=True)
+FINISH = dict(BODY, gaps_ack={'h1': 'later', 'figures_without_alt': 'later', 'no_title': 'later'}, accept_unreviewed=True)
 
 def test_the_server_builds_serves_and_removes_the_draft(R):
     had = drafts()

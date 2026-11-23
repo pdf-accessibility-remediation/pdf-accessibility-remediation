@@ -1243,6 +1243,78 @@ def gaps(wo, digest):
         out.append({'id': 'page_figures_without_alt', 'what': f'{len(left)} whole-page figure{"s" if len(left) != 1 else ""} '
                     'with no alt text, on PDF ' + ', '.join(map(str, left[:12])) + (f' and {len(left) - 12} more pages' if len(left) > 12 else ''),
                     'add': {'kind': 'page_figures', 'target': left[0]}})
+    out += _gaps_59(wo, digest, by_obj, styles, figs)
+    return out
+
+# #59: warnings, not refusals (the review can finish with a reason; the report lists them)
+ALT_LONG = 300                                      # a longer description belongs in the text or a caption
+PLACEHOLDER_ALT = re.compile(r'(?i)^(an? |the )?(image|figure|fig\.?|picture|pic|photo(graph)?|graphic|illustration|img|placeholder|alt( text)?)( ?\d+)?\.?$')
+FILE_NAME_ALT = re.compile(r'(?i)^\S+\.(png|jpe?g|gif|tiff?|bmp|svg|webp|eps|psd)$|^(img|dsc|dscn|scan)[_-]?\d+$')
+def _norm_words(t): return ' '.join(re.sub(r'[^\w]+', ' ', str(t or '').lower()).split())
+
+def alt_problem(alt, near=''):
+    """Why alt text says nothing a reader can use, or None: a placeholder word, a file name, the nearby caption repeated
+    word for word, or a description too long for alt text."""
+    a = str(alt or '').strip()
+    if not a: return None
+    if PLACEHOLDER_ALT.match(a): return 'a placeholder ("' + a[:40] + '")'
+    if FILE_NAME_ALT.match(a): return 'a file name ("' + a[:40] + '")'
+    if len(_norm_words(near)) >= 8 and _norm_words(a) == _norm_words(near): return 'only the caption beside it, repeated'
+    if len(a) > ALT_LONG: return f'{len(a)} characters long (a longer description belongs in the text or a caption)'
+    return None
+
+def _gaps_59(wo, digest, by_obj, styles, figs):
+    out = []
+    doc = digest.get('document') or {}
+    t = (wo.get('document') or {}).get('title') if isinstance(wo.get('document'), dict) else None
+    if not str(t or doc.get('title') or doc.get('xmp_title') or '').strip():
+        out.append({'id': 'no_title', 'what': 'No document title: once this review is applied, the PDF has no title for a screen reader to '
+                    'announce (WCAG 2.4.2). Add one under Document.', **({} if t is not None else {'add': {'kind': 'document', 'target': 'title'}})})
+    bad = []                                           # alt text that says nothing a reader can use
+    for it in wo.get('alt') or []:
+        if not isinstance(it, dict): continue
+        f = figs.get(it.get('obj')) or {}
+        why = alt_problem(it.get('alt'), ((f.get('next') or {}).get('text') if isinstance(f.get('next'), dict) else '') or '')
+        if why: bad.append((f.get('page'), why))
+    for it in wo.get('page_figures') or []:
+        if isinstance(it, dict):
+            why = alt_problem(it.get('alt'))
+            if why: bad.append((it.get('page'), why))
+    if bad:
+        out.append({'id': 'weak_alt', 'what': f'{len(bad)} alt text{"s" if len(bad) != 1 else ""} a reader can\'t use: '
+                    + '; '.join(f'PDF {p}: {w}' if p else w for p, w in bad[:6]) + (f'; and {len(bad) - 6} more' if len(bad) > 6 else '')
+                    + '. Say what the figure shows.'})
+    # heading levels that skip (an H2 followed by an H4), in page order, once the order's retypes and style mappings apply
+    retype = {it.get('obj'): it.get('type') for it in wo.get('retype') or [] if isinstance(it, dict)}
+    hs, seen = [], set()
+    for k in ('headings', 'heading_candidates', 'elements'):
+        for i, x in enumerate(digest.get(k) or []):
+            o = x.get('obj')
+            if o in seen or (k == 'elements' and o not in retype): continue
+            lv = retype.get(o) or (_level(x.get('style'), wo, styles) if k != 'heading_candidates' else (wo.get('rolemap') or {}).get(x.get('style')))
+            if k == 'headings' and o not in retype and x.get('level') and not (wo.get('rolemap') or {}).get(x.get('style')): lv = x['level']
+            if isinstance(lv, str) and re.fullmatch(r'H[1-6]', lv) and isinstance(x.get('page'), int):
+                seen.add(o); hs.append((x['page'], k != 'headings', i, int(lv[1]), x))
+    hs.sort(key=lambda h: h[:3])
+    skips = [(a, b) for a, b in zip(hs, hs[1:]) if b[3] > a[3] + 1]
+    if skips:
+        say = lambda h: f'H{h[3]} "{str(h[4].get("text") or "")[:50]}" (PDF {h[0]})'
+        out.append({'id': 'heading_skips', 'what': f'{len(skips)} heading level{"s" if len(skips) != 1 else ""} skipped: '
+                    + '; '.join(f'{say(a)} then {say(b)}' for a, b in skips[:4]) + (f'; and {len(skips) - 4} more' if len(skips) > 4 else '')
+                    + '. A screen reader user moves by level, so a skipped level reads as a missing section.'})
+    # header columns the executor will refuse (lib/tablegrid.py: a data row with that many cells or fewer)
+    tabs = {x['obj']: x for x in digest.get('tables') or []}
+    refuse = []
+    for it in wo.get('tables') or []:
+        if not isinstance(it, dict) or not isinstance(it.get('header_cols'), int) or it['header_cols'] <= 0: continue
+        x = tabs.get(it.get('obj')) or {}; hc = it['header_cols']
+        first = int(it.get('title_rows') or 0) + int(it.get('header_rows') or 0) if all(isinstance(it.get(k, 0), int) for k in ('title_rows', 'header_rows')) else 0
+        rows = [r for r in (x.get('first_rows') or [])[first:] if isinstance(r, str) and not r.endswith('…')]   # a row the audit clipped (audit.py clip, 100 characters) may hide cells
+        if (isinstance(x.get('cols'), int) and x['cols'] <= hc) or any(len(r.split(' | ')) <= hc for r in rows):
+            refuse.append(f'PDF {x.get("page")}' if x.get('page') else str(it.get('obj')))
+    if refuse:
+        out.append({'id': 'header_cols_refused', 'what': f'{len(refuse)} table{"s" if len(refuse) != 1 else ""} with more header columns '
+                    'than a row has cells, so the executor will refuse the reading: ' + ', '.join(refuse[:8]) + '. Lower the header columns.'})
     return out
 
 # ------------------------------------------------------------------ diff
@@ -1370,11 +1442,17 @@ FIX = {
     'already decided: change it on its card': 'The AI already decided this. Remove this addition and change the AI\'s choice on its card.',
     'the AI marked this figure as decoration: reject that decision first': 'The AI marked this figure as decoration. Reject that choice first, or remove this alt text.',
     'a work order holds at most N section moves: change or reject one on its card first': 'At most {moves} sections can be moved. Change or reject one of the other moves first.',
+    'empty title': 'Type the book\'s title. An empty title is worse than none: screen readers announce nothing for the document.',   # #59
+    'empty spoken text': 'Type what a screen reader should say for this passage, or reject this choice to keep the printed text.',
+    'the first page is after the last': 'The first page comes after the last. Put the lower page number first.',
+    'it lands inside its own pages': 'The section would be read before itself. Choose a page outside its own pages, or reject the move.',
+    'the same order marks this figure as decoration': 'This figure is also marked as decoration. Keep the alt text or the decoration choice, and reject the other.',
 }
 CONFLICT = {'also flattened', 'the same table twice', 'more than N section moves', 'its pages overlap another section move',
             'it lands inside the pages of another section move', 'added twice', 'already decided: change it on its card',
             'the AI marked this figure as decoration: reject that decision first',
-            'a work order holds at most N section moves: change or reject one on its card first'}   # choices that clash, not one bad value
+            'a work order holds at most N section moves: change or reject one on its card first',
+            'the same order marks this figure as decoration'}   # choices that clash, not one bad value
 
 def _key(why): return re.sub(r'(more than|at most) \d+', r'\1 N', str(why))
 
@@ -1441,6 +1519,7 @@ def problems(R, ai_wo, items, decisions, additions, adds, reviewer='', set_in=No
         if why.startswith('more than'): return [m.get('_card') for m in moves if m is not it]
         if why == 'the same table twice': return [t.get('_card') for t in tables if t is not it and t.get('obj') == it.get('obj')]
         if why == 'also flattened': return [f'flatten:{it.get("obj")}']
+        if why == 'the same order marks this figure as decoration': return [f'artifacts.elements:{it.get("obj")}']   # #59
         return []
 
     out = {'fields': [], 'conflicts': [], 'unplaced': []}

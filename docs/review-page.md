@@ -350,6 +350,10 @@ In the Finish dialog and at **Finish**, the work order as it would be applied is
 - **H1:** no element would be an H1, or more than one would. The count combines style mappings and single-element retypes. It is approximate, because the audit lists element counts per style; `review.md` has the exact count after the run.
 - **Figures without alt text** that are not marked as decoration. A figure past the first request's 100 images gets its alt text from a figure request (see [Files](files.md)). What is left are figures whose figure request did not finish, or every figure past 100 with `FIGURE_PASSES=off` (in an earlier test book that was 443 of 543 figures). The alt texts the figure requests wrote are decisions on the page like any other. The line names the pages, not the objects ("90 figures with no alt text and not marked as decoration, on PDF 26, 27, 34, …"); the object numbers stay in the review record and the logs.
 - **Whole-page figures without alt text.**
+- **No document title** once the order is applied: neither the order nor the PDF has one (WCAG 2.4.2). Its **Add** link opens the Document form.
+- **Alt text a reader can't use:** a placeholder ("image", "figure 3", "picture"), a file name ("IMG_2041.jpg"), the caption beside the figure repeated word for word, or more than 300 characters (a longer description belongs in the text or a caption).
+- **Heading levels that skip** (an H2 followed by an H4), in page order, with the order's retypes and style mappings applied. The order within a page is approximate.
+- **Header columns the executor will refuse:** a table with as many header columns as a row has cells, or more, from the audit's first rows and column count.
 
 The line beside **Finish Review** counts the open gaps ("1 gap open"). The Finish dialog lists each gap with an **Add** link that closes the dialog and opens the form at the right kind.
 
@@ -408,7 +412,7 @@ The logic is in `pipeline/review/core.py`, apart from the web layer (`server.py`
   - `parts` names a move's wrong page boxes (`a`, `b`, `before_page`).
   - `/finish` answers `needs: "invalid"` while `fields` or `conflicts` is non-empty; `unplaced` never blocks it.
   - `core.problems` also returns the gaps, so the check runs once per save.
-- **Gaps** (`core.gaps` on the checked order, or `core.preview` for the check and the gaps together): `[{id: h1 | figures_without_alt | page_figures_without_alt, what, add?: {kind, target?}}]`. `core.finish` takes the reasons as `gaps_ack: {id: reason}`.
+- **Gaps** (`core.gaps` on the checked order, or `core.preview` for the check and the gaps together): `[{id: h1 | figures_without_alt | page_figures_without_alt | no_title | weak_alt | heading_skips | header_cols_refused, what, add?: {kind, target?}}]`. `core.finish` takes the reasons as `gaps_ack: {id: reason}`.
 - `review_decisions.json` also holds `saved_at` (the browser's time of the last change, used to pick the newer copy), and `session_name` and `session_notes` when set (`core.session_fields` cleans them and checks the limits).
 - `POST /keep` takes the same body as `/save` and only writes `review_decisions.json`; the page sends it when the name or notes lose focus. The server writes one request at a time, and refuses `/keep` and `/save` once Finish has started.
 - The server answers only to itself: the `Host` must be `localhost` or `127.0.0.1` on its port, and a POST must be `application/json` from the page's own origin. Another web page open in the browser cannot submit a review, and cannot show the review page inside a frame of its own: every response says `X-Frame-Options: DENY` and `frame-ancestors 'none'`.
