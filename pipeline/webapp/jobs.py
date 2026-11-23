@@ -253,23 +253,37 @@ def create(J, kind, run, argv, env, env_set=None, counted=True, then=None, paid=
                'ended': None, 'exit': None, 'pid': None, 'pgid': None, 'log': os.path.basename(log_path(J, jid)), **extra}
         if slots != 1: job['slots'] = int(slots)
         if counted and kind != 'batch':
-            n_pages = book_pages(argv, R)
+            n_pages = book_pages(argv, R, ROOTS or [os.path.realpath(os.path.dirname(os.path.abspath(J)))])
             if n_pages: job['pages'] = n_pages
         save(J, job)
         return job
 
 LONG_PAGES = 1000                   # #167: a single run of a book over this many pages runs alone (the page loader keeps
                                     #   about 0.8 MB a page per step, so three such books at once can outgrow a 16 GB machine)
-def book_pages(argv, R=None):
+ROOTS = []                          # the app's own folders (runs, samples, uploads, jobs), real paths: set_roots() at start
+def set_roots(s):
+    """The folders book_pages may read in: the app's own, from its settings (server.make)."""
+    ROOTS[:] = [os.path.realpath(s[k]) for k in config.FOLDERS if s.get(k)]
+
+def _within(p, roots):
+    """p's real path, when it lies inside one of roots (each a real path); else None. Only such a path is opened here."""
+    p = os.path.realpath(p)
+    return p if any(p == r or p.startswith(r + os.sep) for r in roots) else None
+
+def book_pages(argv, R=None, roots=()):
     """The page count of the first PDF named in argv that exists; when argv names none (an "Apply session N" whose input is a
     copy, review_workorder.py --pin, …), the run folder's own count: its record, its intake, its digest's page map, or its
-    intake PDF (review 04 M5). None when nothing says. Read once, when the job is made."""
+    intake PDF (review 04 M5). None when nothing says. Read once, when the job is made. Only a PDF or run folder inside
+    roots (the app's own folders) is read (CodeQL py/path-injection, report 07 §7)."""
     for a in argv or []:
-        if isinstance(a, str) and a.lower().endswith('.pdf') and os.path.isfile(a):
+        if not (isinstance(a, str) and a.lower().endswith('.pdf')): continue
+        f = _within(a, roots)
+        if f is not None and os.path.isfile(f):
             try:
                 import pikepdf
-                with pikepdf.open(a) as p: return len(p.pages)
+                with pikepdf.open(f) as p: return len(p.pages)
             except Exception: return None
+    R = _within(R, roots) if R else None
     if not R or not os.path.isdir(R): return None
     for f, get in (('record.json', lambda d: (d.get('document') or {}).get('pages')),
                    (os.path.join('_intake', 'intake.json'), lambda d: (d.get('original') or {}).get('pages')),
@@ -279,7 +293,7 @@ def book_pages(argv, R=None):
             if isinstance(n, int) and n > 0: return n
         except Exception: pass
     for f in (os.path.join('_intake', 'intake.pdf'),):
-        if os.path.isfile(os.path.join(R, f)): return book_pages([os.path.join(R, f)])
+        if os.path.isfile(os.path.join(R, f)): return book_pages([os.path.join(R, f)], roots=roots)
     return None
 def long_book(j): return j['kind'] != 'batch' and (j.get('pages') or 0) > LONG_PAGES
 

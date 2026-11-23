@@ -19,7 +19,7 @@ Every pipeline step the app starts runs as a job. This page explains how jobs wa
 - Up to `max_jobs` (3) single runs go at once, oldest first.
 - A batch's estimates have their own `batch_jobs` (10) places, like its paid step, so a batch of ten PDFs is estimated at once while single runs keep their three.
 - A batch runs alone. A queued batch starts only when no counted job runs, and holds every job queued after it until then, so nothing is passed over and nothing waits forever.
-- A single run of a book over 1,000 pages runs alone too, in the same way (#167): each step keeps about 0.8 MB a page in memory, so three such books at once could outgrow a 16 GB machine. The page count is read once, when the job is made: from the PDF the job names, or, when it names none (an "Apply session N" whose input is a copy, say), from the run folder's record, intake or digest.
+- A single run of a book over 1,000 pages runs alone too, in the same way (#167): each step keeps about 0.8 MB a page in memory, so three such books at once could outgrow a 16 GB machine. The page count is read once, when the job is made: from the PDF the job names, or, when it names none (an "Apply session N" whose input is a copy, say), from the run folder's record, intake or digest. Only a PDF or run folder inside the app's own folders (runs, samples, uploads, jobs) is read for it.
 
 Others wait in line, under "Runs in Progress" as "Waiting to Start". Each card says what it waits for: "it starts when the batch "Spring backlist" ends", or its place in line. One accepted exception: "Review Again"'s apply runs inside its own review process after "Finish Review", so it is never queued and can run beside a batch.
 

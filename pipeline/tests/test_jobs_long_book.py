@@ -21,6 +21,7 @@ def setup(tmp_path, monkeypatch):
         job.update(status='running', started=jobs.now(), pid=1, pgid=1); jobs.save(J_, job); started.append(job['run'])
     monkeypatch.setattr(jobs, '_start', fake_start)
     monkeypatch.setattr(jobs, 'group_alive', lambda J_, j: True)
+    monkeypatch.setattr(jobs, 'ROOTS', [])          # a server made by another test registers its own folders: not these
     return J, started
 
 
@@ -61,3 +62,17 @@ def test_a_job_naming_no_pdf_takes_its_page_count_from_the_run_folder(tmp_path, 
     (R / 'record.json').write_text(json.dumps({'document': {'pages': jobs.LONG_PAGES + 300}}))
     j = jobs.create(J, 'apply', 'big/x', ['python3', 'review_workorder.py', str(R), '--apply'], {}, R=str(R))
     assert j['pages'] == jobs.LONG_PAGES + 300 and jobs.long_book(j)
+
+
+def test_book_pages_reads_only_inside_the_apps_folders(tmp_path):
+    """Report 07 §7 (CodeQL py/path-injection): a PDF or run folder outside the app's own folders is never opened."""
+    inside, outside = tmp_path / 'in', tmp_path / 'out'; inside.mkdir(); outside.mkdir()
+    a, b = pdf(inside / 'a.pdf', 4), pdf(outside / 'b.pdf', 5)
+    roots = [os.path.realpath(str(inside))]
+    assert jobs.book_pages(['x', a], roots=roots) == 4 and jobs.book_pages(['x', b], roots=roots) is None
+    R = outside / 'run'; R.mkdir(); (R / 'record.json').write_text(json.dumps({'document': {'pages': 9}}))
+    assert jobs.book_pages([], str(R), roots=roots) is None and jobs.book_pages([], str(R), roots=[os.path.realpath(str(outside))]) == 9
+    s = {'runs': str(inside), 'samples': str(inside), 'uploads': str(inside), 'jobs': str(inside)}
+    jobs.set_roots(s)
+    try: assert jobs.ROOTS == roots * 4
+    finally: jobs.ROOTS.clear()
