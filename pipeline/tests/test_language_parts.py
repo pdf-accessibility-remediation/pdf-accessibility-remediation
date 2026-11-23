@@ -99,6 +99,44 @@ def test_a_page_that_fails_keeps_its_content_and_its_tree(tmp_path):
     assert v['pixel_pages_differing'] == [] and v['text_pages_changed'] == []
     P = pikepdf.open(out); els = P.Root.StructTreeRoot.K[0].K
     assert [e.K if not isinstance(e.K, pikepdf.Array) else [int(k) for k in e.K] for e in els] in ([0, 1], [[0], [1]])
+    # review 09 §2: a whole-run place and a split on the failing page. The whole run's Span is written (tag_run, before the
+    # late pass) and its marks lose their /Lang, so the tag holds; the split is refused and counted; verify matches all.
+    runs2 = [{'text': 'velunka', 'lang': 'en-US'}, {'text': 'The city of Heiankyo was the capital.', 'lang': 'en-US'},
+             {'text': 'Plain English text stays as it is.', 'lang': 'en-US'}]
+    src2 = langpdf.build(str(tmp_path / 'src2.pdf'), runs2)
+    wo.write_text(json.dumps({'language_parts': {'parts': [part(1, 0, 0, 6, 'haw'), part(1, 1, 12, 19, 'ja-Latn')]}}))
+    out2 = str(tmp_path / 'out2.pdf')
+    r = subprocess.run([sys.executable, os.path.join(PIPE, 'apply.py'), src2, str(wo), out2], env=dict(os.environ, VERAPDF='off', APPLY_FAIL_LANG_PAGE='1'),
+                       capture_output=True, text=True, cwd=PIPE)
+    assert r.returncode == 0, r.stderr[-2000:]
+    run('verify.py', src2, out2)
+    lp, v = json.load(open(out2 + '.log.json'))['language_parts'], json.load(open(out2 + '.verify.json'))
+    assert [(x['mcid'], x['lang'], x['whole']) for x in lp['spans']] == [(0, 'haw', True)]
+    assert lp['refused'] == {'the page could not be planned': 1}, lp['refused']
+    m = marks(out2)
+    assert '/Lang' not in m[0] and str(m[1]['/Lang']) == 'en-US' and len(m) == 3        # the whole run's tag holds; no split written
+    assert v['language']['all_match'] and v['index']['dangling'] == 0 and v['pixel_pages_differing'] == [] and v['text_pages_changed'] == []
+
+def test_a_page_that_still_looks_different_takes_its_whole_run_tags_back(tmp_path):
+    """review 09, L3: when even the marks-only page looks different (a test hook), the page keeps its original content, and
+    tag_run's whole-run Span on it is taken back out of the tree and listed as refused: no tag left over marks that say
+    otherwise."""
+    runs = [{'text': 'velunka', 'lang': 'en-US'}, {'text': 'The city of Heiankyo was the capital.', 'lang': 'en-US'}]
+    src = langpdf.build(str(tmp_path / 'src.pdf'), runs)
+    wo = tmp_path / 'wo.json'; wo.write_text(json.dumps({'language_parts': {'parts': [part(1, 0, 0, 6, 'haw'), part(1, 1, 12, 19, 'ja-Latn')]}}))
+    out = str(tmp_path / 'out.pdf')
+    r = subprocess.run([sys.executable, os.path.join(PIPE, 'apply.py'), src, str(wo), out], env=dict(os.environ, VERAPDF='off', APPLY_TEST_PIXEL_FAIL_PAGE='1'),
+                       capture_output=True, text=True, cwd=PIPE)
+    assert r.returncode == 0, r.stderr[-2000:]
+    run('verify.py', src, out)
+    lp, v = json.load(open(out + '.log.json'))['language_parts'], json.load(open(out + '.verify.json'))
+    assert lp['spans'] == [] and lp['whole'] == 0 and lp['restored_pages'] == [1]
+    assert sum(lp['refused'].values()) == 2 and set(lp['refused']) == {'the page would look different'}, lp['refused']
+    m = marks(out)
+    assert str(m[0]['/Lang']) == 'en-US' and str(m[1]['/Lang']) == 'en-US'
+    P = pikepdf.open(out); els = P.Root.StructTreeRoot.K[0].K
+    assert [e.K if not isinstance(e.K, pikepdf.Array) else [int(k) for k in e.K] for e in els] in ([0, 1], [[0], [1]])
+    assert v['language']['all_match'] and v['index']['dangling'] == 0
 
 def test_a_persons_decision_wins_over_an_explicit_run(tmp_path):
     """review 08, L2: a v10 work order's explicit run (language.runs) does not tag a run whose form a person decided to leave
@@ -236,7 +274,7 @@ def test_cjk_rule_never_tags_a_form_run_under_a_page_runs_number(tmp_path):
     wo = tmp_path / 'wo.json'; wo.write_text(json.dumps({'language': {'runs': [{'page': 1, 'mcid': 0, 'lang': 'ja'}]}}))
     out = str(tmp_path / 'out.pdf'); run('apply.py', src2, wo, out)
     log = json.load(open(out + '.log.json'))
-    assert log['language_parts']['spans'] == [] and log['language_parts']['refused'] == {'characters do not line up with the run': 1}
+    assert log['language_parts']['spans'] == [] and log['language_parts']['refused'] == {'the characters do not line up with the text': 1}
     assert str(marks(out)[0]['/Lang']) == 'en-US'
     res = pikepdf.open(out)
     assert not any(str(k.get('/S')) == '/Span' for k in res.Root.StructTreeRoot.K[0].K)
@@ -298,7 +336,7 @@ def test_a_path_inside_the_run_does_not_open_the_form_mcid_guard(tmp_path):
     wo = tmp_path / 'wo.json'; wo.write_text(json.dumps({'language': {'runs': [{'page': 1, 'mcid': 0, 'lang': 'ja'}]}}))
     out = str(tmp_path / 'out.pdf'); run('apply.py', src2, wo, out)
     log = json.load(open(out + '.log.json'))
-    assert log['language_parts']['spans'] == [] and log['language_parts']['refused'] == {'characters do not line up with the run': 1}
+    assert log['language_parts']['spans'] == [] and log['language_parts']['refused'] == {'the characters do not line up with the text': 1}
 
 def test_a_run_whose_entry_moved_keeps_the_page_whole(tmp_path, monkeypatch):
     """review 06, M6: when a run's tag entry can't be found at the late pass, its page keeps its content (only the marks
@@ -307,7 +345,7 @@ def test_a_run_whose_entry_moved_keeps_the_page_whole(tmp_path, monkeypatch):
     runs = [{'lang': 'en-US', 'text': 'The city of Heiankyo was the capital.'}]
     src, out, log, v = apply_verify(tmp_path, runs, [part(1, 0, 12, 19, 'ja-Latn')])
     lp = log['language_parts']
-    assert lp['split'] == 0 and lp['refused'] == {"the run's tag entry moved before the split was written": 1}
+    assert lp['split'] == 0 and lp['refused'] == {"the text's tag entry moved before the split was written": 1}
     assert v['pixel_pages_differing'] == [] and v['text_pages_changed'] == [] and v['index']['dangling'] == 0
     assert not any(f['op'].startswith('fix_language_parts') for f in log['failed'])
 
@@ -442,3 +480,19 @@ def test_the_new_language_tags_are_written_and_checked(tmp_path):
     assert not lp['refused'] and sorted(s['lang'] for s in lp['spans']) == ['ban', 'bcl', 'jv-Latn'], lp
     assert lg['spans_written'] == 3 and lg['all_match'], lg
     assert [langtag.name(t) for t in ('bcl', 'ban', 'jv-Latn')] == ['Central Bikol', 'Balinese', 'Javanese (Latin script)']
+
+def test_a_one_byte_curly_quote_before_the_split_counts_as_one_character(tmp_path):
+    """Review 19 §5 (cadaverous PDF 260): a single-byte font whose code 0x93 draws one glyph that reads as one character
+    ("“", WinAnsi), before the split points. The code count matches the characters (split_run's expect_n accepted), both
+    places are tagged, and verify matches them. (PDF 260's two refusals came from pdfium placing one glyph on another
+    sub-pixel once a Tj is cut into several, at verify's scale: not from the count, and not testable with a stock font.)"""
+    runs = [{'body': ['(Yamamoto, \\223Kokawadera engi emaki\\224 to ky\\363setsu, 480.) Tj']}]
+    text = 'Yamamoto, “Kokawadera engi emaki” to kyósetsu, 480.'
+    a, b = text.index('engi emaki'), text.index('kyósetsu')
+    parts = [part(1, 0, a, a + len('engi emaki') - 1, 'ja-Latn'), part(1, 0, b, b + len('kyósetsu') - 1, 'ja-Latn')]
+    src, out, log, v = apply_verify(tmp_path, runs, parts)
+    lp = log['language_parts']
+    assert lp['split'] == 2 and not lp['refused'], lp
+    assert sorted(s['text'] for s in lp['spans']) == ['engi emaki', 'kyósetsu']
+    assert v['language']['all_match'] and v['language']['spans_written'] == 2
+    assert v['pixel_pages_differing'] == [] and v['text_pages_changed'] == []

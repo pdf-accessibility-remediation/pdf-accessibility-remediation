@@ -234,3 +234,17 @@ def test_a_persons_change_to_an_ai_alt_is_marked(tmp_path):
     for v in ('A map of the island ', ' A map  of the\nisland'):          # review 11 L3: white space only: still the AI's text
         assert 'changed_by' not in core.apply_decisions(ai, items, {'alt:20 0': {'status': 'changed', 'value': v}})['alt'][0], v
     assert core.apply_decisions(ai, items, {'alt:20 0': {'status': 'changed', 'value': 'A map of the islands'}})['alt'][0]['changed_by'] == 'person'
+
+def test_a_publishers_tag_carried_in_the_marks_is_never_reported_left_out(tmp_path):
+    """review 17 §4: lib/langreq.to_rows writes `carried` on a publisher's-tag form (where its /Lang sits: marks, element
+    or mixed). The check knows the key, so it drops nothing for it, and the review page's "Finish Review" dialog lists no
+    "left out" entry for it (problems' unplaced: unknown keys had no card to land on)."""
+    forms = [{'key': 'existing|Merci|fr', 'form': 'Merci', 'group': 'existing', 'class': ['existing'], 'lang': None,
+              'confidence': None, 'why': None, 'current': 'fr', 'carried': 'marks', 'tag': False, 'places': 1},
+             {'key': 'existing|Aloha|haw', 'form': 'Aloha', 'group': 'existing', 'class': ['existing'], 'lang': None,
+              'confidence': None, 'why': None, 'current': 'haw', 'carried': 'mixed', 'tag': False, 'places': 1}]
+    lp = {'version': 2, 'forms': forms, 'parts': [[4, 7, 0, 4, 0], [5, 9, 0, 4, 1]]}
+    assert workorder_check.check_language_parts({'language_parts': json.loads(json.dumps(lp))}, 80) == []
+    p = probs(tmp_path, {}, ai=dict(ai_order(), language_parts=lp))
+    assert not [x for x in p['unplaced'] if 'unknown keys' in str(x.get('why'))], p['unplaced']
+    assert not [x for x in p['fields'] if 'unknown keys' in str(x.get('why'))]

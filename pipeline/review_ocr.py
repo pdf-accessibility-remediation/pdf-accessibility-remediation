@@ -2,6 +2,7 @@
 
     python3 review_ocr.py <book_run_dir> --verdict approved|"not approved"|"sent to a language reader" --reviewer NAME
                           [--reason TEXT] [--pages 381-386] [--reads LANGUAGE] [--to WHO] [--date YYYY-MM-DD]
+                          [--cjk-drafts 4,9]
     python3 review_ocr.py <book_run_dir> --serve [--port 8765] [--no-browser] [--return-to URL] [--pdf ORIGINAL]
 
 <book_run_dir> is a run with _intake/ (a finished run: the folder with review.md, record.json and _intake/). The verdict
@@ -14,6 +15,9 @@ review.history. FROM= reruns carry the verdict with the intake they reuse; a fre
 - --reason is needed for approved and not approved; for "sent to a language reader" it is optional, and --to names who.
 - Pages in a non-Latin script (CJK, kana, Hangul, or OCR_LANG naming such a language): "approved" needs --reads, the
   language the reviewer reads (the review page's "I read" box). Refused without it.
+- --cjk-drafts (#119): the CJK draft pages (an AI reading that matched too few of the OCR's lines, listed on the page
+  and in review.md as "CJK OCR: needs a person") whose reading the reviewer checked against the scan. Only with
+  "approved" and --reads. The next re-apply (Finish on the review page) attaches them as spoken text.
 - One line each, within limits, no "|" and no "](" (they would break review.md's table or become a link in review.html);
   --pages as 381-386 or 5, 9-12, within the book.
 - A finished run: refused while its review page is open or an apply runs (reviews/.lock).
@@ -80,6 +84,7 @@ def main():
     ap.add_argument('--date', help='with --verdict (default today); refused with --serve, where a verdict is dated the day it is recorded')
     ap.add_argument('--pages')
     ap.add_argument('--reads', action='append', metavar='LANGUAGE', help='the language the reviewer reads (needed to approve non-Latin pages)')
+    ap.add_argument('--cjk-drafts', metavar='PAGES', help='with approved and --reads: the CJK draft pages whose AI reading was checked (#119)')
     ap.add_argument('--to', metavar='WHO', help='with "sent to a language reader": who or which team')
     ap.add_argument('--serve', action='store_true', help='the OCR-only review page (no work-order session)')
     ap.add_argument('--port', type=int, default=8765); ap.add_argument('--no-browser', action='store_true')
@@ -95,7 +100,8 @@ def main():
             except ValueError as e: sys.exit(f'--return-to: {e}')
         return serve(R, a)
     if not a.verdict or not a.reviewer: sys.exit('give --verdict and --reviewer (or --serve for the page)')
-    fields = {'verdict': a.verdict, 'reviewer': a.reviewer, 'reason': a.reason, 'pages': a.pages, 'reads': a.reads or [], 'to': a.to}
+    fields = {'verdict': a.verdict, 'reviewer': a.reviewer, 'reason': a.reason, 'pages': a.pages, 'reads': a.reads or [], 'to': a.to,
+              'cjk_drafts': a.cjk_drafts or []}
     try: v, _ = O.record(R, fields, via='review_ocr.py', date=a.date)
     except ValueError as e: sys.exit(str(e))
     except S.Refused as e: sys.exit(f'refused: {e}')

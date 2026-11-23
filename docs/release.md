@@ -27,6 +27,7 @@ The status follows the requirements in ["Ready to ship?"](evaluation.md#ready-to
 - **"· N issues noted"** follows any status whose version has Fails in its evaluation: "Pending Evaluation · 1 issue noted", "Ready · 2 issues noted", "Shipped · 2 issues noted". After a shipment they are the shipped file's.
 - **A Shipped PDF** has Ready's green border on the card. summary.html counts the two apart: "Ready: N · Shipped: M · Pending Evaluation: P".
 - **Withdrawal:** the status falls back to the latest shipment not withdrawn; with none, the statuses before shipping apply.
+- **Words not tagged** (#161): words the language finder could not place under one language tag never block the status. Their count is in the "Language Tags" line's details ("Approved (… · 12 words not tagged)"), and a book with nothing to decide but such words reads "Language Tags: Not Applicable (no word forms to decide · 12 words not tagged)" (see [Language tags](languages.md#words-not-tagged)).
 - **Where the status is shown:** review.md's Overview (`**Status:** …` above "**Ready to ship?**"), review.html's card, summary.html's Status column, and the evaluation page ("Overall Status") and the strip.
 
 **After a shipment, a second line** says what comes next:

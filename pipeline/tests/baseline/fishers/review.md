@@ -2,13 +2,13 @@
 
 Result: `fishers_remediated.pdf`
 
-285 pages · run November 15, 2026, at 10:03 PM · model `anthropic/claude-sonnet-5.5` · prompt `workorder_v12.md` (762395b72330c407) · AI cost $0.220 ($0.0008 per page), from the original AI request on November 15, 2026 · this run: no new AI request · tokens: saved reply reused, not counted
+285 pages · run November 19, 2026, at 7:18 PM · model `anthropic/claude-sonnet-5.5` · prompt `workorder_v12.md` (762395b72330c407) · AI cost $0.220 ($0.0008 per page), from the original AI request on November 15, 2026 · this run: no new AI request · tokens: saved reply reused, not counted
 
 Intake: none (already tagged)
 
 Libraries: python 3.13.9 · pikepdf 10.5.1 · pdfplumber 0.11.9 · pypdfium2 5.7.1 · pillow 13.0.0 · fonttools 4.62.1
 
-Time: intake 1.5s · audit 52.5s · reuse saved reply 1.5s · apply 140.1s · verify 40.6s · total 236.2s
+Time: intake 2.3s · audit 90.4s · reuse saved reply 1.6s · apply 148.6s · verify 56.9s · total 299.8s
 
 ## Overview
 
@@ -20,7 +20,7 @@ Time: intake 1.5s · audit 52.5s · reuse saved reply 1.5s · apply 140.1s · ve
 - Work Order Approval: Not Approved (applied without a review)
 - ✓ OCR Text Approval: Not Applicable
 - ✓ Safety Checks: Passed
-- Language Tags: Not Done (the language step was not run)
+- Language Tags: Not Done (the language step was not run · 1 word not tagged)
 - Accessibility Evaluation: Not Completed
 
 **Safety checks:** OK ✔ pages look the same · OK ✔ text unchanged · OK ✔ all content tagged or decoration · OK ✔ tag-tree index points into the tree · OK ✔ every font readable  
@@ -347,6 +347,13 @@ Reviewer note from the AI: Headings were retyped one element at a time because t
 ### 16. Deferred by the Executor
 
 - link on a page with no tagged text (PDF 21 (printed xx)): tied to tagged text on PDF 20 (printed xix)
+
+### 17. Language Tags
+
+Words and passages in another language get a language tag, so a screen reader switches to that language's voice (WCAG 3.1.2). Tags from the language step are decided by a person; kana and Hangul are tagged by a fixed rule.
+
+**Words not tagged (1):** each is printed as one word, but the PDF stores its letters in separate places, so no language tag can cover it. They may be in another language; the list gives their pages.
+"Huỳnh" (PDF 200 (printed 175))
 
 ## What Was Changed
 

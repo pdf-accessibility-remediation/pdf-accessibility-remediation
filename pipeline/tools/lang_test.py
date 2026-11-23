@@ -5,6 +5,14 @@ and their keys, writes the requests exactly as lib/langreq.py builds them, estim
     python3 tools/lang_test.py build OUT_DIR BOOK=PDF …       items.json, requests/, estimate.md (free, no network
                                                               except OpenRouter's public model list for prices)
     python3 tools/lang_test.py send OUT_DIR --model ID --run N --set tune|score|nokey|book [--cap USD]   (paid)
+        [--prompt FILE] [--requests DIR] [--ledger FILE] [--max-tokens N] [--reasoning-effort low] [--no-reasoning] [--only 3,7]
+    python3 tools/lang_test.py probe OUT_DIR --model ID [--cap USD] [--ledger FILE]   (paid, under a cent: a made-up word,
+                                                              no book text, data_collection deny; a refusal skips the model)
+
+#142 (scoring a new model): any model on OpenRouter's live list is accepted. --max-tokens is the one figure both the
+request and the cap check use (reasoning models need room above the allowance). A reply with no cost is counted at its
+worst case, never $0. Every call's provider, reasoning setting, seconds and finish reason go into the ledger. Score with
+tools/lang_exp.py OUT_DIR NAME=MODEL/SET. The how-to is in docs/languages.md ("Scoring another model").
 
 Items (each a form with one place and its context), keys kept apart (never pooled; scored by tools/lang_score.py):
   ga_raw / ga_corrected   globalasias's 42 publisher tags, raw and with review 02 H3's corrections
@@ -52,7 +60,8 @@ def candidates(name, pdf, cache):
     f = os.path.join(cache, f'{name}.json')
     if os.path.exists(f):
         r = json.load(open(f, encoding='utf-8')); r['language'] = DOC_LANG.get(name) or 'en'; return r
-    r = langcands.book(plpages.Pages(pdf), doc_lang=DOC_LANG.get(name)); r['title'] = ''
+    import pikepdf
+    with pikepdf.open(pdf) as pdf_: r = langcands.book(plpages.Pages(pdf), doc_lang=DOC_LANG.get(name), pdf=pdf_); r['title'] = ''
     import pikepdf
     with pikepdf.open(pdf) as p: r['title'] = str(p.docinfo.get('/Title', '')).strip()
     r['language'] = DOC_LANG.get(name) or 'en'      # every other sample's body is English (intake may set /Lang from the OCR language: ryukyu ja, vietnamese vi)
@@ -213,12 +222,14 @@ def prices():
     """Live prices from OpenRouter's public model list (no key, no book text): {model: (in, out) $ per token}."""
     try:
         with urllib.request.urlopen('https://openrouter.ai/api/v1/models', timeout=30) as r: data = json.load(r)['data']
-        SUPPORTED.update({m['id']: m.get('supported_parameters') for m in data if m['id'] in MODELS})
-        return {m['id']: (float(m['pricing']['prompt']), float(m['pricing']['completion'])) for m in data if m['id'] in MODELS}, 'live'
+        SUPPORTED.update({m['id']: m.get('supported_parameters') for m in data})       # any model on the list (#142): a new one needs no new code
+        return {m['id']: (float(m['pricing']['prompt']), float(m['pricing']['completion'])) for m in data
+                if isinstance(m.get('pricing'), dict) and m['pricing'].get('prompt') not in (None, '') and m['pricing'].get('completion') not in (None, '')}, 'live'
     except Exception as e:
         return {'anthropic/claude-sonnet-5.5': (2e-6, 10e-6), 'anthropic/claude-opus-5.5': (4e-6, 20e-6), 'anthropic/claude-haiku-5.5': (1e-7, 5e-7)}, f'ASSUMED ({type(e).__name__})'
 
 NO_REASONING = False       # send --no-reasoning
+REASONING_EFFORT = None    # send --reasoning-effort (#142)
 SUPPORTED = {}             # model -> supported_parameters, from the same public list
 OUT_PER_ITEM = 75          # tokens per decision: {"id":"…","lang":"ja-Latn","confidence":"high","why":"language"}, + a note now and then
 
@@ -266,7 +277,8 @@ def build_v2(out_dir, books):
         f = os.path.join(cache, f'{name}.json')
         if os.path.exists(f): cand = json.load(open(f, encoding='utf-8'))
         else:
-            cand = langcands.book(plpages.Pages(pdf), doc_lang=DOC_LANG.get(name), grow=True)
+            import pikepdf
+            with pikepdf.open(pdf) as pdf_: cand = langcands.book(plpages.Pages(pdf), doc_lang=DOC_LANG.get(name), grow=True, pdf=pdf_)
             json.dump(cand, open(f, 'w', encoding='utf-8'), ensure_ascii=False)
         v1 = candidates(name, pdf, os.path.join(out_dir, 'cand'))
         meta = {'title': v1.get('title') or name, 'language': DOC_LANG.get(name) or 'en'}
@@ -487,53 +499,127 @@ def exp_requests_books(out_dir, variant, books, per, ctx=None):
     return reqs
 
 # ---- sending (paid; only on Patrick's OK)
-def send(out_dir, model, run, which, cap, prompt_file=None, req_dir='requests', ledger_name='spend.json'):
-    key = None
+def api_key():
     for d in [PIPE, os.path.dirname(PIPE)]:
         f = os.path.join(d, '.env')
         if os.path.exists(f):
             for line in open(f):
-                if line.startswith('OPENROUTER_API_KEY='): key = line.split('=', 1)[1].strip().strip('"\'')
-    if not key: sys.exit('no OPENROUTER_API_KEY in .env')
+                if line.startswith('OPENROUTER_API_KEY='): return line.split('=', 1)[1].strip().strip('"\'')
+    sys.exit('no OPENROUTER_API_KEY in .env')
+
+def _ledger(out_dir, ledger_name, cap):
+    f = os.path.join(out_dir, ledger_name)
+    return f, (json.load(open(f)) if os.path.exists(f) else {'cap': cap, 'calls': []})
+
+def _counted(c):
+    """A call's charge as the cap counts it (review 04 M2): its reported cost, else its worst case (e1), never $0."""
+    return c['cost'] if isinstance(c.get('cost'), (int, float)) else (c.get('worst') or 0)
+
+def _extras(b):
+    if NO_REASONING: b['reasoning'] = {'enabled': False}     # Haiku 5.5 reasons by default, and its reasoning filled max_tokens
+    elif REASONING_EFFORT: b['reasoning'] = {'effort': REASONING_EFFORT}   # #142: chosen once per model and recorded
+    return b
+
+def _post(key, b):
+    req = urllib.request.Request('https://openrouter.ai/api/v1/chat/completions', data=json.dumps(b).encode(),
+                                 headers={'Authorization': f'Bearer {key}', 'Content-Type': 'application/json'})
+    try:
+        with urllib.request.urlopen(req, timeout=600) as resp: return json.load(resp), None
+    except urllib.error.HTTPError as e:
+        try: body = e.read().decode('utf-8', 'replace')[:2000]
+        except Exception: body = ''
+        return None, f'HTTP {e.code}: {body}'
+
+def send(out_dir, model, run, which, cap, prompt_file=None, req_dir='requests', ledger_name='spend.json', max_tokens=None, only=None):
+    """Sends one request set for one model and run, one request at a time. Before each request, spent + its worst case
+    (e1) must stay within the ledger's cap. A reply with no cost is counted at its e1 (review 04 M2), and the summary
+    says how many were. max_tokens (#142): one figure for every request, read by the body and by e1 alike (never below
+    the request's allowance). only: request numbers to send again (a model that cut replies off, without reasoning)."""
+    key = api_key()
     prompt = open(prompt_file or PROMPT, encoding='utf-8').read()
     reqs = json.load(open(os.path.join(out_dir, req_dir, f'{which}.json'), encoding='utf-8'))
-    ledger_f = os.path.join(out_dir, ledger_name)
-    ledger = json.load(open(ledger_f)) if os.path.exists(ledger_f) else {'cap': cap, 'calls': []}
-    spent = sum(c.get('cost') or 0 for c in ledger['calls'])
+    ledger_f, ledger = _ledger(out_dir, ledger_name, cap)
+    spent = sum(_counted(c) for c in ledger['calls'])
     pr, how = prices()
-    if how != 'live' or SUPPORTED.get(model) is None: sys.exit(f'refused: OpenRouter\'s model list not read ({how}), so the request\'s parameters cannot be checked')
+    if how != 'live' or SUPPORTED.get(model) is None or model not in pr: sys.exit(f'refused: {model} is not on OpenRouter\'s model list ({how}), so the request\'s parameters cannot be checked')
     pi, po = pr[model]
-    worst = sum(langreq.size(r['request'], prompt) * pi + (costs.allowance('language', len(r['request']['items']))) * po for r in reqs)
+    def mt_of(r):
+        a = costs.allowance('language', len(r['request']['items']))
+        return max(a, max_tokens) if max_tokens else a
+    worst = sum(langreq.size(r['request'], prompt) * pi + mt_of(r) * po for n, r in enumerate(reqs, 1) if not only or n in only)
     if spent + worst > cap: print(f'note: ${spent:.2f} spent + ${worst:.2f} worst case for the whole set passes the ${cap:.2f} cap: each request is checked, and the set stops before one could pass it')
     od = os.path.join(out_dir, 'replies', model.split('/')[-1], f'run{run}', which); os.makedirs(od, exist_ok=True)
-    print(f'{which} on {model}, run {run}: {len(reqs)} requests, worst case ${worst:.2f}; ${spent:.2f} spent of the ${cap:.2f} cap so far')
+    print(f'{which} on {model}, run {run}: {len(reqs)} requests, worst case ${worst:.2f}; ${spent:.2f} spent of the ${cap:.2f} cap so far'
+          + (f'; reasoning {"off" if NO_REASONING else REASONING_EFFORT or "the model default"}; max_tokens {max_tokens or "the allowance"}'))
+    no_cost = 0
     for n, r in enumerate(reqs, 1):
-        mt = costs.allowance('language', len(r['request']['items']))
+        if only and n not in only: continue
+        mt = mt_of(r)
         e1 = langreq.size(r['request'], prompt) * pi + mt * po
-        spent_now = sum(c.get('cost') or 0 for c in ledger['calls'])
+        spent_now = sum(_counted(c) for c in ledger['calls'])
         if spent_now + e1 > cap: sys.exit(f'stopped before request {n}: ${spent_now:.2f} spent + ${e1:.2f} worst case would pass the ${cap:.2f} cap')
         print(f'  request {n}/{len(reqs)}: {len(r["request"]["items"])} items, estimate up to ${e1:.3f} … ', end='', flush=True)
-        b = langreq.body(r['request'], model, prompt, mt, SUPPORTED.get(model)); b['usage'] = {'include': True}
-        if NO_REASONING: b['reasoning'] = {'enabled': False}     # Haiku 5.5 reasons by default, and its reasoning filled max_tokens
+        b = _extras(langreq.body(r['request'], model, prompt, mt, SUPPORTED.get(model))); b['usage'] = {'include': True}
         json.dump(b, open(os.path.join(od, f'{n:03d}.request.json'), 'w', encoding='utf-8'), ensure_ascii=False)
-        req = urllib.request.Request('https://openrouter.ai/api/v1/chat/completions', data=json.dumps(b).encode(),
-                                     headers={'Authorization': f'Bearer {key}', 'Content-Type': 'application/json'})
-        with urllib.request.urlopen(req, timeout=600) as resp: rep = json.load(resp)
-        json.dump(rep, open(os.path.join(od, f'{n:03d}.reply.json'), 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
-        cost = (rep.get('usage') or {}).get('cost')
-        ledger['calls'].append({'model': model, 'run': run, 'set': which, 'n': n, 'cost': cost, 'cap': cap, 'at': time.strftime('%Y-%m-%dT%H:%M:%S')})   # the cap this send used (review 19, Note 2)
+        t0 = time.time(); rep, err = _post(key, b); secs = round(time.time() - t0, 1)
+        if rep is not None: json.dump(rep, open(os.path.join(od, f'{n:03d}.reply.json'), 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
+        cost = ((rep or {}).get('usage') or {}).get('cost')
+        if not isinstance(cost, (int, float)): no_cost += 1
+        ledger['calls'].append({'model': model, 'run': run, 'set': which, 'n': n, 'cost': cost, 'worst': round(e1, 6), 'cap': cap,
+                                'provider': (rep or {}).get('provider'), 'seconds': secs, 'max_tokens': mt,
+                                'reasoning': b.get('reasoning'), 'finish': (((rep or {}).get('choices') or [{}])[0] or {}).get('finish_reason'),
+                                'error': err, 'at': time.strftime('%Y-%m-%dT%H:%M:%S')})   # the cap this send used (review 19, Note 2)
         json.dump(ledger, open(ledger_f, 'w'), indent=1)
-        print(f'${cost:.4f}' if isinstance(cost, (int, float)) else 'cost not given')
+        print(f'${cost:.4f}' if isinstance(cost, (int, float)) else (f'error: {err[:120]}' if err else 'cost not given: counted at its worst case'))
+    mine = [c for c in ledger['calls'] if c['model'] == model and c['run'] == run and c['set'] == which]
+    print(f'done: {len(mine)} calls, ${sum(_counted(c) for c in mine):.4f} counted, {no_cost} with no cost given (counted at their worst case), '
+          f'{sum(1 for c in mine if c.get("finish") == "length")} cut off; ledger total ${sum(_counted(c) for c in ledger["calls"]):.4f} of ${ledger["cap"]:.2f}')
+
+PROBE_REQUEST = {'book': {'title': 'A made-up probe', 'language': 'en'},
+                 'snippets': [{'s': 1, 'text': 'The made-up word [[p1|velunkarai]] stands in this made-up sentence.'}],
+                 'items': [{'id': 'p1', 'form': 'velunkarai', 'class': ['unknown'], 'italic': False, 'places': 1, 's': [1]}]}
+
+def probe(out_dir, model, cap, prompt_file=None, ledger_name='spend.json'):
+    """#142: one request with a made-up word and no book text, under provider data_collection deny (langreq.body). A
+    refusal (no provider serves the model under that setting) means the model is not tested. Into the same ledger."""
+    key = api_key()
+    prompt = open(prompt_file or PROMPT, encoding='utf-8').read()
+    ledger_f, ledger = _ledger(out_dir, ledger_name, cap)
+    pr, how = prices()
+    if how != 'live' or model not in pr: sys.exit(f'refused: {model} is not on OpenRouter\'s model list ({how})')
+    mt = 1500
+    e1 = langreq.size(PROBE_REQUEST, prompt) * pr[model][0] + mt * pr[model][1]
+    spent = sum(_counted(c) for c in ledger['calls'])
+    if spent + e1 > cap: sys.exit(f'stopped: ${spent:.2f} spent + ${e1:.3f} worst case would pass the ${cap:.2f} cap')
+    b = _extras(langreq.body(PROBE_REQUEST, model, prompt, mt, SUPPORTED.get(model))); b['usage'] = {'include': True}
+    if b['provider'].get('data_collection') != 'deny': sys.exit('refused: the request does not carry data_collection deny')
+    od = os.path.join(out_dir, 'probes'); os.makedirs(od, exist_ok=True)
+    rep, err = _post(key, b)
+    name = model.split('/')[-1]
+    json.dump({'request': b, 'reply': rep, 'error': err}, open(os.path.join(od, f'{name}.json'), 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
+    cost = ((rep or {}).get('usage') or {}).get('cost')
+    ledger['calls'].append({'model': model, 'run': 0, 'set': 'probe', 'n': 1, 'cost': cost, 'worst': round(e1, 6), 'cap': cap,
+                            'provider': (rep or {}).get('provider'), 'error': err, 'reasoning': b.get('reasoning'), 'at': time.strftime('%Y-%m-%dT%H:%M:%S')})
+    json.dump(ledger, open(ledger_f, 'w'), indent=1)
+    if rep is None: print(f'{model}: REFUSED or failed ({err[:300]}): not tested'); return False
+    dec, _ = langreq.parse(((rep.get('choices') or [{}])[0].get('message') or {}).get('content') or '', {'p1'}, forms={'p1': 'velunkarai'})
+    print(f'{model}: served by {rep.get("provider")} under data_collection deny; cost {cost}; answer read: {bool(dec)}')
+    return True
 
 if __name__ == '__main__':
     ap = argparse.ArgumentParser()
-    ap.add_argument('cmd', choices=['build', 'build-v2', 'send']); ap.add_argument('out_dir'); ap.add_argument('books', nargs='*')
+    ap.add_argument('cmd', choices=['build', 'build-v2', 'send', 'probe']); ap.add_argument('out_dir'); ap.add_argument('books', nargs='*')
     ap.add_argument('--model'); ap.add_argument('--run', type=int, default=1); ap.add_argument('--set', default='tune'); ap.add_argument('--cap', type=float, default=10.0)
     ap.add_argument('--prompt', default=None, help='a prompt file instead of language_v1.md (the paid check: language_v2.md)')
     ap.add_argument('--requests', default='requests', help='the folder of request sets (the paid check: requests-v2)')
     ap.add_argument('--no-reasoning', action='store_true', help="ask the model not to reason first (reasoning enabled false)")
     ap.add_argument('--ledger', default='spend.json', help='the ledger file and its own cap (the paid check: spend-check.json)')
-    a = ap.parse_args(); NO_REASONING = a.no_reasoning
+    ap.add_argument('--max-tokens', type=int, default=None, help='#142: max_tokens for every request (never below its allowance), read by the cap check too')
+    ap.add_argument('--reasoning-effort', default=None, help='#142: reasoning effort sent to the model (low, minimal, …), recorded in the ledger')
+    ap.add_argument('--only', default=None, help='request numbers to send again, comma-separated (a model that cut replies off)')
+    a = ap.parse_args(); NO_REASONING = a.no_reasoning; REASONING_EFFORT = a.reasoning_effort
     if a.cmd == 'build': build(a.out_dir, dict(b.split('=', 1) for b in a.books))
     elif a.cmd == 'build-v2': build_v2(a.out_dir, dict(b.split('=', 1) for b in a.books))
-    else: send(a.out_dir, a.model, a.run, a.set, a.cap, a.prompt, a.requests, a.ledger)
+    elif a.cmd == 'probe': probe(a.out_dir, a.model, a.cap, a.prompt, a.ledger)
+    else: send(a.out_dir, a.model, a.run, a.set, a.cap, a.prompt, a.requests, a.ledger, a.max_tokens,
+               {int(x) for x in a.only.split(',')} if a.only else None)

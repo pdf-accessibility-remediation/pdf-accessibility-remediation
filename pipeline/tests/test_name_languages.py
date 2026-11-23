@@ -117,17 +117,18 @@ def test_reuse_reads_saved_replies_that_were_never_parsed(tmp_path, monkeypatch)
     lr2 = load(R / 'language_run.json')
     assert len(lr2['decisions']) == 3 and lr2['not_decided'] == 0 and len(tagged(R)) == 3
 
-def test_title_growth_and_han_grouping_are_options_off_by_default(tmp_path, monkeypatch):
-    """review 08, M6: LANG_GROW and LANG_GROUP reach the real step (recorded under options); both are off unless set."""
+def test_title_growth_is_on_and_han_grouping_off_by_default(tmp_path, monkeypatch):
+    """review 08, M6: LANG_GROW and LANG_GROUP reach the real step (recorded under options). Title growth is on unless
+    LANG_GROW=off (#136, Patrick 2026-11-20); grouping is off unless LANG_GROUP=on."""
     src, A, R = folders(tmp_path)
     monkeypatch.delenv('LANG_GROW', raising=False); monkeypatch.delenv('LANG_GROUP', raising=False)
     run(src, A, R, monkeypatch)
-    assert load(R / 'language_run.json')['options'] == {'grow': False, 'group': False}
+    lr = load(R / 'language_run.json')
+    assert lr['options'] == {'grow': True, 'group': False} and 'titles grown' in lr['candidates']
     (tmp_path / 'b').mkdir(); src2, A2, R2 = folders(tmp_path / 'b')
-    monkeypatch.setenv('LANG_GROW', 'on'); monkeypatch.setenv('LANG_GROUP', 'on')
+    monkeypatch.setenv('LANG_GROW', 'off'); monkeypatch.setenv('LANG_GROUP', 'on')
     run(src2, A2, R2, monkeypatch)
-    lr = load(R2 / 'language_run.json')
-    assert lr['options'] == {'grow': True, 'group': True} and 'titles grown' in lr['candidates']
+    assert load(R2 / 'language_run.json')['options'] == {'grow': False, 'group': True}
 
 def test_reuse_keeps_a_mismatched_form_echo_dropped(tmp_path, monkeypatch):
     """review 12, M1: two decisions echo "mappō", the second under another item's id. The first parse drops it; --reuse
@@ -431,3 +432,19 @@ def test_below_the_limit_nothing_about_held_back_forms_is_written(tmp_path, monk
     lr, e = load(R / 'language_run.json'), load(R / 'language_run.json')['estimate']
     assert lr['held_back_count'] == 0 and not any(k.startswith('held_back_') and k != 'held_back_count' for k in lr)
     assert e['held_back'] == 0 and not any(k.startswith('held_back_') for k in e)
+
+def test_an_audit_from_before_the_joined_reading_is_found_again(tmp_path, monkeypatch):
+    """#150 (03 §2.1, review 02 M4): a stopped run's audit made before the joined reading (version 1, no `reading`) is
+    found again with today's rules, so the estimate counts today's forms, and nothing is sent that wasn't estimated."""
+    src, A, R = folders(tmp_path)
+    old = load(A / 'lang_candidates.json')
+    old['version'] = 1; old.pop('reading'); old['places'] = [p for p in old['places'] if p['form'] != 'ryōgen']
+    json.dump(old, open(A / 'lang_candidates.json', 'w', encoding='utf-8'), ensure_ascii=False)
+    assert run(src, A, R, monkeypatch, '--dry-run') == []
+    est = load(R / 'language_estimate.json')
+    assert est['forms'] == 3                                      # ryōgen found again, not the old audit's two
+    same = load(A / 'lang_candidates.json'); same['version'] = 2
+    json.dump(old | {'version': 2, 'reading': {'rules': ['inrun'], 'asked': ['cross', 'grow', 'inrun', 'italic', 'join'], 'parents': 'not given'}},   # grow and italic: on by default (#136)
+              open(A / 'lang_candidates.json', 'w', encoding='utf-8'), ensure_ascii=False)
+    os.remove(R / 'language_estimate.json')
+    assert run(src, A, R, monkeypatch, '--dry-run') == [] and load(R / 'language_estimate.json')['forms'] == 2   # today's: kept as saved

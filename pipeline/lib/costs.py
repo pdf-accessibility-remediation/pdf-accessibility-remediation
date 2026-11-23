@@ -105,7 +105,7 @@ def bound(x, limit):
 # estimate is never counted, and the step refuses itself with the reason recorded.
 OPTIONAL = (('page_reads', 'page_reads_estimate.json', 'to_read'), ('language', 'language_estimate.json', 'to_send'))
 # staff words, the panel's own (panel.js's estimate lines), no names in quotes: none of these is a name on a screen (review 12, L1)
-OPTIONAL_WORDS = {'page_reads': ('The AI reading of Hawaiian pages is', 'the AI reading of its Hawaiian pages', 'it'),
+OPTIONAL_WORDS = {'page_reads': ('The AI reading of scanned pages is', 'the AI reading of its scanned pages', 'it'),
                   'language': ('Language tags from the AI are', 'language tags from the AI', 'them')}
 
 def _optional(R, kind, book=True):
@@ -273,7 +273,7 @@ OVER_LIMIT = {'per_call': ('One AI request', 'per AI request', 'To send it'),
               'per_book': ('This PDF', 'per PDF', 'To run it'),
               'per_batch': ('This batch', 'per batch', 'To run the whole batch'),
               'language': ('The language suggestions', 'for language suggestions', 'To include them'),
-              'page_reads': ('The AI reading of Hawaiian pages', 'for the AI reading of Hawaiian pages', 'To include it')}
+              'page_reads': ('The AI reading of scanned pages', 'for the AI reading of scanned pages', 'To include it')}
 
 def over_limit_words(kind, worst, limit, spent=0):
     """One sentence for a refusal for a limit (#155): which limit, the most it could cost (worst plus what was spent), and
@@ -330,7 +330,7 @@ def estimate(R, kind='workorder', limits=None, credit_read=None):
             # the figure requests after the first one (#63): the extra alt-text requests, named on the run page (round 24)
             'figures': {'requests': len(x['passes']) - 1, 'ceiling_usd': round(sum(float(p.get('worst_case_usd') or 0) for p in x['passes'][1:]), 4)}
                        if x['passes'] and len(x['passes']) > 1 else None,
-            'page_reads': {'pages': int(pr['to_read']), 'ceiling_usd': pr_total} if pr else None,
+            'page_reads': {'pages': int(pr['to_read']), 'ceiling_usd': pr_total, **({'cjk': int(pr['cjk_to_read'])} if pr.get('cjk_to_read') else {})} if pr else None,
             'language': {'forms': int(le.get('sent') or 0), 'requests': int(le['to_send']), 'ceiling_usd': le_total, 'model': le.get('model'),
                          'prompt_sha256': le.get('prompt_sha256'), 'local': int(le.get('local') or 0)} if le else None,
             'language_local': x.get('language_local') or 0,     # #123: forms decided by a printed reading, at no cost

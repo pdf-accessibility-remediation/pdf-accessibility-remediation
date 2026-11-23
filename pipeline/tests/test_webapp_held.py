@@ -224,7 +224,7 @@ def test_the_retry_lines_are_run_api_shs():
     assert 'stage "retry: page readings via OpenRouter"' in sh and 'stage "retry: language tags via OpenRouter"' in sh
     assert 'stage "${RETRY:+retry: }review: page images (no model)"' in sh
     assert 'echo "▶ asking the AI again for the unfinished $( [[ $RETRY_PART == pages ]] && echo \'page readings\' || echo \'language suggestions\' ) (the work order is not decided again)"' in sh
-    assert logs.plain('retry: page readings via OpenRouter') == 'sending to the AI: Hawaiian page readings'
+    assert logs.plain('retry: page readings via OpenRouter') == 'sending to the AI: page readings'
     assert logs.plain('retry: language tags via OpenRouter') == 'sending to the AI: language tags'
     assert logs.plain('retry: review: page images (no model)') == 'preparing the review page'
     assert logs.plain('asking the AI again for the unfinished language suggestions (the work order is not decided again)') == \

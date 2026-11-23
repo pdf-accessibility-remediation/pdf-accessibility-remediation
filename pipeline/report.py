@@ -142,7 +142,23 @@ def language_status():
     out = {'candidates': n, 'state': state}
     hb = held_back_of(lr_run)
     if hb: out['held_back'] = hb                       # #159: only when forms were held back (records below the limit stay as they were)
+    up = unplaced_of(lc)
+    if up: out['unplaced'] = up                        # #161 addition 3: words the finder could not place (none: no key, as before)
+    note = ((lc or {}).get('reading') or {}).get('note') if isinstance(lc, dict) else None
+    if note: out['reading_note'] = note                # a terminal run with LANG_FINDER_RULES (review 02 L2): said in review.md
     return out
+
+def unplaced_of(lc):
+    """#161 addition 3 (review 04 M1): the words the finder read whole across marked-content runs but could place under no
+    one tag (lang_candidates.json `unplaced`: their whole spelling a candidate), with their reasons (codes, for the record)
+    and up to 200 forms with their pages. The executor's own late refusals stay in its refused list. None when there are none."""
+    rows = (lc or {}).get('unplaced') if isinstance(lc, dict) else None
+    if not rows: return None
+    by_form, why = collections.OrderedDict(), collections.Counter()
+    for u in rows:
+        by_form.setdefault(u.get('form'), set()).add(u.get('page')); why[u.get('reason') or 'other'] += 1
+    return {'count': len(rows), 'by_reason': dict(why.most_common()),
+            'forms': [{'form': f, 'pages': sorted(p for p in ps if isinstance(p, int))} for f, ps in list(by_form.items())[:200]]}
 
 def held_back_of(lr):
     """#159: what the language step held back, from its record (the first report; a re-report keeps the earlier record's
@@ -303,8 +319,17 @@ so = (wc or {}).get('section_order')              # sections read away from thei
 prd = log.get('page_readings') or []                    # apply.py: each page read by the AI, words paired and changed
 # #95: the pages read and paid for (page_reads_run.json, or the earlier record's), and the listed pages never read
 #      (an earlier record keeps each page without its text: there a page that finished ("stop") counts as read)
-pr_read = {x.get('page') for x in (pr_run or {}).get('pages') or [] if x.get('finish') == 'stop' and ((x.get('text') or '').strip() if 'text' in x else True)}
+# #119: CJK pages (kind cjk) have their own row; the Hawaiian row counts Hawaiian pages only, as before
+_is_cjk = lambda x: isinstance(x, dict) and x.get('kind') == 'cjk'
+prd_cjk = [x for x in prd if _is_cjk(x)]; prd = [x for x in prd if not _is_cjk(x)]
+pr_listed_cjk = [p for p in pr_listed if _is_cjk(p)]; pr_listed = [p for p in pr_listed if not _is_cjk(p)]
+_pr_pages = (pr_run or {}).get('pages') or []
+pr_read = {x.get('page') for x in _pr_pages if not _is_cjk(x) and x.get('finish') == 'stop' and ((x.get('text') or '').strip() if 'text' in x else True)}
 pr_unread = sorted({p.get('page') for p in pr_listed if isinstance(p, dict)} - pr_read - {x.get('page') for x in prd})
+cjk_read = {x.get('page') for x in _pr_pages if _is_cjk(x) and x.get('finish') == 'stop'}
+cjk_refused = sorted(x.get('page') for x in _pr_pages if _is_cjk(x) and x.get('finish') == 'refused')
+cjk_applied = [x for x in prd_cjk if not x.get('draft')]; cjk_drafts = sorted(x['page'] for x in prd_cjk if x.get('draft'))
+cjk_unread = sorted({p.get('page') for p in pr_listed_cjk} - cjk_read - {x.get('page') for x in prd_cjk} - set(cjk_refused))
 ow = log.get('ocr_words') or {}; ow_forms = ow.get('by_form') or []; ow_missing = [x for x in ow_forms if not x.get('found') and not x.get('in_page_readings')]
 ow_run = run.get('ocr_words') or {}
 # a reused reply written for another OCR-word list (decide.py: list changed, or no fingerprint): none of today's forms was read by it
@@ -415,6 +440,16 @@ checks = [
         + (f' · read and paid for but not applied: {pgs(sorted(pr_read - {x["page"] for x in prd}))} (see the run log)' if prd and pr_read - {x['page'] for x in prd} else '')
         + (f' · not read by the AI: {pgs(pr_unread)}; a person checks them against the scan' if (prd or pr_read) and pr_unread else ''))]
       if pr_listed or prd else []),
+    *([('CJK page readings: a person who reads the language checked each page read by the AI', ok(False),       # #119
+        (f'{len(cjk_applied)} of {len(pr_listed_cjk)} scanned CJK pages read by the AI, {sum(x.get("changed") or 0 for x in cjk_applied)} OCR words given the '
+         f'printed text: check {pgs([x["page"] for x in cjk_applied])} against the scan' if cjk_applied else
+         f'{len(pr_listed_cjk)} scanned pages hold Chinese, Japanese or Korean text; ' + ('none was attached' if prd_cjk else
+         'they were not read by the AI (turned off, declined, or refused over the limit or the credit: see the run log)'))
+        + (f' · CJK OCR: needs a person: {pgs(cjk_drafts)} (the reading did not match the OCR\'s lines, so it was not attached: '
+           f'a draft for a person who reads the language)' if cjk_drafts else '')
+        + (f' · the model refused to read {pgs(cjk_refused)}: not used' if cjk_refused else '')
+        + (f' · not read by the AI: {pgs(cjk_unread)}' if (prd_cjk or cjk_read) and cjk_unread else ''))]
+      if pr_listed_cjk or prd_cjk else []),
     *([('Figure requests: every figure seen by the AI', ok(not fpr.get('failed') and not fpr.get('stale')),
         f'{nc(fpr.get("figures"))} figures past the first request, in {nc(fpr.get("requests"))} figure requests'
         + (' · did not finish: ' + '; '.join(f'request {k} ({v})' for k, v in fpr['failed'].items()) if fpr.get('failed') else '')
@@ -861,6 +896,20 @@ if prd:
     L += [f'| {pg(x["page"])} | {x.get("changed", 0)} | {(x.get("too_different") or 0) + (x.get("unpaired") or 0)} | '
           + ', '.join(f'{a} → {b}' for a, b in (x.get('changes') or [])[:6]) + ' |' for x in prd]
     L.append('')
+if prd_cjk:                                            # #119: the lines the AI read on CJK pages, and the drafts left for a person
+    n += 1
+    L += [f'### {n}. CJK pages read by the AI ({len(cjk_applied)} pages, {sum(x.get("changed") or 0 for x in cjk_applied)} OCR words)', '',
+          'Tesseract misreads and drops Chinese, Japanese and Korean characters, most of all in vertical text, Hanja and small print. The AI '
+          'transcribed each page image exactly as printed; its lines were matched to the OCR\'s lines in order, and each matched line\'s reading '
+          'was written into the line\'s OCR words at their own place. The page image is unchanged; screen readers, copying and search now give '
+          'the printed text. Lines the reading did not match keep the OCR\'s text. A page whose lines mostly did not match (a map, a newspaper, '
+          'lines the OCR missed) is left as it was: its reading is a draft for a person. **AI text is a draft: a person who reads the language '
+          'checks each page against the scan.**', '',
+          '| Page | Lines matched | OCR words changed | Examples (OCR → reading) |', '|---|---:|---:|---|']
+    L += [f'| {pg(x["page"])} | ' + (f'{x.get("matched", 0)} of {x.get("lines", 0)}' + (' (draft for a person: not attached)' if x.get('draft') else
+                                                                             ' (draft approved by a reader on the OCR approval: attached as spoken text)' if x.get('checked_draft') else ''))
+          + f' | {x.get("changed", 0)} | ' + ', '.join(f'{excerpt(a)} → {excerpt(b)}' for a, b in (x.get('changes') or [])[:6]) + ' |' for x in prd_cjk]
+    L.append('')
 uc = digest.get('unowned_content', [])
 if uc:
     n += 1; tot = digest.get('unowned_content_totals', {})
@@ -1215,14 +1264,16 @@ if bad:
     L += [f'- {json.dumps(b, ensure_ascii=False)}' for b in bad]
     L.append('')
 lp_ = (wo or {}).get('language_parts') or {}
+from lib import langreq as langreq_
 haw_el_ = (log.get('haw_elements') or {}).get('elements') or []     # review 08, H2: whole lines tagged Hawaiian on pages read by the AI
 _hb = (record.get('language_status') or {}).get('held_back') if isinstance(record.get('language_status'), dict) else None   # #159
-if lp_.get('version') == 2 or lang_log or haw_el_ or (isinstance(ai_override, dict) and ai_override.get('by')) or _hb:   # #118 (#151: an override, #159: forms not sent)
+_unp = (record.get('language_status') or {}).get('unplaced') if isinstance(record.get('language_status'), dict) else None   # #161
+_rnote = (record.get('language_status') or {}).get('reading_note') if isinstance(record.get('language_status'), dict) else None
+if langreq_.has_forms(lp_) or lang_log or haw_el_ or (isinstance(ai_override, dict) and ai_override.get('by')) or _hb or _unp or _rnote:   # #118 (#151: an override, #159: forms not sent, #161: words not tagged)
     sys.path.insert(0, os.path.dirname(os.path.abspath(__file__))); from lib import langtag as LT
     forms_ = lp_.get('forms') or []
     pages_of_ = collections.defaultdict(set)
-    for r_ in lp_.get('parts') or []:
-        if isinstance(r_, list) and len(r_) == 5: pages_of_[r_[4]].add(r_[0])
+    for pg_, _segs_, fi_ in langreq_.rows(lp_): pages_of_[fi_].add(pg_)
     tagged_ = [(i, f) for i, f in enumerate(forms_) if f.get('tag') and f.get('lang')]
     person_ = [(i, f) for i, f in enumerate(forms_) if not f.get('tag') and f.get('person') and f.get('decided') not in ('untagged', 'remove', 'kept')]
     exempt_ = collections.Counter(f.get('why') for f in forms_ if not f.get('tag') and not f.get('person'))
@@ -1238,6 +1289,16 @@ if lp_.get('version') == 2 or lang_log or haw_el_ or (isinstance(ai_override, di
         if _hb.get('forms'):
             L += [line(('The first 200: ' if _hb['count'] > len(_hb['forms']) else '') + ' · '.join(f'"{f}"' for f in _hb['forms']), entry=False)]
         L.append('')
+    if _unp:                                                              # #161 addition 3 (review 02 M9, review 04 L2): never sent, never tagged
+        L += [line(f'**Words not tagged ({_unp["count"]:,}):** each is printed as one word, but the PDF stores its letters in separate '
+                   'places, so no language tag can cover it. They may be in another language; the list gives their pages.', entry=False)]
+        _uf = _unp.get('forms') or []
+        if _uf:
+            L += [line(('The first 200: ' if len(_uf) >= 200 and _unp['count'] > len(_uf) else '')
+                       + ' · '.join(f'"{excerpt(u["form"])}" ({", ".join(pg(p) for p in u["pages"][:3])}{" …" if len(u["pages"]) > 3 else ""})' for u in _uf), entry=False)]
+        L.append('')
+    if _rnote:                                                            # review 02 L2: never reads like a default run
+        L += [line(f'**Read with testing settings:** the words were found with {_rnote}, not the default rules.', entry=False), '']
     if isinstance(ai_override, dict) and ai_override.get('by'):          # #151: the person chose to review without what was missing
         L += [line(f'**Reviewed without missing AI suggestions:** {ai_override["by"]} on {DT.day(ai_override.get("date"))}'
                    + (f' ({"; ".join(ai_override["missing"])})' if ai_override.get('missing') else ''), entry=False), '']

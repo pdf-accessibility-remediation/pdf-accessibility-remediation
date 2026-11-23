@@ -283,7 +283,8 @@ def test_decides_terminal_lines_include_the_pages(book, tmp_path):
 def test_the_run_page_names_the_pages_on_the_max_line_only():
     js = open(os.path.join(HERE, 'webapp', 'panel.js'), encoding='utf-8').read().split('function including')[1].split('const NEXT')[0]
     inc = js.split('function costLines')[0]   # round 24: the parts in one list, "including A, B and C"
-    assert "usd(e.page_reads.ceiling_usd) + ' for ' + esc(e.page_reads.pages) + ' Hawaiian page'" in inc and '<b>' not in js
+    assert "usd(e.page_reads.ceiling_usd) + ' for ' + esc(e.page_reads.pages) + pageKind(e.page_reads) + ' page'" in inc and '<b>' not in js
+    assert "!c ? ' Hawaiian' : c >= p.pages ? ' Chinese, Japanese or Korean'" in inc     # #119: a Hawaiian-only book still says Hawaiian
     assert "' for the extra alt-text request'" in inc and "' for the language tags'" in inc
     assert inc.index('e.figures') < inc.index('e.page_reads') < inc.index('e.language') and "', including '" in inc and "' and '" in inc
     assert "' for ' + esc(e.requests) + ' AI requests'" in js and "(e.page_reads.pages === 1 ? '' : 's')" in inc   # review 09 L2: printed escaped, counted raw

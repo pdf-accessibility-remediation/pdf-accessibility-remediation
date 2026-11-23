@@ -14,6 +14,35 @@ approved.
      line-end test below), or when the joined word is English (a real break the test misjudges, beside a drop cap or a
      narrow gutter: "prac-" + "tices"). A hyphen inside its line ("homes-abroad", whose second part some PDFs draw
      after the next line's first word) is no join: each part is a word of its own, as an unbroken word is.
+   - **Italic words (#136; on by default since 2026-11-21).** An italic word of two or more letters, in Latin script,
+     not a number or a URL, and not in the English word list, is a candidate even when it is short or capitalized:
+     "gu" in "gu poisoning", "du" in "Ch. du", the first word of a foreign title in a bibliography.
+     - **What it gives** (measured 2026-11-21 on four test books, the forms the rule adds: 643): 295 (46%) were tagged
+       with a language. By book: 80% on dwellings (Chinese architecture terms and titles), 65% on cadaverous, 18% on
+       translation (mostly names of people and peoples), 1% on an English-language book with italic English titles.
+       No tagged form was English; about 29 were pieces of longer titles tagged one by one, 3 joined two things that
+       don't belong together, and 1 had the wrong language, for the reviewer to catch as with any AI decision.
+     - **What it costs:** the other forms come back as names (161), English (106) or "not a word" (69). Those are paid
+       for in the language step's requests but add no rows to the review page: a person decides only the tagged ones.
+       Across 34 test books the rule adds about 5,200 word forms, a median of $0.23 a book at worst to send (at most $0.94).
+     - `LANG_FINDER_RULES=-italic` turns it off for a measurement (testing only, see [Options](options.md)).
+   - **A comma or semicolon ends a phrase** (L3, 2026-11-21): consecutive candidates in one run are one phrase up to a
+     word ending in `,` or `;` (with any closing quote or bracket after it), and title growth doesn't step across one
+     either, in either direction or over a slash. Lists ("topeng, wayang"), an author and a title ("Saitō, “Hōshasei”"),
+     and two titles side by side are separate places; "Winesburg, Ohio" no longer takes in "Ohio".
+     - **A period ends one too** (2026-11-21), with the same quote rule, unless the word before it is a number ("1."),
+       one or two letters ("K.", "St.", "pp.") or initials of one or two letters each ("D.T."). There is no list of
+       abbreviations, so "vols." and "Mohd." end a phrase. Two sentences, or a Sanskrit title and the French one after
+       it, are separate places. `!` and `?` don't end one: titles carry them ("Kōgai o Nogasuna!").
+     - **A colon doesn't end one inside a line:** "Higashikuni nikki: Nihon gekidōki" is one title with its subtitle, in
+       one language. **A colon at a line end does end a title,** since growth into the next run stops at any phrase end
+       (", . ; : ! ?" or a closing bracket or quote), as before.
+     - **Inside quotes a comma doesn't count** (“Hyakunin isshu, Sōgi shō” stays one place): from a word opening with
+       “ " « to the first word after it carrying ” " » within ten words. The comma on the closing word itself still
+       counts ("Kanada,” Genchi ni Miru" is two), an opening quote with no close nearby is no span, and ’ (as in kan’yō)
+       never counts as a quote.
+     - A whole-run passage stays one place whatever its punctuation, and the joined reading of OCR pages already breaks
+       its stretches at `, ; :` where the run changes; inside a run of several words the rule applies there too.
    - **A word broken by a hyphen at a line end** is checked joined, both without its hyphen ("infor-" + "mation") and
      with it ("long-" + "standing"); English either way, it is no candidate. The form with the hyphen counts only when
      each half has three or more plain letters and the joined word does not have the shape of romanized Japanese or
@@ -35,6 +64,29 @@ approved.
      A second pattern: a word hyphenated inside its line whose real continuation the PDF draws elsewhere in the text,
      and whose first part alone is short (under four letters), capitalized without marks, or English, is no candidate.
      Examples: the Anindilyakwa morphemes on an interlinear page ("ki-", "ku-", "na-"), and Hawaiian "uka-".
+   - **Words and phrases across marked content (#150, #161; `lib/langjoin.py`).** OCR text and auto-tagged text often
+     put each word, or each piece of a word, in its own marked-content run. The finder reads a page in *stretches*:
+     - **OCR-pattern pages** (most runs hold one word or less: OpenDataLoader's output and OCR layers): runs are joined,
+       never split. A stretch ends at a new line, a change of parent element, a gap over twice the page's usual word gap,
+       a word ending in `,` `;` `:` `.` `?` or `!`, the first word of a line after a line-end hyphen, an opening quote or
+       bracket (not one inside a word, nor before a word of Hawaiian shape: an ʻokina), a note number in its own run, and
+       wherever the tag tree keeps the runs apart (not next to each other in their element, or under spoken text). Inside a
+       word drawn across runs, the pieces stay one word when one piece holds a single letter or the joined letters are
+       English; a letter set apart from its word by a hair (under 0.15 em, or a drop cap) is joined back.
+     - **Other pages:** a first or last letter set apart inside one run is joined back. A word cut across two runs is
+       read whole when it passes the same word checks; it gets one place across both runs only when one tag can cover
+       it (same element, next to each other, no spoken text in the way, one line). A drop cap is read with its word but
+       never tagged with it.
+     - A place across several runs carries `segments` (each run's first and last character), and the executor tags it
+       with one Span over all of it, or not at all (below). Every place records which rule made it (`source`).
+     - **Words not tagged.** A word read whole whose letters sit in runs no one tag can cover (different elements, a drop
+       cap, spoken text in the way) is never sent, and is counted and listed (`unplaced`; see "Words not tagged" below).
+     - The audit's `lang_candidates.json` (version 2) records what was applied (`reading`). When the tag tree can't be
+       read, no run is joined to another. An audit made before this (version 1) is found again when the step runs, with
+       today's reading; its word forms may differ from the first estimate, so the estimate is made again, and if more
+       forms would be held back than were shown, the review holds (see "Word forms not sent").
+     - `LANG_FINDER_RULES` (testing only, see [Options](options.md)) turns rules off for a measurement; a run that used
+       it says so in review.md.
 2. **The language step asks the AI** (`name_languages.py`, prompt `prompts/language_v3.md`): each word form with its
    context, each snippet once per request, through OpenRouter with `data_collection: deny`. The context
    (`lib/langreq.py` `CTX`) is 10 words on each side of up to two places per form (a word is a piece with a letter or
@@ -82,7 +134,9 @@ approved.
    list (*a priori*, *ad hoc*) count as English. (language_v3 is language_v1 with these two lines from language_v2,
    adopted after a paid check on the test items, 2026-11-13: 248 and 249 right against 246 and 232, the same one wrong
    medium-confidence answer, no reply cut off.)
-3. **The decisions go into the work order** as `language_parts` (version 2: one row per word form, with its places).
+3. **The decisions go into the work order** as `language_parts` (version 2: one row per word form, with its places;
+   version 3 when a place spans several runs: such a row is `[page, [[mcid, first, last], …], form]`, every other row as
+   in version 2. Only `lib/langreq.py` reads rows by their shape: `rows()` and `has_forms()`).
    The work-order prompt (`workorder_v11.md`, and `workorder_v12.md` after it) leaves language tags to this step.
 4. **A person decides every form** on the review page's "Languages" section (see [Review page](review-page.md#languages)),
    one by one or with a group approval ([Group approval](review-page.md#group-approval), #124).
@@ -98,11 +152,45 @@ approved.
    `"mono no aware" (Japanese (Romanized)) · PDF 12 (printed 3)`. It shows 20 per reason; the rest are in
    `record.json` (`apply.language_parts.refused_places`, the first 200 places in all). review.html shows the same list,
    nested under each reason.
+   **A place across several runs** gets one Span over its runs, written in the executor's last step, after every check:
+   all its runs under one element, next to each other, none tagged by a fixed rule (kana, hangul), and the page looking
+   the same after the splits. If any check fails, the whole place is left out and listed once: no half-tagged phrase,
+   and the `/Lang` in its runs' marked content stays as it was. Its runs, and any runs that share one with it, are
+   checked and kept or left out together. verify.py checks such a Span exactly: every run's own element is the Span,
+   in reading order, under the element the place was in.
+   **Text drawn inside a form XObject** (#165 (tags on text inside a form XObject)): most of the collection's OCR'd books,
+   once intake has tagged them, draw each page's text inside one form XObject, and the tag tree points into it with
+   `/MCR … /Stm`. A place there is tagged the same way as on page text, whole runs, splits and places across runs alike:
+   the form's own content is edited, its own tag-tree index (`/StructParents` on the form) names the new Span, and a page
+   whose form changed is checked by drawing it and by reading its text before and after (the OCR text is invisible, so
+   only the reading shows a broken split). The reading is compared with spacing ignored: the PDF library the check uses
+   (pdfium, also the reader in Chrome's built-in viewer) may read a space or a line break where a run was split, with no
+   letter added, lost or moved. Such a page is kept, and counted in the log (`language_parts.text_whitespace_only`, its
+   pages); whether a screen reader says the word in two pieces there is checked by ear in the NVDA listening check
+   (Patrick, 2026-11-20). A real difference in the letters leaves the place out: "the page would read differently".
+   A run keeps its name (page and MCID); the executor finds the form that draws
+   it, and tags it only when nothing about that is in doubt. Otherwise the place is left out with its reason:
+   - "the text is drawn inside a form used in more than one place": one edit would change every place the form is drawn;
+   - "the text's number is used twice on the page": the page's own content, or a second form, holds the same MCID, so
+     the text read under it is two texts at once;
+   - "the tag tree names this text twice": a page-level reference and an `/MCR … /Stm` both name it (an auto-tagger's
+     tree can, on many pages of a book: see #168 (Intake: the auto-tagged tree names some form text as page text));
+   - "this text is drawn inside a form XObject, not in the page": only a page-level reference names it;
+   - "the form is drawn inside marked content on the page", "the text is drawn inside a nested form", "the form has no
+     tag entry", and "the text has its own spoken text" (spoken text in its marks).
+   A form drawn in several places (a decorative frame repeated on every page, say) is never edited: the `/Lang` in its
+   marks is neither listed for a person nor removed, and its runs are never tagged.
 6. **verify.py checks** that every tag holds its words and language. A tag that does not match is a rank-1 finding.
+   It works out which runs are drawn inside a form from the file itself, with the executor's conditions, and checks a
+   Span there like any other: its element, its runs and their stream, its place, its text, and the marks inside the
+   form.
 
 ### Chinese, Japanese and Korean
 
 The local rule (`lib/scripts.py`) runs first on every run: hangul is tagged Korean and kana Japanese automatically.
+Since #165 (tags on text inside a form XObject) it also reaches text drawn inside a form XObject, so on any OCR'd book
+whose text sits in forms (most of the collection) kana and hangul are tagged too, whether or not the book goes through
+the language step.
 AI parts in the same language as the local tag are dropped; AI parts in another language are split under it.
 Chinese characters with no kana (Han-only) may be named Japanese or Chinese by the AI; a person approves it before the
 book ships. Han the AI leaves untagged goes to a person (`han_review.csv`), as before.
@@ -164,9 +252,43 @@ See [OCR words](ocr-words.md#pages-read-whole).
 
 ## Running it
 
-Two options are off by default: `LANG_GROW=on` tags a title in another language whole (the voice switches once, not
-mid-title), and `LANG_GROUP=on` makes adjacent single Chinese characters one word form. Title growth stays off until a
-screen-reader check of a title tagged in pieces (see [Options](options.md#language-tags)).
+**Title growth is on by default** (#136, Patrick, 2026-11-20): a title in another language is tagged whole, so the voice
+switches once, not mid-title. `LANG_GROW=off` turns it off.
+- **Verse with slashes:** a spaced " / " between romanized pieces of a verse line ("tamayura no / tsuyu mo namida mo /
+  todomarazu") doesn't stop growth.
+  - The line is one tag, slashes inside, and a particle before a slash ("no /") is inside it rather than read in English.
+  - Growth crosses a slash only when the word beyond it is not on the English list, and never crosses into another run.
+  - A slash with no spaces ("and/or", "1/2", "http://"), a double slash, and a slash before a number or an English word
+    change nothing.
+- **Titles broken at a line end:** when an italic title reaches the end of its run, and the run before or after it
+  belongs to the same tag and sits next to it there (each line its own run), growth goes on into it.
+  - The title is one tag across both runs, so the voice switches once.
+  - It needs a clean break: a word ending a phrase (". , ; : ! ?" or a closing bracket or quote) or a word opening one stops
+    it, and so do English words, so two titles one after the other stay two.
+  - **On every page reading** (2026-11-21, H1): a page read as its runs, an OCR page read in joined stretches, and a
+    publisher page read joined (a split word or a dropped letter joined somewhere on it) follow one rule.
+    - **On an OCR page** growth crosses only a line break between stretches. The joined reading's other breaks (a wide
+      gap, a phrase end, a quote, a note, a structure break) stay breaks.
+    - **On a publisher page**, read either way, any run change qualifies, the same line included (a title the publisher
+      set as several runs, "Nihon Rettō | Kaizō | Ron"), when the two runs sit next to each other in one tag and meet at
+      a word break: a new line, or a space. A run change inside a word on one line ("Griefi" | "ng") is none.
+    - **Growth chains line to line,** so a title over three or more lines is one tag from any seed word in it.
+    - **A title the reading can't map to the PDF's runs, or whose pieces apply.py couldn't tag as one** (a run that
+      comes back after another, other text between the pieces in their runs, or pieces not next to each other in the
+      tag tree) is one place per run instead, and its candidates are kept.
+    - **A word broken by a line-end hyphen** is one word form tagged in its two pieces. Growth never steps across the
+      hyphen, on any page, so a title's words after it are tagged only where they are candidates of their own
+      ("Zhong-" ‖ "guo shi": "Zhongguo" in two tags; "shi" alone on an OCR page, untagged on a publisher page).
+- **What is ours, and what is the reader's:**
+  - The tags' correctness is the pipeline's: verify checks each one, and the AI's answers are approved by a person. On the
+    test books, 3 of 1,819 grown titles took in an English word.
+  - How a screen reader voices a romanized Japanese tag (`ja-Latn`) is the reader's.
+- **The Windows listening check** of a title is a note, not a condition.
+- **What wasn't measured:** the finder's misses (words in another language that the English word list removes) were not
+  measured against a person.
+
+`LANG_GROUP=on` (off by default) makes adjacent single Chinese characters one word form. See
+[Options](options.md#language-tags).
 
 The step is on by default (`LANG_TAGS=on`, see [Options](options.md#language-tags)). It has its own model
 (`LANGUAGE_MODEL`, default Sonnet 5.5, whatever model the work order uses) and limit (`LANGUAGE_MAX_USD`). The PDF's limit
@@ -213,6 +335,18 @@ sent. There is no limit on the number of word forms unless `LANGUAGE_MAX_FORMS` 
   while the same forms are held back; a different set needs a new one.
 - **To send more,** raise the limit for that PDF: `LANGUAGE_MAX_USD=…` (or `BOOK_MAX_USD=…` when the PDF's limit is what
   held them back) for the run, or the limits in the app's settings, then a new estimate.
+
+### Words not tagged
+
+#161 (find words split at their first or last letter): a word the finder read whole, whose letters the PDF stores in
+runs that no one language tag can cover (different elements, a drop cap, spoken text in the way), is never sent and
+never tagged. The record keeps the count, the reasons (codes) and the first 200 forms with their pages
+(`language_status.unplaced`). review.md's Language Tags section says "**Words not tagged (N):** each is printed as one
+word, but the PDF stores its letters in separate places, so no language tag can cover it. They may be in another
+language; the list gives their pages." The review page shows the same under "Languages" in the fold "Words Not Tagged
+(N)", read only. The count is in the Language Tags line's details ("Approved (… · 12 words not tagged)"). It is not a
+condition of Ready (Patrick, 2026-11-19). A place the executor refuses late (the page would look different, …) is not
+counted here: it is in "Not placed by the executor".
 
 ### Sending, retries and interruptions
 
@@ -263,8 +397,13 @@ sent. There is no limit on the number of word forms unless `LANGUAGE_MAX_FORMS` 
 - **Not Reviewed (N word forms to decide on the review page)** until a person has decided every form;
 - **Not Reviewed (N word forms the AI left untagged to confirm on the review page)** when the step ran but the AI
   proposed no tag at all: every form is then a row under "Left Untagged by the AI", for a person to confirm or tag,
-  so the line never reads Not Applicable after the step ran;
+  so the line never reads Not Applicable after the step ran. A form inside a whole known Latin phrase that the AI left
+  untagged is also a row, and counts here (see [Dictionary Marks](#dictionary-marks));
 - **Approved (reviewer on date)** when none is left.
+- Words the finder could not place (see "Words not tagged") add "· N words not tagged" to the details of any of these,
+  without changing the value. A book with no word forms to decide but some words not tagged reads **Not Applicable (no
+  word forms to decide · N words not tagged)**: Not Applicable still means there was nothing to decide, and the details
+  say what was found (Patrick, 2026-11-19).
 
 The record keeps what happened as `language_status` (`candidates`: the word forms found, and `state`). A record made
 before this (2026-11-14) has none, and its line reads as it did.
@@ -293,3 +432,115 @@ within the language step's default limit ($6 then, $25 since #155); with the wor
 Sonnet 5.5 stays the language step's model (2026-11-14): Opus 5.5 was no more accurate on the 473 test items and costs
 about 2.2 times as much. Sonnet 5.5, measured on the test books (2026-11-13): about $0.09 per 100 forms. A book with 2,800 forms (cadaverous)
 cost $2.53; one with 840 forms (ryukyu) $0.78. A book with no candidates costs nothing.
+
+## Dictionary Marks
+
+From #141's measurement (proposal 14), the review page's "Languages" rows may show one of two lines. **Both are facts
+beside the AI's answer. Neither changes the answer, the default choice or "Approve All Shown"; nothing about them is sent
+to the AI.** Latin only: no line appears for any other language.
+
+| Line | Shown when | What a person does |
+|---|---|---|
+| "Also found in a Latin dictionary." | the AI tagged the form Latin, and every word of it is a Latin form in Whitaker's Words | decides the row as usual; the line is a second source agreeing |
+| "Part of the Latin phrase "prima facie", used in English text. Decide whether it should be tagged as Latin." | the AI left the form untagged (English, a name, or no answer), and one of its places sits inside a whole phrase of the list. Where the AI's own low-confidence guess is Latin, the line leaves out "used in English text" | decides: "Leave Untagged" (the default) or "Change Language" to Latin |
+
+- **A Latin row the list doesn't hold shows nothing.** These are mostly titles and names; a missing line is not a warning.
+- **Option A (Patrick, 2026-11-20):** a phrase form the AI left untagged becomes a row under "Left Untagged by the AI"
+  and counts in "Language Tags" until it is decided. When the AI tagged nothing at all, every form is a row anyway.
+- **Only phrases whose words the finder already sends can be marked.** "per se", "vice versa", "ad hoc" and "status quo"
+  are English-list words, so they are never candidates.
+- **Whether a Latin phrase in English text is tagged is a person's call:** WCAG 3.1.2 exempts phrases that have become
+  part of the vernacular. The line shows the fact; the person decides.
+- **Where it comes from:**
+  - The finder (`lib/langcands.book`) records `latin_list` and `latin_phrase` on each place, from the same page words it
+    reads; `lib/latinlist.py` does the matching.
+  - The language step carries both onto the work order's forms.
+  - The review page decides which line to show from them and the AI's answer.
+- **The data:**
+  - `pipeline/data/latin-whitaker.json`: Whitaker's Words, upstream commit `fb7fb6f`, under its own permissive notice in
+    `latin-whitaker.LICENCE`;
+  - `pipeline/data/latin-phrases.txt`: 83 phrases. 55 were written for the measurement; 28 were added on 2026-11-21
+    ("materia medica", "locus classicus", "summum bonum" and the like).
+
+  See `pipeline/data/README.md` for the sources, checksums and how to build them again.
+- **Runs whose audit predates this change** have neither fact, so no line shows.
+
+## Dictionaries measured (#141)
+
+#141 (Language step: test downloaded dictionaries for deciding word forms locally) measured the sponsors' workflow
+("Latin Language & Species Name Vocabularies for ADA In-Text Tagging"): a species pass, a Latin phrase pass, a Latin word
+pass accepted only inside a multi-word Latin span, a stoplist and a review sheet, plus word lists for the books' other
+languages. **Nothing is adopted: no list decides a word form in the pipeline.** `pipeline/tools/dict_measure.py` runs the
+measurement (`build` makes plain word lists from each download; `run` applies the workflow to a set of books' candidate
+forms). The downloads stay outside the repository, one folder per source:
+
+| Source | For | Licence |
+|---|---|---|
+| LiLa Lemma Bank (`lemmaBank.ttl`, github.com/CIRCSE/LiLa_Lemma-Bank) | Latin lemmas | CC BY-SA 4.0 |
+| Whitaker's Words (data files, github.com/mk270/whitakers-words) | Latin stems and endings | free for any use (its LICENCE.txt) |
+| Wiktionary via kaikki.org (Latin, Hawaiian, Japanese, Korean, Tagalog) | words, forms, romanizations | CC BY-SA and GFDL |
+| Open Multilingual Wordnet 1.4 | Japanese and Chinese written forms (1.4 has no Latin, Hawaiian, Korean or Tagalog wordnet) | per wordnet (both used: free for any use, with the notice) |
+| Wikidata lexemes dump | lemmas and forms by language | CC0 |
+| GBIF Backbone Taxonomy (backbone.zip, August 2023 release) | genera and species | CC BY 4.0 |
+| Catalogue of Life (`latest_dwca.zip`, 2026-11-11 release) | genera and species, a name check beside GBIF | CC BY 4.0 |
+| NCBI Taxonomy (`taxdump.tar.gz`) | genera and species (scientific names), a name check beside GBIF | public domain (US government information) |
+| Lewis & Short (Perseus Digital Library TEI XML) | Latin headwords (no inflected forms) | CC BY-SA 4.0, crediting the Perseus Digital Library |
+| GNfinder 1.3.0 (release binary, sha256 checked against the release) | scientific names in text; run offline, never with verification | MIT |
+| LatinCy `la_core_web_lg` 3.9.8 (its own environment) | Latin lemmas | MIT |
+
+**What it found** (2026-11-20; level 4's and round 10's answers, and #142's scored test set):
+- On a Latin-heavy book, the workflow decides most Latin forms the way the AI does (934 of 1,294 forms; 25 disagreements,
+  each one the dictionary's mistake: French, German and English words).
+- On every other book, the Latin lists take words of other languages as Latin (Hawaiian, romanized Japanese, Bikol,
+  Vietnamese, Sanskrit, pieces of split words): 36–42% of the workflow's decisions on level 4's books disagree with the
+  AI, 96% on round 10's. (Figures from the second measurement, 2026-11-20, which also stopped words written with letters
+  Latin doesn't use, such as IPA respellings, from matching shorter Latin words.)
+- The three species checklists agree: Catalogue of Life finds about what GBIF finds, NCBI Taxonomy fewer names. All three
+  match Hawaiian, Japanese and Bikol words that are also genus names ("lehua", "hala", "kita").
+- On the scored test set every list is wrong more often than the AI on the same items.
+- So the dictionaries would add review work rather than save it; the money they could save is about $1 a book at most.
+
+## Scoring another model
+
+#142 (compare Google's current models with the one in use): any model OpenRouter lists can be scored on the language
+test set (the 250 everyday and 223 harder "masked" items of #118), with the same prompt and requests, and no new code.
+Paid: each run is approved first, with its amount.
+
+1. **A folder of its own** under `runs/` with the request set and the items: copy `requests/W10.json` and `items.json`
+   from the test folder (`runs/118-language-tagging/ctx15/`: the requests scored at 98.0% with Sonnet 5.5), so the replies
+   and the ledger stay in that folder.
+2. **Check the model's privacy setting first** (a fraction of a cent; a made-up word, no book text):
+   `python3 tools/lang_test.py probe DIR --model ID --cap USD --ledger spend.json --prompt ../prompts/language_v3.md`.
+   A refusal means no provider serves the model with `data_collection: deny`: don't test it.
+3. **One run**:
+   `python3 tools/lang_test.py send DIR --model ID --run 1 --set W10 --cap USD --ledger spend.json --prompt ../prompts/language_v3.md`
+   (always name language_v3; the tool's own default is the older v1). For a model that reasons, add
+   `--reasoning-effort low` and `--max-tokens 12000`: reasoning counts inside the token limit, and a cut-off reply is
+   scored as a miss. The cap is checked before every request, against the same token figure the request carries; a reply
+   with no cost reported is counted at its worst case. The ledger records each request's provider, reasoning setting,
+   time and finish reason.
+4. **Score** (free): `python3 tools/lang_exp.py DIR NAME=MODEL/W10 … --ledger spend.json --md DIR/score.md`. Each
+   variant shows right, wrong (at high or medium confidence), untagged or low, cut off, and the same answer in every run,
+   with 95% ranges, for the everyday and the masked items apart. More runs narrow the range.
+
+**Results (#142, 2026-11-19; 3 runs each; Sonnet 5.5's saved replies scored again with today's reply check):**
+
+| Model | Everyday items right (wrong) | Harder items right (wrong) | Cost a run | Seconds a request |
+|---|---|---|---:|---:|
+| Claude Sonnet 5.5 (the default) | 98.0% (0.8%) | 96.6% (1.8%) | $0.86 | – |
+| Gemini 3.8 Flash | 99.1% (0.7%) | 96.6% (3.4%) | $0.22 | 4.8 |
+| Gemini 4 Hydrogen | 99.2% (0.8%) | 96.6% (3.1%) | $0.76 | 13.4 |
+| Gemini 4 Argon | 97.3% (0.8%) | 96.7% (3.3%) | $0.56 | 11.5 |
+| Gemini 4 Neon | 97.7% (0.8%) | 97.5% (2.5%) | $1.63 | 17.0 |
+
+Every Google model was served by Google under `data_collection: deny`, with reasoning at low effort and `max_tokens`
+12,000. Two of Flash's everyday answers were cut off (0.3%); no other reply was. The reply check dropped 3 of Flash's 1,419 answers (2 with a language tag the step may not
+write) and none of the others'. The Google models answer nearly every item, so on the harder items (Han with no reading
+nearby) they are wrong more often than Sonnet, which leaves more of those for a person.
+
+The fixed adoption rule (`tools/lang_exp.py adopt`) picked Gemini 4 Neon: it drops Flash, Hydrogen and Argon on the harder
+items, and keeps Neon because Neon leaves no harder item untagged where Sonnet leaves 11 over three runs. Sonnet 5.5 was
+kept as the default all the same (2026-11-19): Neon's answer on every item comes at the price of about 5 more wrong tags on
+the harder items (17 against 12 over three runs), at about twice the cost ($1.63 a run against $0.86). An untagged item
+is left for a person to name, while a wrong tag is put before the person as the answer. Gemini 3.8 Flash matches Sonnet on everyday items at a
+quarter of the cost; a change of default would need a paid run on a test book first.

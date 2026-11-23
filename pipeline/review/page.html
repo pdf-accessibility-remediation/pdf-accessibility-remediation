@@ -563,6 +563,7 @@ function verdictText(v) {
   if (!v) return 'not yet reviewed';
   return (VERDICT_LABEL[v.verdict] || v.verdict) + (v.to ? ' (' + v.to + ')' : '') + ' by ' + v.reviewer + ' on ' + fmtDay(v.date) + (v.pages ? ' (pages ' + v.pages + ')' : '') +
     (v.reason ? ': ' + v.reason : '') + (v.reads && v.reads.length ? '; reads ' + v.reads.join(', ') : '') +
+    (v.cjk_drafts && v.cjk_drafts.length ? '; AI readings approved: PDF ' + v.cjk_drafts.join(', ') : '') +
     (v.via === 'review_ocr.py' ? ' (recorded outside the review page)' : '');
 }
 const verdictName = v => v ? (VERDICT_LABEL[v.verdict] || v.verdict) : 'Not Yet Reviewed';   // after "OCR Text:"
@@ -590,6 +591,22 @@ const textSeen = new IntersectionObserver(es => es.forEach(async e => {
     pre.textContent = r.ok ? (b.text || '(no text on this page)') : (b.error || 'The text could not be read.');
   } catch (err) { pre.textContent = 'The text could not be loaded: is the review page still running?'; }
 }), { rootMargin: '400px' });
+// #119 4b: CJK pages whose AI reading matched too few of the OCR's lines (a map, a newspaper, vertical text the OCR read
+// across). Each is shown beside its page image; ticked ones are approved with the verdict (Approved and "I can read …"),
+// and the next Finish attaches them as spoken text. The OCR text itself is never changed here.
+const DRAFTS = () => (OCR && OCR.cjk_drafts) || [];
+const readsLabel = () => (OCR.languages || {}).label || 'Chinese, Japanese or Korean';
+function draftsBlock() {
+  const ds = DRAFTS(); if (!ds.length) return '';
+  return '<fieldset class="cjk-drafts"><legend>' + esc(tc('AI Readings Waiting for a Reader (' + ds.length + ')')) + '</legend><div class="ctx">' +
+    'On these pages the AI\'s reading matched too few of the OCR\'s lines to be attached on its own. Compare each reading with its page image: ' +
+    'tick the ones that read as printed, then record <b>Approved</b> with <b>I can read …</b>. They are attached as spoken text the next time the review is finished.</div>' +
+    ds.map(d => '<article class="card ocr-card" id="cjk-draft-' + d.page + '"><h3>PDF ' + d.page + ' · ' + esc(d.attached ? 'AI Reading, Approved and Attached' : 'AI Reading, Not Attached') + '</h3>' +
+      '<div class="ocr-pair"><div class="imgs"><img loading="lazy" src="' + png(d.page) + '"' + box(png(d.page).slice(1), 0) + ' alt="PDF ' + d.page + ', the page as scanned"></div>' +
+      '<div><div class="edit-label">The AI\'s Reading</div><pre class="ocrtext"' + (OCR.lang ? ' lang="' + esc(OCR.lang) + '"' : '') + '>' + esc(d.reading) + '</pre></div></div>' +
+      '<label><input type="checkbox" class="cjk-draft-ok" value="' + d.page + '"' + ((OCR.current && (OCR.current.cjk_drafts || []).includes(d.page)) ? ' checked' : '') +
+      '> This reading matches the page as printed</label></article>').join('') + '</fieldset>';
+}
 function renderOcr() {
   if (!OCR) { ocrBox.hidden = true; return; }
   const L = OCR.languages || {}, cur = OCR.current, hist = OCR.history || [];
@@ -610,7 +627,9 @@ function renderOcr() {
     '<div class="field"><label for="ocrReason">Reason</label><input type="text" id="ocrReason" maxlength="' + OCR.limits.reason + '" aria-describedby="ocrReasonHelp"><div class="ctx" id="ocrReasonHelp">One line; needed for <b>Approved</b> and <b>Not Approved</b>.</div></div>' +
     '<div class="field" id="ocrToRow" hidden><label for="ocrTo">Sent to (optional)</label><input type="text" id="ocrTo" maxlength="' + OCR.limits.to + '" placeholder="A person or a team"></div>' +
     '<div class="field"><label for="ocrPagesIn">Pages (optional)</label><input type="text" id="ocrPagesIn" placeholder="ex. 381-386" aria-describedby="ocrPagesHelp"><div class="ctx" id="ocrPagesHelp">PDF page numbers and ranges the verdict covers.</div></div>' +
-    (L.non_latin ? '<div class="field"><label><input type="checkbox" id="ocrReads"> I can read ' + esc(L.label) + '</label><div class="ctx">These pages are in a non-Latin script: <b>Approved</b> needs this box.</div></div>' : '') +
+    (L.non_latin || DRAFTS().length ? '<div class="field"><label><input type="checkbox" id="ocrReads"> I can read ' + esc(readsLabel()) + '</label><div class="ctx">' +
+      (L.non_latin ? 'These pages are in a non-Latin script: <b>Approved</b> needs this box.' : 'Approving an AI reading below needs this box.') + '</div></div>' : '') +
+    draftsBlock() +
     '<button type="submit" class="primary">' + (OCR_ONLY ? 'Finish OCR Review' : 'Record Verdict') + '</button></form><div id="ocrMsg" role="status" tabindex="-1"></div>' +
     '<details id="ocrPagesFold"' + (ocrPagesOpen ? ' open' : '') + '><summary>' + esc(tc('Pages (' + OCR.pages.length + ')')) + '</summary>' +
     (OCR.lang ? '' : '<p class="ctx">The text isn\'t marked with a language for screen readers: ' + esc(OCR.lang_why) + '.</p>') +
@@ -633,7 +652,8 @@ ocrBox.addEventListener('submit', async e => {
   const reads = document.getElementById('ocrReads');
   const body = { verdict: pick.value, reviewer: state.reviewer, reason: document.getElementById('ocrReason').value,
                  pages: document.getElementById('ocrPagesIn').value, to: pick.value === 'sent to a language reader' ? document.getElementById('ocrTo').value : '',
-                 reads: reads && reads.checked ? [OCR.languages.label] : [] };
+                 reads: reads && reads.checked ? [readsLabel()] : [],
+                 cjk_drafts: [...ocrBox.querySelectorAll('input.cjk-draft-ok:checked')].map(x => Number(x.value)) };
   if (OCR_ONLY) body.close = true;                     // Finish OCR Review: recorded, then the page closes
   try {
     const r = await fetch('/ocr-verdict', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
@@ -1786,6 +1806,18 @@ function langUntagged(r) {
   if (r.guess && r.confidence === 'low') bits.push('low confidence; its guess: ' + esc(r.guess_name || r.guess));
   return 'The AI left it untagged' + (bits.length ? ' (' + bits.join('; ') + ')' : '');
 }
+// The dictionary marks (#141, proposal 14): a fact beside the AI's answer, never a decision and never a default. Latin
+// only: a quiet line when the AI named Latin and every word is in the Latin list; a note when the AI left a form untagged
+// that sits inside a whole known Latin phrase, quoted as the book prints it. Nothing on any other language.
+function langDict(r) {
+  const latin = !!r.ai && String(r.ai).split('-')[0].toLowerCase() === 'la';
+  if (latin && r.latin_list) return '<div class="lang-meta lang-dict">Also found in a Latin dictionary.</div>';
+  // the AI's own low-confidence guess is Latin: "used in English text" would pull the other way (review 17; Patrick, 2026-11-20)
+  const guessLatin = r.confidence === 'low' && !!r.guess && String(r.guess).split('-')[0].toLowerCase() === 'la';
+  if (!r.ai && !r.current && r.latin_phrase) return '<div class="lang-meta lang-dict">Part of the Latin phrase "' + esc(r.latin_phrase) +
+    '"' + (guessLatin ? '' : ', used in English text') + '. Decide whether it should be tagged as Latin.</div>';
+  return '';
+}
 function langRowHtml(r) {
   const d = state.decisions[r.id] || {};
   // #159 (scale check): the full list is built when the control is reached (langFillSelect): 92 options on each of
@@ -1805,7 +1837,7 @@ function langRowHtml(r) {
   return '<div class="lang-row" id="lang-' + esc(r.id) + '" data-id="' + esc(r.id) + '"' + (d.status ? ' data-status="' + esc(d.status) + '"' : '') + '>' +
     '<div class="lang-left"><div class="lang-form" lang="' + esc(r.ai || '') + '">' + esc(r.form) + '</div>' +   // the status outside the lang element
     '<div class="lang-meta lang-status" role="status">' + langStatusHtml(r, d) + '</div></div>' +
-    '<div class="lang-info"><div>' + what + '</div>' + (r.snippet ? '<div class="lang-ctx">' + esc(r.snippet) + '</div>' : '') +
+    '<div class="lang-info"><div>' + what + '</div>' + langDict(r) + (r.snippet ?'<div class="lang-ctx">' + esc(r.snippet) + '</div>' : '') +
     (reading ? '<div class="lang-meta">' + reading + '</div>' : '') +
     '<div class="lang-meta">' + esc(r.places || 0) + ' place' + (r.places === 1 ? '' : 's') + (pagesTxt ? ' · ' + esc(pagesTxt) : '') +
     (r.evidence && !(r.rule && reading) ? ' · Evidence: ' + esc(r.evidence) : '') + '</div></div>' +   // #123: a rule row's reading, shown once
@@ -1909,12 +1941,21 @@ function langHeld(h) {
     (acc ? '<p>' + acc + '</p>' : '') +
     (h.accepted && !HELD_ACCEPT ? '' : '<button type="button" id="langHeldAccept">' + (HELD_ACCEPT ? 'Undo the Acceptance' : 'Accept Without the Word Forms Not Sent') + '</button>') + '</div>';   // review 31 L3: a name with its context
 }
+// #161 addition 3: words the finder could not place: read-only, never a condition of Ready (Patrick, 2026-11-19)
+function langUnplaced(u) {
+  if (!u || !u.count) return '';
+  return '<div class="pp-note" id="langUnplaced"><details id="langUnplacedList"><summary>Words Not Tagged (' + fmtN(u.count) + ')</summary>' +
+    '<p>Each is printed as one word, but the PDF stores its letters in separate places, so no language tag can cover it. ' +
+    'They may be in another language; the list gives their pages.</p>' +
+    (u.forms.length ? '<p>' + u.forms.map(f => esc(f[0]) + ' (' + f[1].slice(0, 3).map(p => 'PDF page ' + p).join(', ') + (f[1].length > 3 ? ' …' : '') + ')').join(' · ') + '</p>' : '') +
+    '</details></div>';
+}
 function renderLanguages() {
-  if ((!LANGS.total && !LANGS.held_back) || OCR_ONLY) { langBox.hidden = true; return; }
+  if ((!LANGS.total && !LANGS.held_back && !LANGS.unplaced) || OCR_ONLY) { langBox.hidden = true; return; }
   const open = new Set([...langBox.querySelectorAll('details[open]')].map(d => d.dataset.group));
   langBox.hidden = false;
   langBox.innerHTML = '<h2 id="langTitle">Languages' + (LANGS.total ? ' (' + fmtN(LANGS.total) + ')' : '') + '</h2>' +   // review 31 L3: no "(0)" when every form was held back
-    '<p>' + LANG_INTRO + '</p>' + langHeld(LANGS.held_back) +
+    '<p>' + LANG_INTRO + '</p>' + langHeld(LANGS.held_back) + langUnplaced(LANGS.unplaced) +
     LANGS.groups.map(langFold).join('');
   langBox.querySelectorAll('details').forEach(d => { if (open.has(d.dataset.group)) d.open = true; });
 }

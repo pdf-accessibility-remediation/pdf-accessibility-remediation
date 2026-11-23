@@ -3255,7 +3255,6 @@ sheen
 sheer
 sheerer
 sheering
-shin
 shine
 shingle
 shingling

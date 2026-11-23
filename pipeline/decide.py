@@ -820,7 +820,8 @@ if args.response_file and own_file:
     # step's parts (#118). A reply from anywhere else carries neither.
     _pr = load_json(os.path.join(args.run_dir, 'page_reads_run.json'))
     if isinstance(_pr, dict):
-        _pages = [{'page': x['page'], 'text': x['text']} for x in _pr.get('pages') or [] if x.get('finish') == 'stop' and (x.get('text') or '').strip()]
+        _pages = [{'page': x['page'], 'text': x['text'], **({'kind': 'cjk'} if x.get('kind') == 'cjk' else {})}   # #119: a CJK page keeps its kind
+                  for x in _pr.get('pages') or [] if x.get('finish') == 'stop' and (x.get('text') or '').strip()]
         if _pages: wo['page_readings'] = _pages
     _lr = load_json(os.path.join(args.run_dir, 'language_run.json'))
     if isinstance(_lr, dict) and isinstance(_lr.get('language_parts'), dict) and _lr['language_parts'].get('parts'):

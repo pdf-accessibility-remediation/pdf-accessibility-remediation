@@ -209,10 +209,9 @@ def build_items(wo, digest, order=None, ro=None):
         add(f'adopt_orphans:{i}', 'adopt_orphans', 'Reading order', ['adopt_orphans', i], r, (r or {}).get('label') or 'Orphan text',
             page=ps[0] if ps else None, pages=ps, orphans=runs[:6])
     lp = wo.get('language_parts') or {}
-    if lp.get('version') == 2:                                   # #118: one row per word form a person decides (review 06, stage D)
+    if langreq.has_forms(lp):                                    # #118: one row per word form a person decides (review 06, stage D)
         pages_of = collections.defaultdict(set)
-        for r in lp.get('parts') or []:
-            if isinstance(r, list) and len(r) == 5: pages_of[r[4]].add(r[0])
+        for pg_, _segs, fi_ in langreq.rows(lp): pages_of[fi_].add(pg_)
         rows = set(langreq.to_decide(lp.get('forms')))            # Latin-script names and English words left untagged: listed, not decided,
         for i, f in enumerate(lp.get('forms') or []):              # unless the AI tagged nothing at all (then every form is a row)
             if i not in rows: continue
@@ -229,14 +228,15 @@ def build_items(wo, digest, order=None, ro=None):
                 form_key=f.get('key'), bulk=bulk or None, needs_person=bool(f.get('person')) or None, confidence=f.get('confidence'),
                 guess=f.get('lang') if not f.get('tag') and f.get('lang') else None,   # an untagged answer's language (review 14, 2)
                 rule=f.get('rule'), reading=rd, reading_bulk=reading_bulk or None, rule_bulk=rule_bulk or None,   # #123, #124, #132
-                no_answer=f.get('no_answer'))                                           # #137: why there is no AI answer
+                no_answer=f.get('no_answer'),                                           # #137: why there is no AI answer
+                latin_list=f.get('latin_list') or None, latin_phrase=f.get('latin_phrase') or None)   # proposal 14: the dictionary marks
     if wo.get('notes_for_reviewer'):
         refs = sorted({int(m.group(1)) for m in PAGE_REF.finditer(wo['notes_for_reviewer']) if 1 <= int(m.group(1)) <= N})
         add('notes_for_reviewer', 'notes_for_reviewer', 'Deferred by the AI', ['notes_for_reviewer'], wo['notes_for_reviewer'],
             'Note to the reviewer from the AI', page=refs[0] if refs else None, page_refs=refs)
     listed = {'retype', 'rolemap', 'actual_text', 'merges', 'document', 'alt', 'page_figures', 'tables', 'flatten', 'keep_lists',
               'artifacts', 'ocr_words', 'page_readings', 'deferrals', 'notes_for_reviewer', 'schema', *READING} | workorder_check.META
-    if lp.get('version') == 2: listed.add('language_parts')
+    if langreq.has_forms(lp): listed.add('language_parts')
     if figures_card(ro): listed.add('fix_figure_order')            # the Figures Moved card is that decision
     for k, v in wo.items():
         if k not in listed:
@@ -353,8 +353,8 @@ def run_apply(pdf, wo, out, timeout=1800, env=None, low=False, on_start=None):
         raise TreeIndexStale(next(l for l in ((so or '') + '\n' + (se or '')).splitlines() if TREE_STALE_MARK in l))
     return p.returncode, load(out + '.log.json')
 
-TREE_CHECK_ENV = ('APPLY_TREE_CHECK', 'APPLY_TREE_STALE_LOG', 'APPLY_TEST_LOSE_ENTRY', 'APPLY_FAIL_LANG_PAGE')   # set by the tests only, never in production (#93 C2; #118 review 06 M6, review 08 L1)
-DRYRUN_ENV = ('APPLY_DRAFT', 'ALLOW_PDF20') + TREE_CHECK_ENV            # every variable apply.py and lib/ read (a test keeps this list whole)
+TREE_CHECK_ENV = ('APPLY_TREE_CHECK', 'APPLY_TREE_STALE_LOG', 'APPLY_TEST_LOSE_ENTRY', 'APPLY_FAIL_LANG_PAGE', 'APPLY_TEST_PIXEL_FAIL_RUN', 'APPLY_TEST_PIXEL_FAIL_PAGE', 'APPLY_TEST_TEXT_FAIL_RUN')   # set by the tests only, never in production (#93 C2; #118 review 06 M6, review 08 L1; #150 H3)
+DRYRUN_ENV = ('APPLY_DRAFT', 'APPLY_CJK_CHECKED', 'ALLOW_PDF20', 'LANG_FINDER_RULES') + TREE_CHECK_ENV   # every variable apply.py and lib/ read (a test keeps this list whole)
 DRYRUN_PKGS = ('pikepdf', 'pdfplumber', 'pypdfium2', 'pillow', 'fonttools')   # as apply.py's _versions()
 
 def dryrun_code():
@@ -1085,6 +1085,7 @@ def language_rows(items, group, start=0, n=LANG_PAGE, contexts=None):
                     'pages': c.get('page_list'), 'snippet': c.get('snippet') or (contexts or {}).get(c.get('form_key')),
                     'bulk': bool(c.get('bulk')), 'needs_person': bool(c.get('needs_person')), 'written': lang_written(it), 'guess': c.get('guess'), 'guess_name': langtag.name(c['guess']) if c.get('guess') else None,
                     'rule': c.get('rule'), 'reading_bulk': bool(c.get('reading_bulk')), 'rule_bulk': bool(c.get('rule_bulk')), 'no_answer': c.get('no_answer'),
+                    'latin_list': bool(c.get('latin_list')), 'latin_phrase': c.get('latin_phrase'),   # proposal 14: shown, never decided
                     **({'reading': {'text': rd.get('text'), 'lang': rd.get('lang'), 'langs': rd.get('langs') or [],
                                     'names': [langtag.name(x) or x for x in rd.get('langs') or []], 'with': rd.get('with'), 'places': rd.get('places')}} if rd else {}),
                     **current_words(c.get('current'))})
@@ -1296,6 +1297,78 @@ def gaps(wo, digest):
         out.append({'id': 'page_figures_without_alt', 'what': f'{len(left)} whole-page figure{"s" if len(left) != 1 else ""} '
                     'with no alt text, on PDF ' + ', '.join(map(str, left[:12])) + (f' and {len(left) - 12} more pages' if len(left) > 12 else ''),
                     'add': {'kind': 'page_figures', 'target': left[0]}})
+    out += _gaps_59(wo, digest, by_obj, styles, figs)
+    return out
+
+# #59: warnings, not refusals (the review can finish with a reason; the report lists them)
+ALT_LONG = 300                                      # a longer description belongs in the text or a caption
+PLACEHOLDER_ALT = re.compile(r'(?i)^(an? |the )?(image|figure|fig\.?|picture|pic|photo(graph)?|graphic|illustration|img|placeholder|alt( text)?)( ?\d+)?\.?$')
+FILE_NAME_ALT = re.compile(r'(?i)^\S+\.(png|jpe?g|gif|tiff?|bmp|svg|webp|eps|psd)$|^(img|dsc|dscn|scan)[_-]?\d+$')
+def _norm_words(t): return ' '.join(re.sub(r'[^\w]+', ' ', str(t or '').lower()).split())
+
+def alt_problem(alt, near=''):
+    """Why alt text says nothing a reader can use, or None: a placeholder word, a file name, the nearby caption repeated
+    word for word, or a description too long for alt text."""
+    a = str(alt or '').strip()
+    if not a: return None
+    if PLACEHOLDER_ALT.match(a): return 'a placeholder ("' + a[:40] + '")'
+    if FILE_NAME_ALT.match(a): return 'a file name ("' + a[:40] + '")'
+    if len(_norm_words(near)) >= 8 and _norm_words(a) == _norm_words(near): return 'only the caption beside it, repeated'
+    if len(a) > ALT_LONG: return f'{len(a)} characters long (a longer description belongs in the text or a caption)'
+    return None
+
+def _gaps_59(wo, digest, by_obj, styles, figs):
+    out = []
+    doc = digest.get('document') or {}
+    t = (wo.get('document') or {}).get('title') if isinstance(wo.get('document'), dict) else None
+    if not str(t or doc.get('title') or doc.get('xmp_title') or '').strip():
+        out.append({'id': 'no_title', 'what': 'No document title: once this review is applied, the PDF has no title for a screen reader to '
+                    'announce (WCAG 2.4.2). Add one under Document.', **({} if t is not None else {'add': {'kind': 'document', 'target': 'title'}})})
+    bad = []                                           # alt text that says nothing a reader can use
+    for it in wo.get('alt') or []:
+        if not isinstance(it, dict): continue
+        f = figs.get(it.get('obj')) or {}
+        why = alt_problem(it.get('alt'), ((f.get('next') or {}).get('text') if isinstance(f.get('next'), dict) else '') or '')
+        if why: bad.append((f.get('page'), why))
+    for it in wo.get('page_figures') or []:
+        if isinstance(it, dict):
+            why = alt_problem(it.get('alt'))
+            if why: bad.append((it.get('page'), why))
+    if bad:
+        out.append({'id': 'weak_alt', 'what': f'{len(bad)} alt text{"s" if len(bad) != 1 else ""} a reader can\'t use: '
+                    + '; '.join(f'PDF {p}: {w}' if p else w for p, w in bad[:6]) + (f'; and {len(bad) - 6} more' if len(bad) > 6 else '')
+                    + '. Say what the figure shows.'})
+    # heading levels that skip (an H2 followed by an H4), in page order, once the order's retypes and style mappings apply
+    retype = {it.get('obj'): it.get('type') for it in wo.get('retype') or [] if isinstance(it, dict)}
+    hs, seen = [], set()
+    for k in ('headings', 'heading_candidates', 'elements'):
+        for i, x in enumerate(digest.get(k) or []):
+            o = x.get('obj')
+            if o in seen or (k == 'elements' and o not in retype): continue
+            lv = retype.get(o) or (_level(x.get('style'), wo, styles) if k != 'heading_candidates' else (wo.get('rolemap') or {}).get(x.get('style')))
+            if k == 'headings' and o not in retype and x.get('level') and not (wo.get('rolemap') or {}).get(x.get('style')): lv = x['level']
+            if isinstance(lv, str) and re.fullmatch(r'H[1-6]', lv) and isinstance(x.get('page'), int):
+                seen.add(o); hs.append((x['page'], k != 'headings', i, int(lv[1]), x))
+    hs.sort(key=lambda h: h[:3])
+    skips = [(a, b) for a, b in zip(hs, hs[1:]) if b[3] > a[3] + 1]
+    if skips:
+        say = lambda h: f'H{h[3]} "{str(h[4].get("text") or "")[:50]}" (PDF {h[0]})'
+        out.append({'id': 'heading_skips', 'what': f'{len(skips)} heading level{"s" if len(skips) != 1 else ""} skipped: '
+                    + '; '.join(f'{say(a)} then {say(b)}' for a, b in skips[:4]) + (f'; and {len(skips) - 4} more' if len(skips) > 4 else '')
+                    + '. A screen reader user moves by level, so a skipped level reads as a missing section.'})
+    # header columns the executor will refuse (lib/tablegrid.py: a data row with that many cells or fewer)
+    tabs = {x['obj']: x for x in digest.get('tables') or []}
+    refuse = []
+    for it in wo.get('tables') or []:
+        if not isinstance(it, dict) or not isinstance(it.get('header_cols'), int) or it['header_cols'] <= 0: continue
+        x = tabs.get(it.get('obj')) or {}; hc = it['header_cols']
+        first = int(it.get('title_rows') or 0) + int(it.get('header_rows') or 0) if all(isinstance(it.get(k, 0), int) for k in ('title_rows', 'header_rows')) else 0
+        rows = [r for r in (x.get('first_rows') or [])[first:] if isinstance(r, str) and not r.endswith('…')]   # a row the audit clipped (audit.py clip, 100 characters) may hide cells
+        if (isinstance(x.get('cols'), int) and x['cols'] <= hc) or any(len(r.split(' | ')) <= hc for r in rows):
+            refuse.append(f'PDF {x.get("page")}' if x.get('page') else str(it.get('obj')))
+    if refuse:
+        out.append({'id': 'header_cols_refused', 'what': f'{len(refuse)} table{"s" if len(refuse) != 1 else ""} with more header columns '
+                    'than a row has cells, so the executor will refuse the reading: ' + ', '.join(refuse[:8]) + '. Lower the header columns.'})
     return out
 
 # ------------------------------------------------------------------ diff
@@ -1405,6 +1478,7 @@ FIX = {
     'no header rows or columns': 'Choose at least one header row or column. If the table has no headers, reject this choice.',
     'the same table twice': 'This table is decided twice. Keep one choice and reject or remove the other.',
     'the same page twice': 'This page has two readings. Keep one and reject the other.',
+    'kind is haw (Hawaiian) or cjk (Chinese, Japanese, Korean: #119)': 'Reject this reading: its page kind is not one the pipeline reads.',
     'not a BCP 47 language tag': 'Choose a language from the list, or choose Other and type a language tag such as en-US or haw.',
     'not a list the one-item rule would flatten': 'Nothing would flatten this list, so there is nothing to keep. Reject this choice.',
     'unknown style or direction': 'The book has no such style. Reject this choice.',
@@ -1422,11 +1496,17 @@ FIX = {
     'already decided: change it on its card': 'The AI already decided this. Remove this addition and change the AI\'s choice on its card.',
     'the AI marked this figure as decoration: reject that decision first': 'The AI marked this figure as decoration. Reject that choice first, or remove this alt text.',
     'a work order holds at most N section moves: change or reject one on its card first': 'At most {moves} sections can be moved. Change or reject one of the other moves first.',
+    'empty title': 'Type the book\'s title. An empty title is worse than none: screen readers announce nothing for the document.',   # #59
+    'empty spoken text': 'Type what a screen reader should say for this passage, or reject this choice to keep the printed text.',
+    'the first page is after the last': 'The first page comes after the last. Put the lower page number first.',
+    'it lands inside its own pages': 'The section would be read before itself. Choose a page outside its own pages, or reject the move.',
+    'the same order marks this figure as decoration': 'This figure is also marked as decoration. Keep the alt text or the decoration choice, and reject the other.',
 }
 CONFLICT = {'also flattened', 'the same table twice', 'more than N section moves', 'its pages overlap another section move',
             'it lands inside the pages of another section move', 'added twice', 'already decided: change it on its card',
             'the AI marked this figure as decoration: reject that decision first',
-            'a work order holds at most N section moves: change or reject one on its card first'}   # choices that clash, not one bad value
+            'a work order holds at most N section moves: change or reject one on its card first',
+            'the same order marks this figure as decoration'}   # choices that clash, not one bad value
 
 def _key(why): return re.sub(r'(more than|at most) \d+', r'\1 N', str(why))
 
@@ -1493,6 +1573,7 @@ def problems(R, ai_wo, items, decisions, additions, adds, reviewer='', set_in=No
         if why.startswith('more than'): return [m.get('_card') for m in moves if m is not it]
         if why == 'the same table twice': return [t.get('_card') for t in tables if t is not it and t.get('obj') == it.get('obj')]
         if why == 'also flattened': return [f'flatten:{it.get("obj")}']
+        if why == 'the same order marks this figure as decoration': return [f'artifacts.elements:{it.get("obj")}']   # #59
         return []
 
     out = {'fields': [], 'conflicts': [], 'unplaced': []}
@@ -1555,6 +1636,24 @@ def held_back_info(R, run_dir=None):
             'forms': hb.get('forms') or [],
             'sentence': AS.held_back_words(est, after=True) or '', 'reason': G.held_back_reason(hb),   # review 31 L3: after the run, in the past tense
             'accepted': acc if acc.get('by') and acc.get('count') == hb['count'] and acc.get('sha') == hb.get('sha') else None}
+
+def unplaced_info(R, run_dir=None):
+    """#161 addition 3: the words the finder could not place (record.json language_status.unplaced once the report ran,
+    else the audit's lang_candidates.json while the run waits for its first review), for the review page's read-only
+    "Words Not Tagged" fold: {count, forms: [[form, [pages]]]}, or None. Never a condition of Ready (Patrick, 2026-11-19)."""
+    run_dir = run_dir or R
+    rec = load(os.path.join(run_dir, 'record.json')) or {}
+    st = rec.get('language_status') if isinstance(rec.get('language_status'), dict) else None
+    up = (st or {}).get('unplaced')
+    if up is None and not st:
+        lc = load(os.path.join(R, '_audit', 'lang_candidates.json')) or load(os.path.join(run_dir, '_audit', 'lang_candidates.json'))
+        rows = (lc or {}).get('unplaced') if isinstance(lc, dict) else None
+        if rows:
+            by = collections.OrderedDict()
+            for u in rows: by.setdefault(u.get('form'), set()).add(u.get('page'))
+            up = {'count': len(rows), 'forms': [{'form': f, 'pages': sorted(p for p in ps if isinstance(p, int))} for f, ps in list(by.items())[:200]]}
+    if not up or not up.get('count'): return None
+    return {'count': up['count'], 'forms': [[u['form'], u.get('pages') or []] for u in up.get('forms') or []]}
 
 def language_review(items, decisions):
     """The Languages section's decisions, counted for the record (record language_review; lib/glance.py's Language Tags

@@ -2,13 +2,13 @@
 
 Result: `hawaii3_remediated.pdf`
 
-301 pages · run November 15, 2026, at 10:02 PM · model `anthropic/claude-sonnet-5.5` · prompt `workorder_v12.md` (762395b72330c407) · AI cost $0.217 ($0.0007 per page), from the original AI request on November 15, 2026 · this run: no new AI request · tokens: saved reply reused, not counted
+301 pages · run November 19, 2026, at 7:17 PM · model `anthropic/claude-sonnet-5.5` · prompt `workorder_v12.md` (762395b72330c407) · AI cost $0.217 ($0.0007 per page), from the original AI request on November 15, 2026 · this run: no new AI request · tokens: saved reply reused, not counted
 
 Intake: none (already tagged)
 
 Libraries: python 3.13.9 · pikepdf 10.5.1 · pdfplumber 0.11.9 · pypdfium2 5.7.1 · pillow 13.0.0 · fonttools 4.62.1
 
-Time: intake 0.6s · audit 39.5s · reuse saved reply 1.7s · apply 29.9s · verify 41.0s · total 112.7s
+Time: intake 0.9s · audit 63.8s · reuse saved reply 1.8s · apply 44.5s · verify 60.0s · total 171.0s
 
 ## Overview
 
@@ -20,7 +20,7 @@ Time: intake 0.6s · audit 39.5s · reuse saved reply 1.7s · apply 29.9s · ver
 - Work Order Approval: Not Approved (applied without a review)
 - ✓ OCR Text Approval: Not Applicable
 - Safety Checks: Failed (all content tagged or decoration)
-- Language Tags: Not Done (the language step was not run)
+- Language Tags: Not Done (the language step was not run · 5 words not tagged)
 - Accessibility Evaluation: Not Completed
 
 **Safety checks:** OK ✔ pages look the same · OK ✔ text unchanged · FAILED ✘ all content tagged or decoration · OK ✔ tag-tree index points into the tree · OK ✔ every font readable  
@@ -350,6 +350,9 @@ Reviewer note from the AI: Heading plan: the title page (PDF 4) holds the single
 ### 12. Language Tags
 
 Words and passages in another language get a language tag, so a screen reader switches to that language's voice (WCAG 3.1.2). Tags from the language step are decided by a person; kana and Hangul are tagged by a fixed rule.
+
+**Words not tagged (5):** each is printed as one word, but the PDF stores its letters in separate places, so no language tag can cover it. They may be in another language; the list gives their pages.
+"ʻōlelo" (PDF 23 (printed 10)) · "ʻĀina" (PDF 82 (printed 69), PDF 103 (printed 90)) · "ʻUlu" (PDF 296 (printed 283))
 
 **The PDF's language names, written as language codes (401 tags):** a language's name is not a language tag, so each is replaced by the code it names. Check that the words are in that language.
 
