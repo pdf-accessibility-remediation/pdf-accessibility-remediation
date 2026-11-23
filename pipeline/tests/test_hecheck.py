@@ -90,7 +90,7 @@ def test_a_charged_reply_that_was_cut_off_is_kept_with_its_cost_but_not_reused(c
     out = hecheck.execute(copy, p, lambda body: ok('```json\n{"alt": [', cost=0.02, finish='length'))
     assert out['outcome'] == 'cut_off' and out['kept'] is None and hecheck.paid(copy) == 0.02
     assert not hecheck.reusable(hecheck.saved(copy), p) and 'cut off' in hecheck.words(hecheck.saved(copy))
-    assert hecheck.answers(hecheck.saved(copy)) == {'alt': {}, 'page_figures': {}, 'decoration': {}, 'text': {}}
+    assert hecheck.answers(hecheck.saved(copy)) == {'alt': {}, 'page_figures': {}, 'decoration': {}, 'text': {}, 'deferrals': []}
 
 def test_a_failed_request_is_sent_once_more_and_saves_nothing_when_nothing_was_charged(copy):
     calls = []
@@ -165,7 +165,8 @@ def drafted(copy, reply=None, cost=0.0):
     """The check run on the copy with a fake send, then its answers put into review_items.json (as handedit_check.py does)."""
     p = make_plan(copy); obj = p['items'][0]['obj']
     rep = reply if reply is not None else {'alt': [{'obj': obj, 'alt': 'A green square.'}],
-                                          'text_pages': [{'page': 1, 'verdict': 'correction', 'why': 'figures became figurez'}]}
+                                          'text_pages': [{'page': 1, 'verdict': 'correction', 'why': 'figures became figurez'}],
+                                          'deferrals': [{'what': 'Cover page description', 'why': 'the picture may sit in another object', 'pages': [1]}]}
     hecheck.execute(copy, p, lambda body: ok(fenced(rep), cost=cost))
     assert core.refresh_ai_check(copy)
     data = core.load(os.path.join(copy, 'review_items.json'))
@@ -241,6 +242,7 @@ def test_an_approved_draft_is_recorded_with_its_cost_and_the_report_says_who_dec
     assert rec['run']['no_model']                                                                       # the work order was still a person's
     assert '"A green square." (drafted by the AI, approved by Pat)' in md and 'The AI checked the edit before the review' in md
     assert 'figures became figurez' in md and 'the AI\'s check of the hand edit cost $0.020' in md and 'None' not in md
+    assert 'The AI left this to a person: **Cover page description** (PDF 1): the picture may sit in another object.' in md
     assert costs.after_line(copy) == f'AI Cost: $0.02 ({costs.CHECK_WORDS})' and costs.actual(copy)['calls'] == 1
     assert hecheck.paid(copy) == 0.02                                                                    # the working file stays with the run
 
@@ -287,3 +289,29 @@ def test_the_script_takes_the_model_from_MODEL_and_refuses_an_auto_choice(copy):
     assert r.returncode == 1 and r.stderr.startswith('refused:') and 'not a model' in r.stderr
     r = subprocess.run([sys.executable, os.path.join(PIPE, 'handedit_check.py'), copy, '--dry-run'], capture_output=True, text=True, env=dict(env, MODEL='anthropic/test-model'))
     assert 'anthropic/test-model' in r.stdout                                                           # used (the lookup then stops: no network here)
+
+# ------------------------------------------------------------------ what the AI left to a person (information only)
+def test_what_the_ai_left_to_a_person_reaches_the_page_data_cleaned_and_never_the_work_order(copy):
+    junk = ['not a dict', {'what': '', 'why': ''}, {'what': 'Cover', 'why': 'check it', 'pages': [3, 'x', True, 1, 3]}, {'why': 'only a reason'}]
+    obj, data, card = drafted(copy, reply={'deferrals': junk})
+    assert data['hand_edit']['ai_deferrals'] == [{'what': 'Cover', 'why': 'check it', 'pages': [1, 3]},
+                                                 {'what': 'Something the AI left to a person', 'why': 'only a reason', 'pages': []}]
+    assert card['default'] == '' and not any(t.get('ai') for t in data['hand_edit']['targets'])         # a deferral drafts nothing
+    wo = {}; assert core.add_entries(wo, [], data['addable'], 'Pat') == [] and wo == {}                  # and adds nothing
+    assert 'he.ai_deferrals' in open(os.path.join(PIPE, 'review', 'page.html'), encoding='utf-8').read()
+
+def test_no_deferral_means_no_line_anywhere(copy):
+    obj, data, card = drafted(copy, reply={'alt': [{'obj': 'x', 'alt': 'dropped: not sent'}]})
+    assert data['hand_edit']['ai_deferrals'] == [] and hecheck.answers(hecheck.saved(copy))['deferrals'] == []
+
+# ------------------------------------------------------------------ #100's open question, pinned: the check is optional
+def test_a_check_that_gave_no_draft_never_holds_the_review(copy):
+    """A hand edit is a DECIDE=none run, so lib/aistatus.py finds no unfinished AI step: a cut-off, unreadable or failed check leaves the
+    review open (the run page offers Get a New Estimate instead). Changing this is a decision, not a fix."""
+    from lib import aistatus
+    p = make_plan(copy)
+    hecheck.execute(copy, p, lambda body: ok('```json\n{"alt": [', cost=0.02, finish='length'), sleep=NOSLEEP)
+    assert hecheck.saved(copy)['outcome'] == 'cut_off'
+    assert aistatus.status(copy)['held'] is False
+    hecheck.execute(copy, p, lambda body: {'resp': None, 'timeout': True}, worst=0.04, sleep=NOSLEEP)
+    assert hecheck.saved(copy)['outcome'] == 'failed' and aistatus.status(copy)['held'] is False

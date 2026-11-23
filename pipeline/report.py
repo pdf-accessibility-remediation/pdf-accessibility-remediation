@@ -719,6 +719,8 @@ if he:                                                # handedit.py import: what
             L += [f'| {pg(t["page"])} | {({"correction": "a correction", "damage": "damage", "unsure": "not sure"}).get(t["verdict"], t["verdict"])} | {excerpt(t["why"], n=160)} |' for t in tv]
             L += ['', 'These readings are suggestions: compare each page with the print.']
         elif ck.get('outcome') != 'done': L += ['', f'- The AI check gave no suggestions: {hecheck.words(ck)}.']
+        for d in hecheck.answers(ck)['deferrals']:                 # what the AI could not decide: information, nothing was applied for it
+            L += ['', f'- The AI left this to a person: **{excerpt(d["what"], n=120)}**' + (f' ({pgs(d["pages"])})' if d['pages'] else '') + (f': {excerpt(d["why"], n=240)}' if d['why'] else '') + '.']
     if (he.get('pages') or [None, None])[0] != (he.get('pages') or [None, None])[1]:
         L += ['', f'- Pages: {he["pages"][0]} before the edit, {he["pages"][1]} after.']
     L.append('')

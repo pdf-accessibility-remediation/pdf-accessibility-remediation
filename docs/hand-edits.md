@@ -115,7 +115,7 @@ By default nothing about an edit goes to the AI, so a reviewer writes the alt te
 
 It sees only what the import found: the figures that hold a new image, the figures that lost their tag, and the pages whose text reads differently, each with its old and new wording and a picture of the page. It never sees the rest of the PDF. An old alt text goes in as context only, and the AI describes the new image.
 
-**It only suggests.** Each draft appears on its card under **Edited by Hand**, marked "Suggested by the AI". You add it as it is, change it first, or write your own. A new image the AI takes for decoration gets a note instead of alt text.
+**It only suggests.** Each draft appears on its card under **Edited by Hand**, marked "Suggested by the AI". You add it as it is, change it first, or write your own. A new image the AI takes for decoration gets a note instead of alt text. Anything the AI could not decide is listed in the summary and in `review.md` as left to you.
 
 For a page whose text changed, the summary says whether the AI reads the change as a correction or as damage, and why. Nothing is applied until the review is finished, and `review.md` says which alt texts were "drafted by the AI, approved by" the reviewer.
 
@@ -211,7 +211,7 @@ The original is checked against `record.json` (`document.sha256`). The run's ear
 
 **The AI check** (#100: `handedit_check.py`, built on `lib/hecheck.py` and the pieces of `lib/figpasses.py`):
 - It sends the figures that have a card (`core.hand_edit_targets`, so the cards and the request always agree), each with its crop and its old alt text as context, and, for each page whose text reads differently, the old and new text around the change (at most 4,000 characters each, at most 12 pages) with an image of the page. The instructions are `prompts/handedit_check_v1.md`. Alt text the parent's result already carries goes in as style examples.
-- The reply is cut to what was sent (`figpasses.scope`, then the text verdicts), and an empty alt text is dropped. Answers are never work-order decisions: `core.hand_edit_ai` puts each into its card's default and marks it `suggested_by_ai`, and `review_items.json` is updated after the check.
+- The reply is cut to what was sent (`figpasses.scope`, then the text verdicts), and an empty alt text is dropped. Answers are never work-order decisions: `core.hand_edit_ai` puts each into its card's default and marks it `suggested_by_ai` (a deferral goes to `he['ai_deferrals']`, information only), and `review_items.json` is updated after the check.
 - An alt text added as the AI drafted it carries `ai_draft: approved` (or `changed`) in the work order, which `report.py` turns into the wording above. The `why` stays "added by … in review".
 - The record: `hand_edit.ai_check` (model, instructions, date, cost, what was sent, `kept`), `ai_call.cost_usd` and `ai_call.hand_edit_check`, and `cost_total_usd`. The run is still `no_model`: the work order was a person's, so "AI Cost" reads "$0.02 (the AI's check of a hand edit; no AI request for the decisions)".
 - The limits are the usual ones: `MAX_USD` for the request and `BOOK_MAX_USD` for the PDF, with the credit. The request goes through `lib/aisend.py`, so it has the one retry rule. `lib/hecheck.py` `total()` is what it has cost: `cost_usd`, plus a charge that is not known at its worst case (`worst_usd`), plus an earlier check's (`earlier_cost_usd`). In the app only a `spend` job sends it (`webapp/spend.py` `authorize_handedit_check`, the routes `ai-estimate` and `ai-check`), bound to the estimate shown.

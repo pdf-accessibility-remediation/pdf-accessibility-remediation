@@ -101,12 +101,13 @@ def main():
     AI_ALT = 'A solid green rectangle (drafted by the AI in the test)'
     if new_bare and a.ai_check:
         rp = os.path.join(out, 'ai_reply.txt')
-        open(rp, 'w', encoding='utf-8').write('```json\n' + json.dumps({'alt': [{'obj': new_bare[0], 'alt': AI_ALT}]}) + '\n```\n')
+        open(rp, 'w', encoding='utf-8').write('```json\n' + json.dumps({'alt': [{'obj': new_bare[0], 'alt': AI_ALT}], 'deferrals': [{'what': 'Cover description', 'why': 'the picture may sit in another object', 'pages': [page]}]}) + '\n```\n')
         run([sys.executable, 'handedit_check.py', C, '--reply', rp])
         items = json.load(open(os.path.join(C, 'review_items.json'), encoding='utf-8'))
         card = next((x for x in items['addable']['alt'] if x['target'] == new_bare[0]), {})
         check(card.get('default') == AI_ALT and (card.get('context') or {}).get('suggested_by_ai'), 'the AI\'s draft is the card\'s default, marked as suggested by the AI')
         check(not any(x.get('alt') for x in wo.get('alt') or []), 'nothing is in the work order before a person adds it')
+        check([d['what'] for d in items['hand_edit'].get('ai_deferrals') or []] == ['Cover description'], 'what the AI left to a person is in the review page\'s data')
         refused = core.add_entries(wo, [{'kind': 'alt', 'target': new_bare[0], 'value': card.get('default')}], items['addable'], 'handedit_case')
         check(not refused and (wo.get('alt') or [{}])[0].get('ai_draft') == 'approved', 'the person adds the draft as it is: marked approved')
         json.dump(wo, open(wo_p, 'w', encoding='utf-8'), indent=1)
@@ -139,6 +140,7 @@ def main():
     check(any(f['alt'] == want for f in after), 'the new alt text is in the result')
     if a.ai_check:
         md = open(os.path.join(C, 'review.md'), encoding='utf-8').read()
+        check('The AI left this to a person: **Cover description**' in md, 'review.md lists what the AI left to a person')
         check('drafted by the AI, approved by handedit_case' in md, 'review.md says the alt text was drafted by the AI and approved by the reviewer')
         ck = h.get('ai_check') or {}
         check(ck.get('outcome') == 'done' and rec.get('cost_total_usd') == 0 and 'None' not in md, 'record.json holds the check (answered, $0) and review.md prints no None')

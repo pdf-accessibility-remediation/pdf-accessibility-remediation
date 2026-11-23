@@ -791,13 +791,14 @@ function handSummary() {
   const ck = he.ai_check;
   if (ck) row('AI check', esc(ck.outcome === 'done' ? 'Drafted by the AI before this review: ' + (ck.words || 'checked') : 'The AI check did not give a draft: ' + (ck.words || 'not finished'))
     + (ck.cost_usd ? ' · $' + Number(ck.cost_usd).toFixed(3) : '') + '. Every draft is a suggestion: add it as it is, or change it first.');
-  else if (he.ai_estimate != null) row('AI check', 'Not asked yet. A draft of the alt text and a reading of the changed text would cost up to $' + Number(he.ai_estimate).toFixed(2) + '. To ask for it, close this page and select Draft with the AI on the run page.');
+  else if (he.ai_estimate != null) row('AI check', 'Not asked yet. A draft of the alt text and a reading of the changed text would cost up to $' + Number(he.ai_estimate).toFixed(2) + '. To ask for it, close this page and select Draft with the AI on the run page, or ask for it from the terminal (see Editing the PDF by hand).');
   const li = [];
   if (he.alt_removed) li.push(plural(he.alt_removed, 'figure holds', 'figures hold') + ' a new image (' + esc(pp(he.figure_pages)) + '): the old alt text was removed.');
   if ((he.lost || []).length) li.push(plural(he.lost.length, 'figure', 'figures') + ' lost the tag (' + esc(pp(he.lost.map(f => f.page))) + '): screen readers skipped it until it gets alt text again.');
   if ((he.outside_pages || []).length) li.push('New images that no figure holds: ' + esc(pp(he.outside_pages)) + '. Check whether each is a figure or decoration.');
   if (he.text_same) li.push('Text changed on ' + plural(he.text_same, 'page', 'pages') + ': only the spaces between words, so it reads the same.');
   if ((he.text_differs || []).length) li.push('<b>The text reads differently on ' + esc(pp(he.text_differs)) + ': compare it with the print.</b>');
+  for (const d of he.ai_deferrals || []) li.push('Left to you by the AI' + ((d.pages || []).length ? ' (' + esc(pp(d.pages)) + ')' : '') + ': <b>' + esc(d.what) + '</b>. ' + esc(d.why));
   for (const x of he.text_checks || []) li.push('Suggested by the AI, PDF ' + esc(x.page) + ': <b>' + esc({ correction: 'a correction', damage: 'damage', unsure: 'not sure' }[x.verdict] || x.verdict) + '</b>. ' + esc(x.why) + ' Compare it with the print.');
   return '<div class="he-sum"><dl class="fields">' + rows.join('') + '</dl><h3>' + esc(tc('What the edit changed')) + '</h3>' +
     (li.length ? '<ul>' + li.map(x => '<li>' + x + '</li>').join('') + '</ul>' : '<p class="ctx">No figure, image or text change was found.</p>') +

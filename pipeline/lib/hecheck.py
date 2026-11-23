@@ -220,11 +220,24 @@ def scope(reply, p):
         else: dropped.append({'where': 'text_pages', 'item': it, 'why': 'not a page whose text was sent, or no verdict and reason'})
     return kept, dropped
 
+def deferrals(k):
+    """What the AI left to a person, from a check's kept answers: [{what, why, pages}] with each part cleaned (a page that is not a whole
+    number is dropped, an entry with neither words is dropped). Information only: nothing is applied for a deferral."""
+    out = []
+    for d in k.get('deferrals') or []:
+        if not isinstance(d, dict): continue
+        what, why = str(d.get('what') or '').strip(), str(d.get('why') or '').strip()
+        if not (what or why): continue
+        pages = sorted({p for p in d['pages'] if isinstance(p, int) and not isinstance(p, bool)}) if isinstance(d.get('pages'), list) else []
+        out.append({'what': what or 'Something the AI left to a person', 'why': why, 'pages': pages})
+    return out
+
 def answers(s):
     """The saved check's answers as the review page reads them, keyed by what it shows: {'alt': {obj: alt}, 'page_figures': {page: alt},
-    'decoration': {obj: label}, 'text': {page: {verdict, why}}}. Empty for a check that did not finish."""
+    'decoration': {obj: label}, 'text': {page: {verdict, why}}, 'deferrals': [{what, why, pages}]}. Empty for a check that did not finish."""
     k = (s or {}).get('kept') or {}
-    return {'alt': {a['obj']: a['alt'] for a in k.get('alt') or []},
+    return {'deferrals': deferrals(k),
+            'alt': {a['obj']: a['alt'] for a in k.get('alt') or []},
             'page_figures': {int(a['page']): a['alt'] for a in k.get('page_figures') or []},
             'decoration': {e['obj']: (e.get('label') or '') for e in (k.get('artifacts') or {}).get('elements') or []},
             'text': {int(t['page']): {'verdict': t['verdict'], 'why': t['why']} for t in k.get('text_pages') or []}}

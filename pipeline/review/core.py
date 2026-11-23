@@ -899,7 +899,7 @@ def hand_edit_ai(R, data):
     """Put the AI's check of a PDF edited by hand into the page data (in place; the same again changes nothing): each answer is
     the default of its figure's addition, marked context.suggested_by_ai, so a person still adds (approves) or edits it; nothing
     here is a decision. Also he['ai_check'] (what was asked, when, the cost), he['ai_estimate'] (an estimate made and not yet
-    spent), he['text_checks'] (the AI's reading of each changed page) and, on a target, `ai` and `ai_decoration`.
+    spent), he['text_checks'] (the AI's reading of each changed page), he['ai_deferrals'] (what it left to a person) and, on a target, `ai` and `ai_decoration`.
     Returns whether the data changed."""
     from lib import hecheck
     he = data.get('hand_edit')
@@ -924,6 +924,7 @@ def hand_edit_ai(R, data):
     he.pop('ai_estimate', None)
     he['ai_check'] = {'model': s.get('model'), 'cost_usd': hecheck.total(s), 'date': s.get('date'), 'outcome': s.get('outcome'), 'words': hecheck.words(s)}
     he['text_checks'] = [{'page': p, **v} for p, v in sorted(ans['text'].items())]
+    he['ai_deferrals'] = ans['deferrals']          # what the AI left to a person: shown in the summary, never applied
     return True
 
 def refresh_ai_check(R):
