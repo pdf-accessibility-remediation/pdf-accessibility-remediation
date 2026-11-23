@@ -883,7 +883,8 @@ if prd_cjk:                                            # #119: the lines the AI 
           'lines the OCR missed) is left as it was: its reading is a draft for a person. **AI text is a draft: a person who reads the language '
           'checks each page against the scan.**', '',
           '| Page | Lines matched | OCR words changed | Examples (OCR → reading) |', '|---|---:|---:|---|']
-    L += [f'| {pg(x["page"])} | ' + (f'{x.get("matched", 0)} of {x.get("lines", 0)}' + (' (draft for a person: not attached)' if x.get('draft') else ''))
+    L += [f'| {pg(x["page"])} | ' + (f'{x.get("matched", 0)} of {x.get("lines", 0)}' + (' (draft for a person: not attached)' if x.get('draft') else
+                                                                             ' (draft approved by a reader on the OCR approval: attached as spoken text)' if x.get('checked_draft') else ''))
           + f' | {x.get("changed", 0)} | ' + ', '.join(f'{excerpt(a)} → {excerpt(b)}' for a, b in (x.get('changes') or [])[:6]) + ' |' for x in prd_cjk]
     L.append('')
 uc = digest.get('unowned_content', [])

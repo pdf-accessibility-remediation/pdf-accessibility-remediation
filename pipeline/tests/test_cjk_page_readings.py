@@ -9,6 +9,7 @@ kept, a line read as junk filled by order), with verify.py allowing exactly thos
 a page whose lines don't match is left alone as a draft for a person; the audit lists scanned pages with CJK as kind cjk;
 read_pages.py reads them with the CJK model and prompt, never keeps a refusal, and marks their readings kind cjk.
 """
+import pytest
 import io, json, os, runpy, subprocess, sys, urllib.request
 import pikepdf
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -122,26 +123,53 @@ def test_a_page_whose_lines_do_not_match_is_a_draft_for_a_person(tmp_path):
 
 DRAFT = '全く別の行\nまた別の行\nさらに別の行\n四つ目'
 
-def test_a_draft_a_person_checked_is_attached(tmp_path):
-    src, out, log, v = apply_reading(tmp_path, reading=DRAFT, checked_by='person')
+def test_a_draft_a_reader_approved_is_attached_as_spoken_text(tmp_path):
+    src = cjk_layer(str(tmp_path / 'ocr.pdf'))
+    wo = tmp_path / 'wo.json'; wo.write_text(json.dumps({'page_readings': [{'page': 1, 'text': DRAFT, 'kind': 'cjk'}]}, ensure_ascii=False))
+    out = str(tmp_path / 'out.pdf')
+    r_ = subprocess.run([sys.executable, os.path.join(HERE, 'apply.py'), src, str(wo), out], capture_output=True, text=True, cwd=HERE,
+                        env=dict(os.environ, VERAPDF='off', APPLY_CJK_CHECKED='1'))
+    assert r_.returncode == 0, r_.stderr[-2000:]
+    run('verify.py', src, out)
+    log, v = json.load(open(out + '.log.json')), json.load(open(out + '.verify.json'))
     r = log['page_readings'][0]
     assert r['checked_draft'] and not r.get('draft') and r['share'] < 0.7 and r['changed'] > 0
-    t = page_text(out)
-    assert all(x in t for x in DRAFT.split('\n')) and '大韓民國의' not in t       # the person's text, in order, the OCR's gone
-    assert v['pixel_pages_differing'] == [] and v['text_pages_changed'] == [] and v['ocr_text_rewritten']['words'] == r['changed']
+    assert r['spans'] == r['operators'] and r['rewritten'] == 0                    # spoken text only: the OCR text is unchanged
+    import pikepdf
+    with pikepdf.open(out) as p:
+        xo = next(x for x in p.pages[0].Resources.XObject.values() if x.get('/Subtype') == '/Form')
+        acts = [str(i.operands[1].ActualText) for i in pikepdf.parse_content_stream(xo) if str(i.operator) == 'BDC' and '/ActualText' in i.operands[1]]
+    assert ''.join(''.join(acts).split()) == ''.join(DRAFT.split())                 # the reader's text, in order (4 lines over 3: two joined)
+    assert v['pixel_pages_differing'] == []
     assert not any(d['what'].startswith('CJK OCR: needs a person') for d in log['deferred'])
 
-def test_approving_a_cjk_reading_card_marks_it_checked_by_a_person():
-    from review import core
-    ai = {'page_readings': [{'page': 1, 'text': 'A', 'kind': 'cjk'}, {'page': 2, 'text': 'B', 'kind': 'cjk'},
-                            {'page': 3, 'text': 'C', 'kind': 'cjk'}, {'page': 4, 'text': 'hā', }]}
-    items = [{'id': f'page_readings:{i}', 'key': 'page_readings', 'loc': ['page_readings', i], 'edit': 'text', 'field': 'text'} for i in range(4)]
-    wo = core.apply_decisions(ai, items, {'page_readings:0': {'status': 'approved'}, 'page_readings:1': {'status': 'changed', 'value': 'B2'},
-                                          'page_readings:3': {'status': 'approved'}})
-    pr = wo['page_readings']
-    assert pr[0]['checked_by'] == 'person' and pr[1] == {'page': 2, 'text': 'B2', 'kind': 'cjk', 'checked_by': 'person'}
-    assert 'checked_by' not in pr[2] and 'checked_by' not in pr[3]                  # unreviewed; a Hawaiian page as before
-    assert 'checked_by' not in ai['page_readings'][0]
+def test_a_draft_is_left_alone_without_the_approval(tmp_path):
+    src, out, log, v = apply_reading(tmp_path, reading=DRAFT, checked_by='person')   # a flag in the order is not an approval
+    assert log['page_readings'][0]['draft'] and page_text(out) == page_text(src)
+
+def test_the_ocr_verdict_approves_draft_pages_only_with_i_read():
+    from review import ocr as O
+    intake = {'ocr': {'pages_with_ocr_text': [1, 2]}}
+    base = {'verdict': 'approved', 'reviewer': 'Kim', 'reason': 'read against the scans', 'reads': ['Japanese']}
+    v = O.check({**base, 'cjk_drafts': [2]}, intake, 10, '2026-11-22', drafts=[2, 5])
+    assert v['cjk_drafts'] == [2]
+    for f, why in (({**base, 'cjk_drafts': [3]}, 'not a CJK draft page'), ({**base, 'reads': [], 'cjk_drafts': [2]}, 'reads'),
+                   ({**base, 'verdict': 'not approved', 'cjk_drafts': [2]}, 'approved')):
+        with pytest.raises(ValueError, match=why): O.check(f, intake, 10, '2026-11-22', drafts=[2, 5])
+    assert 'cjk_drafts' not in O.check(base, intake, 10, '2026-11-22', drafts=[2])
+    rv = lambda v: {'review': {'ocr_text_approved': v}}
+    assert O.cjk_checked(rv({'verdict': 'approved', 'reads': ['Japanese'], 'cjk_drafts': [2, 5]})) == [2, 5]
+    assert O.cjk_checked(rv({'verdict': 'not approved', 'reads': ['Japanese'], 'cjk_drafts': [2]})) == []
+    assert O.cjk_checked(rv({'verdict': 'approved', 'cjk_drafts': [2]})) == [] and O.cjk_checked({}) == []
+
+def test_the_ocr_section_lists_the_runs_drafts_with_their_readings():
+    from review import ocr as O
+    rec = {'apply': {'page_readings': [{'page': 2, 'kind': 'cjk', 'draft': True, 'share': 0.2}, {'page': 3, 'kind': 'cjk', 'share': 1.0},
+                                       {'page': 4, 'kind': 'cjk', 'checked_draft': True, 'share': 0.1}, {'page': 5, 'draft': True}]},
+           'workorder': {'page_readings': [{'page': 2, 'text': '甲', 'kind': 'cjk'}, {'page': 3, 'text': '乙', 'kind': 'cjk'},
+                                           {'page': 4, 'text': '丙', 'kind': 'cjk'}, {'page': 5, 'text': 'hā'}]}}
+    assert O.cjk_drafts(rec) == [{'page': 2, 'reading': '甲', 'share': 0.2, 'attached': False}, {'page': 4, 'reading': '丙', 'share': 0.1, 'attached': True}]
+    assert O.cjk_drafts(None) == []
 
 def test_the_audit_lists_scanned_pages_with_cjk_as_kind_cjk(tmp_path):
     src = cjk_layer(str(tmp_path / 'ocr.pdf'), lines=LINES * 3)                     # 20+ CJK characters, producer says OCR
@@ -277,3 +305,18 @@ def test_a_small_line_that_is_not_kana_is_kept(tmp_path):
     wo = tmp_path / 'wo.json'; wo.write_text(json.dumps({'page_readings': [{'page': 1, 'text': '今日は朝から\n山の上には\n白い雲が', 'kind': 'cjk'}]}, ensure_ascii=False))
     out = str(tmp_path / 'out.pdf'); run('apply.py', src, wo, out)
     assert json.load(open(out + '.log.json'))['page_readings'][0]['furigana_lines'] == 0 and '出典' in page_text(out)
+
+def test_finishing_a_review_passes_the_approved_drafts_to_apply(tmp_path, monkeypatch):
+    from review import sessions as S, core
+    R = str(tmp_path / 'run'); p = S.P(R); os.makedirs(p['sessions']); os.makedirs(os.path.join(R, '_intake'))
+    core.save(os.path.join(R, 'record.json'), {'document': {'output': 'b_remediated.pdf'}})
+    core.save(os.path.join(R, '_intake', 'intake.json'), {'review': {'ocr_text_approved': {'verdict': 'approved', 'reads': ['Japanese'], 'cjk_drafts': [4, 9]}}})
+    core.save(os.path.join(p['sessions'], '003.workorder.json'), {'source': {'sha256': 'abc'}}); core.save(p['ai'], {})
+    monkeypatch.setattr(S, 'check_basis', lambda R, rec, pdf: ({'input': {'sha256': 'abc'}}, 'in.pdf', {}))
+    monkeypatch.setattr(S, 'fulltext_for', lambda *a: None)
+    seen = {}
+    def fake_run(args, say, what, quiet=False, env=None):
+        seen['env'] = env; raise S.Refused('stop here')
+    monkeypatch.setattr(S, '_run', fake_run)
+    with pytest.raises(S.Refused, match='stop here'): S.reapply(R, {'id': '003', 'review': {}}, say=lambda *a: None)
+    assert seen['env'] == {'APPLY_CJK_CHECKED': '4,9'}

@@ -354,7 +354,7 @@ def run_apply(pdf, wo, out, timeout=1800, env=None, low=False, on_start=None):
     return p.returncode, load(out + '.log.json')
 
 TREE_CHECK_ENV = ('APPLY_TREE_CHECK', 'APPLY_TREE_STALE_LOG', 'APPLY_TEST_LOSE_ENTRY', 'APPLY_FAIL_LANG_PAGE', 'APPLY_TEST_PIXEL_FAIL_RUN', 'APPLY_TEST_PIXEL_FAIL_PAGE', 'APPLY_TEST_TEXT_FAIL_RUN')   # set by the tests only, never in production (#93 C2; #118 review 06 M6, review 08 L1; #150 H3)
-DRYRUN_ENV = ('APPLY_DRAFT', 'ALLOW_PDF20', 'LANG_FINDER_RULES') + TREE_CHECK_ENV   # every variable apply.py and lib/ read (a test keeps this list whole)
+DRYRUN_ENV = ('APPLY_DRAFT', 'APPLY_CJK_CHECKED', 'ALLOW_PDF20', 'LANG_FINDER_RULES') + TREE_CHECK_ENV   # every variable apply.py and lib/ read (a test keeps this list whole)
 DRYRUN_PKGS = ('pikepdf', 'pdfplumber', 'pypdfium2', 'pillow', 'fonttools')   # as apply.py's _versions()
 
 def dryrun_code():
@@ -1121,9 +1121,6 @@ def apply_decisions(ai_wo, items, decisions):
             elif st in ('approved', 'changed'): f['decided'] = 'tagged' if f.get('tag') else 'kept' if f.get('current') else 'untagged'   # "Keep the Tag" (review 08, M5)
             continue
         if it['loc'] is None: continue                   # a reading-order finding: not in the work order
-        if it['key'] == 'page_readings' and st in ('approved', 'changed'):   # #119: a person checked this page's reading
-            pr_ = wo['page_readings'][it['loc'][1]]
-            if isinstance(pr_, dict) and pr_.get('kind') == 'cjk': pr_['checked_by'] = 'person'   # apply.py attaches it even as a draft
         if st == 'rejected' and it['key'] not in SEEN_ONLY: drop.append(it['loc'])
         elif st == 'changed' and it['edit']:
             v = d.get('value')

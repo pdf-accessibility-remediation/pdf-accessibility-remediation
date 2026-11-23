@@ -29,13 +29,16 @@ the measurements behind it showed.
    rewrite.
 5. **A page whose lines mostly don't match** (under 70% paired: a map, a newspaper, lines the OCR never found) is left as
    it was. Its reading is a draft for a person who reads the language: review.md marks it "CJK OCR: needs a person".
-6. **A person who reads the language checks each page** against the scan, on the review page's "Page readings" cards
-   (one per page, beside its image). review.md lists, per page, the lines matched, the OCR words changed and examples,
-   and the "CJK page readings" row stays CHECK.
-7. **A draft a person approves or corrects on its card** is attached at the re-apply (`checked_by: "person"` in the
-   reviewed work order): the reading's lines are spread over the OCR's lines in order, each OCR line's first word
-   carrying its share and the line's other words a single space. The text is read in the right order near where it is
-   printed, but not word by word.
+6. **A person who reads the language checks each page** against the scan, and approves the OCR text on the OCR approval
+   with "I can read …" ([OCR review](review-ocr.md)). review.md lists, per page, the lines matched, the OCR words changed and
+   examples, and the "CJK page readings" row stays CHECK.
+7. **Draft pages are on the OCR approval too**, under "AI Readings Waiting for a Reader": each draft's reading beside
+   its page image, with a box per page. The ticked pages are recorded with the verdict (`cjk_drafts`; on the command
+   line `review_ocr.py --cjk-drafts 4,9`), only with "approved" and "I can read …". The next re-apply (Finish on the
+   review page, `review/sessions.py reapply`, which passes them to apply.py as `APPLY_CJK_CHECKED`) attaches them **as
+   spoken text** (ActualText), never as a replacement for the OCR text: the reading's lines are spread over the OCR's
+   lines in order, each OCR line's first word carrying its share and the line's other words a single space. A verdict
+   recorded after Finish is attached by the next Review Again and Finish.
 
 The page image never changes, and nothing is read without the step's own estimate and limit (`PAGE_READS_MAX_USD`) and
 the PDF's (`BOOK_MAX_USD`). `PAGE_READS=off` turns the step off for Hawaiian and CJK pages alike.
@@ -80,8 +83,12 @@ nothing in the answer key) and **CER** (edit distance over the answer key's leng
 
 ## What it doesn't do yet
 
-- **The OCR approval's own section** (OCR Text) doesn't list draft pages: they are checked on their Page readings cards,
-  which an OCR Text approval doesn't cover.
+- **Approved drafts in Acrobat:** they are ActualText, as #119 asks. #49 found that Acrobat's Read Out Loud and
+  selection can skip an ActualText span inside this layer's marked content, which is why matched pages are rewritten in
+  place instead. Not yet checked in Acrobat on an approved draft; pdfium and other readers read it.
+- **A book with no OCR approval** (an existing OCR layer intake didn't flag) has no place to approve its drafts: they
+  stay drafts.
+- **The free local OCR improvements** measured above (a second pass, the furigana filter at intake) are not in intake.
 - **Spaces between characters of one word:** where Tesseract split one word into two boxes, the rewritten text keeps a
   space between them. Dropping it was tried and measured: OCRmyPDF's word boxes overlap, and without the space pdfium
   drops the characters whose box overlaps the next word's (宮, 觀 on the test pages). Screen readers read the characters

@@ -2938,11 +2938,12 @@ def _log_rewrites():
     """log['ocr_text_rewritten']: {page: [[old, new], …]}, what verify.py allows to differ in the page text."""
     num = {p.obj.objgen: n for n, p in enumerate(pages, 1)}
     log['ocr_text_rewritten'] = {str(num[k]): v for k, v in sorted(_REWRITES.items(), key=lambda kv: num[kv[0]]) if v}
-def _write_fixes(page, conts, wrap, state):
+def _write_fixes(page, conts, wrap, state, spans=False):
     """wrap: {container key: {instruction index: printed spelling}}. An operator of an invisible OCR layer (render mode 3)
     in a font _ocr_font_map can rewrite gets the printed spelling as its own text, at the same width (Tz around it):
     every reader then has it (Acrobat's Read Out Loud and selection skip a word whose ActualText span sits inside its
     marked content in this layer, issue #49). Any other operator is wrapped in /Span <</ActualText (…)>> BDC … EMC.
+    spans: every operator is wrapped, none rewritten (#119 4b: a person's approved draft is spoken text only).
     -> (operators rewritten, operators wrapped)."""
     n_rw = n_sp = 0
     for ckey, w in wrap.items():
@@ -2950,7 +2951,7 @@ def _write_fixes(page, conts, wrap, state):
         for i, ins in enumerate(ins_list):
             if i not in w: out.append(ins); continue
             f, tr, tz = state.get((ckey, i), (None, 0, 100.0))
-            m = _ocr_font_map(f) if tr == 3 and str(ins.operator) == 'Tj' else None
+            m = _ocr_font_map(f) if tr == 3 and str(ins.operator) == 'Tj' and not spans else None
             old = bytes(ins.operands[0]) if m else b''
             new = _encode(m, w[i]) if m and len(old) % 2 == 0 and old else None
             if new:
@@ -3028,11 +3029,16 @@ def _line_sizes(lines, cand, conts):
         out.append(size)
     return out
 
+# #119 4b: draft pages a person who reads the language approved on the OCR approval ("I read …", review/ocr.py
+# cjk_drafts); review/sessions.py reapply() passes them from the run's OCR verdict
+CJK_CHECKED = {int(x) for x in os.environ.get('APPLY_CJK_CHECKED', '').split(',') if x.strip().isdigit()}
+
 def cjk_checked_draft(it, page, cand, conts, lines, st):
-    """#119: a draft page (too few lines matched) whose reading a person approved or corrected on its review card
-    (review/core.py apply_decisions: checked_by "person"). The reading's lines are spread over the OCR's lines in order,
-    as evenly as their counts allow: each OCR line's first word gets its share of the reading, and the line's other words
-    a single space. The text lands near where it is printed, not word by word; the page image never changes."""
+    """#119 4b: a draft page (too few lines matched) whose reading a person who reads the language approved on the OCR
+    approval (CJK_CHECKED). Attached as spoken text, never as a replacement for the OCR text: the reading's lines are
+    spread over the OCR's lines in order, as evenly as their counts allow; each OCR line's first word is wrapped in an
+    ActualText span carrying its share, and the line's other words in spans of a single space, so a screen reader reads
+    the approved text in order near where it is printed. The OCR text, its fonts and the page image stay as they were."""
     rl = [x.strip() for x in it['text'].split('\n') if x.strip()]
     share_of = collections.defaultdict(list)
     for i, x in enumerate(rl): share_of[min(len(lines) - 1, i * len(lines) // len(rl))].append(x)
@@ -3045,8 +3051,8 @@ def cjk_checked_draft(it, page, cand, conts, lines, st):
             if nw == t.strip(): continue
             wrap[ckey][idx] = (nw + ' ') if nw else ' '
             changes.append([t.strip(), nw])
-    n_rw, n_sp = _write_fixes(page, conts, wrap, st) if wrap else (0, 0)
-    if changes: ok('CJK page readings: a person\'s checked reading written into the OCR text', len(changes))
+    n_rw, n_sp = _write_fixes(page, conts, wrap, st, spans=True) if wrap else (0, 0)
+    if changes: ok('CJK page readings: a reading approved by a person attached as spoken text', len(changes))
     return {'checked_draft': True, 'changed': len(changes), 'operators': n_rw + n_sp, 'rewritten': n_rw, 'spans': n_sp, 'changes': changes[:200]}
 
 def cjk_page_reading(it, page):
@@ -3062,7 +3068,7 @@ def cjk_page_reading(it, page):
     texts = [''.join(cand[ci][2] for ci in L) for L in lines]
     read, unused, share = cjkocr.align_page(texts, it['text'])
     r = {'page': it['page'], 'kind': 'cjk', 'lines': len(lines), 'matched': len(read), 'share': round(share, 3), 'unused_lines': len(unused)}
-    if lines and share < cjkocr.MATCH_MIN and it.get('checked_by') == 'person':
+    if lines and share < cjkocr.MATCH_MIN and it['page'] in CJK_CHECKED:
         return {**r, **cjk_checked_draft(it, page, cand, conts, lines, st)}
     if not lines or share < cjkocr.MATCH_MIN:
         return {**r, 'draft': True, 'changed': 0, 'operators': 0, 'rewritten': 0, 'spans': 0, 'changes': []}

@@ -110,9 +110,27 @@ def check_pages(s, n):
                           f'Pages {part.strip()}: ' + ('a range goes from the lower page to the higher one, ex. 5-9.' if a > b else f'this book has PDF pages 1 to {n:,}.'))
     return s
 
-def check(fields, intake, n_pages, date=None):
+def cjk_drafts(rec):
+    """#119 4b: the CJK pages whose AI reading matched too few of the OCR's lines to be attached (apply.py: draft), or
+    that were attached because a person approved them here (checked_draft): [{page, reading, share, attached}], from a
+    finished run's record. Empty before the run finishes."""
+    ap = (((rec or {}).get('apply') or {}).get('page_readings')) or []
+    text = {x.get('page'): x.get('text') for x in ((rec or {}).get('workorder') or {}).get('page_readings') or []
+            if isinstance(x, dict) and x.get('kind') == 'cjk'}
+    return [{'page': x['page'], 'reading': text.get(x['page']) or '', 'share': x.get('share'), 'attached': bool(x.get('checked_draft'))}
+            for x in ap if isinstance(x, dict) and x.get('kind') == 'cjk' and (x.get('draft') or x.get('checked_draft'))
+            and isinstance(x.get('page'), int) and text.get(x['page'])]
+
+def cjk_checked(intake):
+    """The draft pages the current OCR verdict approves (reviewed by someone who said what they read), for apply.py
+    (APPLY_CJK_CHECKED, review/sessions.py reapply). Any other verdict approves none."""
+    v = ((intake or {}).get('review') or {}).get('ocr_text_approved')
+    if not isinstance(v, dict) or v.get('verdict') != APPROVED or not v.get('reads'): return []
+    return sorted(p for p in v.get('cjk_drafts') or [] if isinstance(p, int) and not isinstance(p, bool))
+
+def check(fields, intake, n_pages, date=None, drafts=()):
     """The verdict as it is recorded, from the page's or the command line's fields; raises ValueError (with `page`, the
-    page's wording)."""
+    page's wording). drafts: the run's CJK draft pages (cjk_drafts), the only pages `cjk_drafts` may approve."""
     verdict = str(fields.get('verdict') or '').strip().lower()
     if verdict not in VERDICTS: raise refusal(f'the verdict is one of: {", ".join(VERDICTS)}', 'Choose a verdict first.')
     date = date or datetime.date.today().isoformat()
@@ -132,6 +150,17 @@ def check(fields, intake, n_pages, date=None):
                       ' (on the page: the "I read" box; review_ocr.py: --reads)',
                       f'These pages are in a non-Latin script: to approve them, tick "I can read {lang["label"]}."')
     if reads: v['reads'] = reads
+    picked = fields.get('cjk_drafts') or []
+    if picked:                                          # #119 4b: the AI's readings of draft pages this person checked
+        try: picked = sorted({int(x) for x in (picked if isinstance(picked, list) else str(picked).replace(' ', '').split(',')) if str(x).strip()})
+        except (TypeError, ValueError): raise refusal('the CJK draft pages are PDF page numbers, ex. 4, 9', 'Choose the draft pages by their boxes.')
+        if verdict != APPROVED or not reads:
+            raise refusal('approving a CJK draft reading needs the verdict approved and the language the reviewer reads (--reads)',
+                          'To approve an AI reading, choose "approved" and tick "I can read …".')
+        bad = [p for p in picked if p not in set(drafts)]
+        if bad: raise refusal(f'PDF {and_list([str(p) for p in bad])}: not a CJK draft page of this run',
+                              f'PDF {and_list([str(p) for p in bad])} {"has" if len(bad) == 1 else "have"} no AI reading waiting for approval.')
+        v['cjk_drafts'] = picked
     return v
 
 def listed_pages(intake):
@@ -193,7 +222,7 @@ def record(R, fields, via, held=False, session=None, date=None, say=print, wait=
                 raise ValueError('this book has no OCR text to review (intake added none, and its existing OCR layer was checked and not flagged)')
             with (runlock.record_lock(R, runlock.COMMAND_WAIT if wait is None else wait) if finished else contextlib.nullcontext()):
                 rec = json.load(open(rj, encoding='utf-8')) if finished else None
-                v = check(fields, intake, n_pages_of(R, intake, rec) or 10 ** 6, date)
+                v = check(fields, intake, n_pages_of(R, intake, rec) or 10 ** 6, date, [d['page'] for d in cjk_drafts(rec)])
                 v.update(via=via, **({'session': session} if session else {}), recorded=datetime.datetime.now().isoformat(timespec='seconds'))
                 write(R, intake, rec, v, say)
                 return v, rec
@@ -354,6 +383,7 @@ def section(R, digest=None, wo=None):
             'words_by_page': {str(p): ws for p, ws in by_page.items() if p in set(showable_pages(intake)) - set(pages)},   # for Show Another Page
             'languages': languages(intake, pages), 'lang': lang, 'lang_why': lang_why,
             'current': av if isinstance(av, dict) else None, 'history': [h for h in (intake.get('review') or {}).get('history') or [] if isinstance(h, dict)],
+            'cjk_drafts': cjk_drafts(rec),                # #119 4b: shown beside their page images, approved with "I read …"
             'snapshots': snaps, 'finished': rec is not None, 'ship': ship_line(rec), 'verdicts': list(VERDICTS),
             'limits': {'reviewer': WHO_MAX, 'reason': REASON_MAX, 'to': TO_MAX}}
 

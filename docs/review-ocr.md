@@ -39,6 +39,7 @@ The OCR verdict is not one of the decisions: it is not counted in "N of M review
 
 The choices:
 - **Approved** passes this part of "Ready to ship?". For pages in a non-Latin script (CJK, kana or Hangul, or OCR_LANG naming such a language), it needs **I can read …** ticked. That is an ability, not "I have read"; the record keeps "reads …". The language comes from OCR_LANG, or from kana or Hangul, else "the language of these pages".
+- **AI Readings Waiting for a Reader** (CJK pages only, [CJK OCR](cjk-ocr.md)): a page whose AI reading matched too few of the OCR's lines is shown with its reading beside its image and a box. Ticked pages are recorded with **Approved** and **I can read …** (refused otherwise), and the next Finish attaches their readings as spoken text.
 - **Not Approved** keeps it closed.
 - **Sent to a Language Reader** keeps it closed, with an optional **Sent to** (a person or a team). "Ready to ship?" says "no (waiting for a language reader: …)", and What Needs a Person says "OCR text waiting for a language reader". The reader then records Approved or Not Approved.
 
@@ -56,7 +57,7 @@ In the section's grey helper lines, the names of buttons, choices and sections a
 
 On this page, **Finish OCR Review** takes the place of Record Verdict. It records the verdict, closes the page and goes back to the run page, whose report already shows the verdict. From a terminal, the page says so and the terminal prints "closed". **Close Without a Verdict** closes it with none.
 
-`review_ocr.py <run> --verdict … --reviewer …` (with `--reads`, `--to`) records a verdict from the terminal, through the same checks. `review_ocr.py` keeps its own wording for refusals, which names its options (`--reads`). `--date` is refused with `--serve`: a verdict on the page is dated the day it is recorded.
+`review_ocr.py <run> --verdict … --reviewer …` (with `--reads`, `--to`, and `--cjk-drafts 4,9` for the CJK draft pages approved) records a verdict from the terminal, through the same checks. `review_ocr.py` keeps its own wording for refusals, which names its options (`--reads`). `--date` is refused with `--serve`: a verdict on the page is dated the day it is recorded.
 
 **Stopping:** Ctrl+C (or the app's Stop) while a verdict, an automatic save or a Finish is being written waits until it is written whole. A request that comes after that is refused ("The review page is closing"). This holds from the moment the page starts: a Ctrl+C as it is still starting closes it the same way. A request that stalls (it sends no body) gives up after 30 seconds, so a stop never waits longer than that.
 
