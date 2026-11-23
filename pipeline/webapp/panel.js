@@ -639,9 +639,13 @@ const NONE_WHY = { too_few: 'not enough past runs to calculate it', cut_off: "an
 function noneWhy(x) { return x && NONE_WHY[x.none] ? ' (' + NONE_WHY[x.none] + ')' : ''; }
 function including(e) {                                         // the parts of the ceiling beyond the first request, in one list (round 24)
   const parts = [e.figures && e.figures.requests ? usd(e.figures.ceiling_usd) + ' for the extra alt-text request' + (e.figures.requests === 1 ? '' : 's') : '',   // #63
-    e.page_reads ? usd(e.page_reads.ceiling_usd) + ' for ' + esc(e.page_reads.pages) + ' Hawaiian page' + (e.page_reads.pages === 1 ? '' : 's') + ' to be read by the AI' : '',   // #49
+    e.page_reads ? usd(e.page_reads.ceiling_usd) + ' for ' + esc(e.page_reads.pages) + pageKind(e.page_reads) + ' page' + (e.page_reads.pages === 1 ? '' : 's') + ' to be read by the AI' : '',   // #49, #119
     e.language ? usd(e.language.ceiling_usd) + ' for the language tags' : ''].filter(Boolean);   // #118
   return parts.length ? ', including ' + (parts.length > 1 ? parts.slice(0, -1).join(', ') + ' and ' + parts[parts.length - 1] : parts[0]) : '';
+}
+function pageKind(p) {                                          // #119: Hawaiian pages, CJK pages, or both
+  const c = Number(p.cjk || 0);
+  return !c ? ' Hawaiian' : c >= p.pages ? ' Chinese, Japanese or Korean' : ' Hawaiian, Chinese, Japanese or Korean';
 }
 function costLines(e) {                                          // #65 (costs in dollars and an expected cost): the figure people read first, then the ceiling
   const x = e.expected;                                          // no key (an estimate made before #65): no line; {none}: "Not Available Yet"

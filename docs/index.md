@@ -61,7 +61,7 @@ The sidebar groups these pages the same way.
 - [Accessibility evaluation and release](release.md): what "ready to ship" means and how a PDF is released.
 
 **[How it works](how-it-works.md)**
-- [Intake](intake.md), [OCR words](ocr-words.md), [Work order](work-order.md), [Language tags](languages.md) and [Verification with veraPDF](verapdf.md): how each part works.
+- [Intake](intake.md), [OCR words](ocr-words.md), [CJK OCR](cjk-ocr.md), [Work order](work-order.md), [Language tags](languages.md) and [Verification with veraPDF](verapdf.md): how each part works.
 - [Output files](output-files.md): what a run leaves behind.
 
 **Help**

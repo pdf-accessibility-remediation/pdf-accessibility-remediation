@@ -313,8 +313,17 @@ so = (wc or {}).get('section_order')              # sections read away from thei
 prd = log.get('page_readings') or []                    # apply.py: each page read by the AI, words paired and changed
 # #95: the pages read and paid for (page_reads_run.json, or the earlier record's), and the listed pages never read
 #      (an earlier record keeps each page without its text: there a page that finished ("stop") counts as read)
-pr_read = {x.get('page') for x in (pr_run or {}).get('pages') or [] if x.get('finish') == 'stop' and ((x.get('text') or '').strip() if 'text' in x else True)}
+# #119: CJK pages (kind cjk) have their own row; the Hawaiian row counts Hawaiian pages only, as before
+_is_cjk = lambda x: isinstance(x, dict) and x.get('kind') == 'cjk'
+prd_cjk = [x for x in prd if _is_cjk(x)]; prd = [x for x in prd if not _is_cjk(x)]
+pr_listed_cjk = [p for p in pr_listed if _is_cjk(p)]; pr_listed = [p for p in pr_listed if not _is_cjk(p)]
+_pr_pages = (pr_run or {}).get('pages') or []
+pr_read = {x.get('page') for x in _pr_pages if not _is_cjk(x) and x.get('finish') == 'stop' and ((x.get('text') or '').strip() if 'text' in x else True)}
 pr_unread = sorted({p.get('page') for p in pr_listed if isinstance(p, dict)} - pr_read - {x.get('page') for x in prd})
+cjk_read = {x.get('page') for x in _pr_pages if _is_cjk(x) and x.get('finish') == 'stop'}
+cjk_refused = sorted(x.get('page') for x in _pr_pages if _is_cjk(x) and x.get('finish') == 'refused')
+cjk_applied = [x for x in prd_cjk if not x.get('draft')]; cjk_drafts = sorted(x['page'] for x in prd_cjk if x.get('draft'))
+cjk_unread = sorted({p.get('page') for p in pr_listed_cjk} - cjk_read - {x.get('page') for x in prd_cjk} - set(cjk_refused))
 ow = log.get('ocr_words') or {}; ow_forms = ow.get('by_form') or []; ow_missing = [x for x in ow_forms if not x.get('found') and not x.get('in_page_readings')]
 ow_run = run.get('ocr_words') or {}
 # a reused reply written for another OCR-word list (decide.py: list changed, or no fingerprint): none of today's forms was read by it
@@ -425,6 +434,16 @@ checks = [
         + (f' · read and paid for but not applied: {pgs(sorted(pr_read - {x["page"] for x in prd}))} (see the run log)' if prd and pr_read - {x['page'] for x in prd} else '')
         + (f' · not read by the AI: {pgs(pr_unread)}; a person checks them against the scan' if (prd or pr_read) and pr_unread else ''))]
       if pr_listed or prd else []),
+    *([('CJK page readings: a person who reads the language checked each page read by the AI', ok(False),       # #119
+        (f'{len(cjk_applied)} of {len(pr_listed_cjk)} scanned CJK pages read by the AI, {sum(x.get("changed") or 0 for x in cjk_applied)} OCR words given the '
+         f'printed text: check {pgs([x["page"] for x in cjk_applied])} against the scan' if cjk_applied else
+         f'{len(pr_listed_cjk)} scanned pages hold Chinese, Japanese or Korean text; ' + ('none was attached' if prd_cjk else
+         'they were not read by the AI (turned off, declined, or refused over the limit or the credit: see the run log)'))
+        + (f' · CJK OCR: needs a person: {pgs(cjk_drafts)} (the reading did not match the OCR\'s lines, so it was not attached: '
+           f'a draft for a person who reads the language)' if cjk_drafts else '')
+        + (f' · the model refused to read {pgs(cjk_refused)}: not used' if cjk_refused else '')
+        + (f' · not read by the AI: {pgs(cjk_unread)}' if (prd_cjk or cjk_read) and cjk_unread else ''))]
+      if pr_listed_cjk or prd_cjk else []),
     *([('Figure requests: every figure seen by the AI', ok(not fpr.get('failed') and not fpr.get('stale')),
         f'{nc(fpr.get("figures"))} figures past the first request, in {nc(fpr.get("requests"))} figure requests'
         + (' · did not finish: ' + '; '.join(f'request {k} ({v})' for k, v in fpr['failed'].items()) if fpr.get('failed') else '')
@@ -853,6 +872,20 @@ if prd:
           '| Page | Words changed | Left as OCR read them | Examples (OCR → reading) |', '|---|---:|---:|---|']
     L += [f'| {pg(x["page"])} | {x.get("changed", 0)} | {(x.get("too_different") or 0) + (x.get("unpaired") or 0)} | '
           + ', '.join(f'{a} → {b}' for a, b in (x.get('changes') or [])[:6]) + ' |' for x in prd]
+    L.append('')
+if prd_cjk:                                            # #119: the lines the AI read on CJK pages, and the drafts left for a person
+    n += 1
+    L += [f'### {n}. CJK pages read by the AI ({len(cjk_applied)} pages, {sum(x.get("changed") or 0 for x in cjk_applied)} OCR words)', '',
+          'Tesseract misreads and drops Chinese, Japanese and Korean characters, most of all in vertical text, Hanja and small print. The AI '
+          'transcribed each page image exactly as printed; its lines were matched to the OCR\'s lines in order, and each matched line\'s reading '
+          'was written into the line\'s OCR words at their own place. The page image is unchanged; screen readers, copying and search now give '
+          'the printed text. Lines the reading did not match keep the OCR\'s text. A page whose lines mostly did not match (a map, a newspaper, '
+          'lines the OCR missed) is left as it was: its reading is a draft for a person. **AI text is a draft: a person who reads the language '
+          'checks each page against the scan.**', '',
+          '| Page | Lines matched | OCR words changed | Examples (OCR → reading) |', '|---|---:|---:|---|']
+    L += [f'| {pg(x["page"])} | ' + (f'{x.get("matched", 0)} of {x.get("lines", 0)}' + (' (draft for a person: not attached)' if x.get('draft') else
+                                                                             ' (draft approved by a reader on the OCR approval: attached as spoken text)' if x.get('checked_draft') else ''))
+          + f' | {x.get("changed", 0)} | ' + ', '.join(f'{excerpt(a)} → {excerpt(b)}' for a, b in (x.get('changes') or [])[:6]) + ' |' for x in prd_cjk]
     L.append('')
 uc = digest.get('unowned_content', [])
 if uc:
