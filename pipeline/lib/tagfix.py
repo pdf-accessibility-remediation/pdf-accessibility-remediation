@@ -23,7 +23,7 @@ same_drawing(a, b, n)  page n draws exactly the same in both files: the operator
                        (review 06 M3). Not compared: shadings, images' pixels, annotation appearance streams (intake's
                        pixel check covers them).
 Pure pikepdf: no Java, no OCR."""
-import hashlib, collections
+import re, hashlib, collections
 import pikepdf
 
 RESTORE_KEYS = ('/ActualText',)            # #127: ActualText only (/Alt, /E, /Lang: not measured, off this branch)
@@ -94,6 +94,54 @@ def _props(a, res):
     p = a[1] if len(a) > 1 else None
     if isinstance(p, pikepdf.Name): p = ((res or {}).get('/Properties') or {}).get(p)
     return p if isinstance(p, pikepdf.Dictionary) else None
+
+
+def bdc_props(operands, res):
+    """The property list of a BDC: inline, or named (/P /MC0 BDC) and resolved through the stream's /Properties in res.
+    #166, review 04 H1: the one way every reader asks what a BDC carries, so a named run is never read as untagged.
+    The operands are indexed where they stand: list() converts every operand (about 70 us a BDC; report 07 §3)."""
+    return _props(operands, res)
+
+
+def bdc_mcid(operands, res):
+    """The MCID a BDC gives (inline or through a named property list), or None."""
+    p = _props(operands, res)
+    return int(p.MCID) if p is not None and '/MCID' in p else None
+
+
+# A form's MCIDs (#167, review 06 §2). #167 finds them by searching the form's bytes for /MCID, which is fast but sees only
+# an inline property list. A form whose marked content names its properties (/P /MC0 BDC) holds no /MCID bytes, so its
+# bytes are parsed operator by operator, and only then: the search for a named BDC is one more byte search, and a form
+# without one gives exactly what the byte search gave before.
+MCID_RX = re.compile(rb'/MCID\s+(\d+)')
+_TOK = rb'[^\s/\[\]<>(){}%]+'
+NAMED_BDC_RX = re.compile(rb'/' + _TOK + rb'\s*/' + _TOK + rb'\s+BDC(?![^\s/\[\]<>(){}%])')    # a tag, a property name, BDC
+
+
+def names_props(data):
+    """The stream's bytes show a BDC that names its property list (/P /MC0 BDC)."""
+    return NAMED_BDC_RX.search(data) is not None
+
+
+def form_mcids(x, res=None, data=None):
+    """The MCIDs a content stream's own marked content gives (not those of the forms it draws), as a set. Without a named
+    BDC: the byte search, as before. With one: each BDC resolved against res (the stream's own /Resources when not given);
+    the byte search again if the stream can't be parsed."""
+    if data is None:
+        try: data = x.read_bytes()
+        except Exception: return set()
+    if not names_props(data): return set(map(int, MCID_RX.findall(data)))
+    res = x.get('/Resources') if res is None else res
+    try: return {m for m in (bdc_mcid(i.operands, res) for i in pikepdf.parse_content_stream(x, 'BDC')) if m is not None}
+    except Exception: return set(map(int, MCID_RX.findall(data)))
+
+
+def form_has_mcids(x, res=None, data=None):
+    """The stream holds marked content with an MCID: b'/MCID' in its bytes, as before, or a named BDC that resolves to one."""
+    if data is None:
+        try: data = x.read_bytes()
+        except Exception: return False
+    return b'/MCID' in data or (names_props(data) and bool(form_mcids(x, res, data)))
 
 
 def _spans(ops, res, empty=None):

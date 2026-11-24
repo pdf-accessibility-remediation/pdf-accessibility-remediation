@@ -252,8 +252,53 @@ def create(J, kind, run, argv, env, env_set=None, counted=True, then=None, paid=
                'env_set': env_set or {}, 'counted': counted, 'then': then, 'paid': paid, 'status': 'queued', 'created': now(), 'started': None,
                'ended': None, 'exit': None, 'pid': None, 'pgid': None, 'log': os.path.basename(log_path(J, jid)), **extra}
         if slots != 1: job['slots'] = int(slots)
+        if counted and kind != 'batch':
+            n_pages = book_pages(argv, R, ROOTS or [os.path.realpath(os.path.dirname(os.path.abspath(J)))])
+            if n_pages: job['pages'] = n_pages
         save(J, job)
         return job
+
+LONG_PAGES = 1000                   # #167: a single run of a book over this many pages runs alone (the page loader keeps
+                                    #   about 0.8 MB a page per step, so three such books at once can outgrow a 16 GB machine)
+ROOTS = []                          # the app's own folders (runs, samples, uploads, jobs), real paths: set_roots() at start
+def set_roots(s):
+    """The folders book_pages may read in: the app's own, from its settings (server.make)."""
+    ROOTS[:] = [os.path.realpath(s[k]) for k in config.FOLDERS if s.get(k)]
+
+def _pdf_pages(f):
+    try:
+        import pikepdf
+        with pikepdf.open(f) as p: return len(p.pages)
+    except Exception: return None
+
+def _run_pages(R):
+    """The run folder's own page count: its record, its intake, its digest's page map, or its intake PDF; None when none says."""
+    for f, get in (('record.json', lambda d: (d.get('document') or {}).get('pages')),
+                   (os.path.join('_intake', 'intake.json'), lambda d: (d.get('original') or {}).get('pages')),
+                   (os.path.join('_audit', 'digest.json'), lambda d: len(d.get('page_map') or []) or None)):
+        try:
+            n = get(json.load(open(os.path.join(R, f), encoding='utf-8')))
+            if isinstance(n, int) and n > 0: return n
+        except Exception: pass
+    f = os.path.join(R, '_intake', 'intake.pdf')
+    return _pdf_pages(f) if os.path.isfile(f) else None
+
+def book_pages(argv, R=None, roots=()):
+    """The page count of the first PDF named in argv that exists; when argv names none (an "Apply session N" whose input is a
+    copy, review_workorder.py --pin, …), the run folder's own count (review 04 M5). None when nothing says. Read once, when
+    the job is made. A PDF or run folder is read only when its real path lies inside roots (the app's own folders, each a
+    real path): CodeQL py/path-injection, report 07 §7."""
+    for a in argv or []:
+        if not (isinstance(a, str) and a.lower().endswith('.pdf')): continue
+        f = os.path.realpath(a)
+        for r in roots:
+            if f.startswith(r + os.sep) and os.path.isfile(f): return _pdf_pages(f)
+    if not R: return None
+    R = os.path.realpath(R)
+    for r in roots:
+        if R.startswith(r + os.sep) and os.path.isdir(R): return _run_pages(R)
+    return None
+def long_book(j): return j['kind'] != 'batch' and (j.get('pages') or 0) > LONG_PAGES
 
 PERSON = ('review', 'ocr')          # jobs that open a page and wait on a person (the work-order review, the OCR-only page)
 
@@ -305,6 +350,7 @@ def tick(J, s):
         est = lambda j: j['kind'] == 'batch-estimate'
         n = sum(counts(j, s['runs']) for j in running if not est(j)); n_est = sum(counts(j, s['runs']) for j in running if est(j))
         batch_on = any(j['kind'] == 'batch' for j in running)   # a batch runs alone (D1, Patrick 2026-11-06)
+        long_on = any(long_book(j) and counts(j, s['runs']) for j in running)   # #167: so does a book over LONG_PAGES
         busy_runs = [j['run'] for j in running]
         held = held_est = False                         # once a counted job waits for a place, newer ones of its pool wait behind it
         for j in sorted((j for j in jobs if j['status'] == 'queued'), key=lambda j: j['id']):
@@ -312,16 +358,17 @@ def tick(J, s):
                    for r in busy_runs): continue                # a stopped PDF's review page opens while its batch runs; its apply waits
             if j.get('counted', True):
                 if est(j):
-                    if held_est or batch_on or n_est + 1 > s.get('batch_jobs', 10):
+                    if held_est or batch_on or long_on or n_est + 1 > s.get('batch_jobs', 10):
                         held_est = True; continue
                     n_est += 1
                 else:
                     alone = j['kind'] == 'batch'
-                    if held or batch_on or n + 1 > s['max_jobs'] or (alone and n + n_est > 0):
+                    lone = long_book(j)                 # #167: a book over LONG_PAGES takes every place, as a batch does
+                    if held or batch_on or long_on or n + 1 > s['max_jobs'] or ((alone or lone) and n + n_est > 0):
                         held = True                     # oldest first: a newer counted job never passes an older one
-                        if alone: held_est = True       # a waiting batch holds every newer job, estimates too
+                        if alone or lone: held_est = True   # a waiting batch (or long book) holds every newer job, estimates too
                         continue
-                    n += 1; batch_on = batch_on or alone
+                    n += 1; batch_on = batch_on or alone; long_on = long_on or lone
             _start(J, j); busy_runs.append(j['run'])
 
 def recover(J):

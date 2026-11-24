@@ -281,3 +281,77 @@ def test_a_span_over_whole_runs_with_nothing_to_edit_in_the_marks_is_written(tmp
     assert log['language_parts']['phrases'] == 1 and spans(out) == [('haw', [1, 2, 3], 'P')]
     assert v['language']['all_match'] and v['language']['spans_written'] == 1
     assert v['pixel_pages_differing'] == [] and v['text_pages_changed'] == [] and v['index']['dangling'] == 0
+
+
+def test_a_piece_whose_run_has_only_punctuation_outside_it_is_taken_whole(tmp_path):
+    """Review 02 §4 (the single-run rule, language_parts'): a phrase's last piece "pasquet" in the run "pasquet." covers its
+    run, the period too, with no split; before, the period was split off (teika PDF 216's render refusal came from such a
+    split)."""
+    line = [{'text': 'The ', 'lang': 'en-US'}, {'text': 'velunka ', 'lang': 'en-US'}, {'text': 'toramio ', 'lang': 'en-US'},
+            {'text': 'pasquet.', 'lang': 'en-US'}]
+    src, out, log, v = apply_verify(tmp_path, [line], wo_of(PHRASE))
+    lp = log['language_parts']
+    assert lp['phrases'] == 1 and not lp['refused'] and not lp.get('split'), lp
+    assert spans(out) == [('haw', [1, 2, 3], 'P')]
+    assert v['language']['all_match'] and v['pixel_pages_differing'] == [] and v['text_pages_changed'] == []
+
+
+# ---------------------------------------------------------------- #172: the fallback of a refused grown place
+def wo_breaks(segs, brk, lang='haw', form='velunka toramio pasquet'):
+    f = {'key': f'unknown|{form}', 'form': form, 'group': 'unknown', 'class': ['unknown'], 'lang': lang, 'confidence': 'high',
+         'why': 'language', 'tag': True, 'places': 1}
+    return {'language_parts': {'version': 3, 'forms': [f], 'parts': [[1, segs, 0, brk]]}}
+
+SEGS = [[1, 0, 7], [2, 0, 7], [3, 0, 6]]
+
+
+def test_172_a_grown_place_refused_at_planning_is_tagged_piece_by_piece(tmp_path):
+    """Its pieces sit under two tags, so one Span can't cover them; with "word" breaks (title growth joined three words),
+    each piece is tagged on its own, as before growth, and the fallback is recorded."""
+    line = [dict(x) for x in OCR]; line[2]['parent'] = 'P1'
+    src, out, log, v = apply_verify(tmp_path, [line], wo_breaks(SEGS, ['word', 'word']))
+    lp = log['language_parts']
+    assert sorted(m for _l, ms, _p in spans(out) for m in ms) == [1, 2, 3] and not lp['refused'], lp
+    assert [(x['why'], x['when'], x['groups']) for x in lp['fallback']] == [('its words sit under different tags', 'planning', [1, 1, 1])]
+    assert v['language']['all_match'] and v['pixel_pages_differing'] == [] and v['text_pages_changed'] == []
+
+
+def test_172_a_place_joined_inside_a_word_is_never_split(tmp_path):
+    line = [dict(x) for x in OCR]; line[2]['parent'] = 'P1'
+    src, out, log, v = apply_verify(tmp_path, [line], wo_breaks(SEGS, ['inside', 'inside']))
+    lp = log['language_parts']
+    assert spans(out) == [] and lp['refused'] == {'its words sit under different tags': 1} and not lp.get('fallback')
+
+
+def test_172_a_grown_place_refused_at_the_late_check_is_tried_again_as_its_pieces(tmp_path):
+    """The render check fails on the last piece's split (forced): the place is tried again piece by piece, the first two
+    pieces (whole runs) are tagged, and the last is refused on its own for the same reason."""
+    line = [dict(x) for x in OCR[:3]] + [{'text': 'pasquet here.', 'lang': 'en-US'}]
+    src, out, log, v = apply_verify(tmp_path, [line], wo_breaks(SEGS, ['word', 'word']), env={'APPLY_TEST_PIXEL_FAIL_RUN': '1:3'})
+    lp = log['language_parts']
+    assert sorted(m for _l, ms, _p in spans(out) for m in ms) == [1, 2], (spans(out), lp)
+    assert lp['refused'] == {'the page would look different': 1} and [x['when'] for x in lp['fallback']] == ['late check']
+    assert lp['pages_checked'] == 2                     # the page checked in each pass, summed (not the second pass's alone)
+    assert v['language']['all_match'] and v['pixel_pages_differing'] == [] and v['text_pages_changed'] == []
+
+
+def test_172_the_finder_says_where_growth_joined_words_and_where_a_word_crosses_runs(tmp_path):
+    """review 02 M6: breaks come from the finder's own words: "inside" where one word has characters on both sides (velunk|a),
+    "word" between words growth joined (three italic words in three runs)."""
+    italic = [dict(x, font='F6') if 0 < i < 4 else dict(x) for i, x in enumerate(OCR)]
+    for name, line, want in (('a.pdf', LONG, ('velunka', ['inside'])), ('b.pdf', italic, ('velunka toramio pasquet', ['word', 'word']))):
+        src = langpdf.build_lines(str(tmp_path / name), [line])
+        with pikepdf.open(src) as pdf: c = langcands.book(plpages.Pages(src), doc_lang='en', pdf=pdf, grow=True)
+        assert [(p['form'], p.get('breaks')) for p in c['places'] if p.get('segments')] == [want]
+        lp = langreq.to_rows(langreq.forms(c['places']), {})
+        assert all(len(r) == 4 and r[3] == want[1] for r in lp['parts'] if len(r) != 5)
+
+
+def test_172_a_word_hyphenated_at_a_line_end_is_two_places_never_one_with_breaks(tmp_path):
+    """Review 04 §4: growth never crosses a line-end hyphen. "velunkato-" / "ramio" is two places of one form, one per
+    piece (#140), never one place over both runs, so it has no breaks and #172's fallback can never split it."""
+    lines = [[{'text': 'We read about velunkato-', 'lang': 'en-US'}], [{'text': 'ramio here today.', 'lang': 'en-US'}]]
+    src = langpdf.build_lines(str(tmp_path / 'h.pdf'), lines)
+    with pikepdf.open(src) as pdf: c = langcands.book(plpages.Pages(src), doc_lang='en', pdf=pdf, grow=True)
+    ps = [p for p in c['places'] if p['form'] == 'velunkatoramio']
+    assert len(ps) == 2 and not any(p.get('segments') or p.get('breaks') for p in ps)

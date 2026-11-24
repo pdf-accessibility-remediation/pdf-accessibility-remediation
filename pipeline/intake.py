@@ -50,7 +50,8 @@ intake.json) · 1 error.
 import sys, os, re, json, time, shutil, hashlib, subprocess, tempfile, unicodedata, difflib, collections, datetime, statistics, math, contextlib
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from lib import support
-from lib import tagfix
+from lib import peak  # noqa: F401  #167: this step's peak memory, written at exit when run_api.sh asks (PEAK_FILE)
+from lib import tagfix, strays
 from lib.glance import ocr_layer_flagged
 from lib import dates as D
 import pikepdf, pypdfium2 as pdfium, pypdfium2.raw as pdfium_raw
@@ -2237,6 +2238,22 @@ def main():
             flag('Placeholder alt text removed', f'the auto-tagger wrote alt text that says nothing ({ph["figures"]} figures "image N", '
                  f'{ph["links"]} links "Annotation"); it was removed, so those figures count as having no alt text (the AI or a '
                  'person writes it) and each link is read by its own text', check=False)
+        # #168: the tagger's references to nothing (a page kid for a form's run or the next page's, a Figure into a shared blank
+        #   image): removed with their index slots, and an element left with nothing removed too, before the audit sees them
+        with pikepdf.open(tagged_out, allow_overwriting_input=True) as tp:
+            sr = strays.repair(tp, empties='remove')
+            if sum(sr['removed'].values()): tp.save(tagged_out)
+        rec['checks']['strays'] = {k: v for k, v in sr.items() if k != 'emptied'}
+        n_sr = sr['removed']['page_kids'] + sr['removed']['stm_kids']
+        if n_sr:
+            flag('Stray tag-tree references removed', f'the auto-tagger left {n_sr:,} references to text that is not drawn where they '
+                 f'point ({sr["removed"]["page_kids"]:,} to page text, {sr["removed"]["stm_kids"]:,} into forms; the text itself is '
+                 f'named by another tag, or nothing is there)' + (f'; {sr["removed"]["elements"]} tags left with nothing in them removed'
+                 if sr['removed']['elements'] else ''), sr['pages'][:20], check=False)
+        if sr['kept']:
+            flag('Stray tag-tree references kept', f'{sr["kept"]} references to text not drawn where they point were kept, because '
+                 f'they may be the only pointer to text nearby (e.g. {sr["kept_listed"][0]["why"]}): a person checks what a screen '
+                 'reader reads there', sorted({x['page'] for x in sr['kept_listed']})[:20])
         cov = coverage(tagged_out); rec['checks']['coverage'] = cov
         total = cov['tagged'] + cov['artifact'] + cov['untagged']
         if cov['untagged'] and cov['untagged'] / max(total, 1) > 0.02:

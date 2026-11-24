@@ -37,6 +37,7 @@ under `options`.
 import sys, os, re, json, time, hashlib, argparse, urllib.request, urllib.error, collections
 HERE = os.path.dirname(os.path.abspath(__file__)); sys.path.insert(0, HERE)
 from lib import aistatus, plumb_fix, plpages, langcands, langreq, costhistory, costs, workorder_check, hanreading, aisend  # noqa: F401
+from lib import peak  # noqa: F401  #167: this step's peak memory, written at exit when run_api.sh asks (PEAK_FILE)
 
 RULE_NAME = hanreading.RULE
 PROMPT_NAME = 'language_v3.md'                   # v1 with v2's form echo and dictionary-phrase line (adopted 2026-11-13, 11 §2)

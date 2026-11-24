@@ -28,6 +28,7 @@ DEFAULT_MODEL = 'anthropic/claude-sonnet-5.5'
 API_TIMEOUT = 1800        # seconds to wait for the reply: 48,000 output tokens at ~40 tokens/s is ~20 minutes
 
 from lib.models import TEMPERATURE, OMIT_TEMPERATURE   # shared with the language step's requests (lib/langreq.py)
+from lib import peak  # noqa: F401  #167: this step's peak memory, written at exit when run_api.sh asks (PEAK_FILE)
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 

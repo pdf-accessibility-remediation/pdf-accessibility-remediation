@@ -296,6 +296,7 @@ def _check_rows(lp, pages, dropped):
         if page is None: why = segs
         elif not 1 <= page <= pages: why = 'page not in the book'
         elif langreq.segments_problem(segs): why = langreq.segments_problem(segs)
+        elif langreq.breaks_problem(segs, langreq.row_breaks(r)): why = langreq.breaks_problem(segs, langreq.row_breaks(r))   # #172
         elif not 0 <= fi[0] < len(forms): why = 'no such form'
         elif forms[fi[0]].get('tag'):                       # each segment against every tagged row in its run, of either shape
             if any(not (b_ < a or a_ > b) for m, a_, b_ in segs for a, b in seen.get((page, m), [])): why = 'overlaps another part in the same run'

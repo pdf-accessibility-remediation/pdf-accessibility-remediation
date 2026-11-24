@@ -445,8 +445,12 @@ def page_places(pno, chars, page_chars=None, italic=None, doc_lang=None, spoken=
         it = all(x.get('italic') for x in grp if x['text'])
         place(segs[0][0], segs[0][1], segs[-1][2] if len(segs) == 1 else segs[0][2], cls, form, it, wi)
         if len(segs) > 1:
+            # #172 (review 02 M6): each boundary between pieces is "word" where growth joined two of the finder's words,
+            # "inside" where one word has characters on both sides (a join across runs: #150, #161, a hyphen, #170's child)
+            brk = ['inside' if any({idx[id(c)][0] for c in x['chars']} >= {segs[i][0], segs[i + 1][0]} for x in grp) else 'word'
+                   for i in range(len(segs) - 1)]
             places[-1].update(segments=segs, text=''.join(c['text'] for s in segs for c in runs[s[0]][s[1]:s[2] + 1]), whole=False,
-                              source=sorted(set(places[-1].get('source') or []) | {'grow'}))
+                              source=sorted(set(places[-1].get('source') or []) | {'grow'}), breaks=brk)
         if first_m is not None: places[-1].update(_first_mcid=first_m, half=True)   # step 5: its first half's run may become a passage;
                                                                                     # half: lib/langreq.forms numbers forms by their other places
     k, last_end = 0, -1
@@ -639,6 +643,7 @@ def book(PL, pages=None, doc_lang=None, spoken=None, grow=False, pdf=None, rules
     C = collections.Counter()
     unplaced = []
     def read(pno, pg, keep=None, removed=None, collect=False):
+        if struct.ok: struct.use_streams(pno, pg.chars)   # #166: each run's owner by the stream that draws it
         R = langjoin.reading(pno, pg.chars, struct, rules) if rules else None
         chars = R.chars if R else pg.chars
         info = {}
@@ -707,14 +712,15 @@ def existing(pdf, PL, doc_lang, limit=300):
             if c.get('mcid') is not None: runs[pno].setdefault(c['mcid'], []).append(c['text'])
     found = {}
     pidx = {p.obj.objgen: i for i, p in enumerate(pdf.pages, 1)}
-    from lib import langjoin
+    from lib import langjoin, tagfix, strays
     forms_on = langjoin.single_use_forms(pdf)           # #165: a form drawn once, from this page, is read like the page;
     for pno, page in enumerate(pdf.pages, 1):          # a form drawn in several places is not (its runs are never tagged)
         page_ms = set()
         for obj in [page] + forms_on.get(pno, []):
             try:
+                ores = strays._res(page) if obj is page else obj.get('/Resources')
                 for x in pikepdf.parse_content_stream(obj, 'BDC'):
-                    pr = x.operands[1] if len(x.operands) > 1 else None
+                    pr = tagfix.bdc_props(x.operands, ores)          # a named property list too (review 04 H1)
                     if not (isinstance(pr, pikepdf.Dictionary) and '/MCID' in pr): continue
                     m = int(pr.MCID)
                     if obj is page: page_ms.add(m)

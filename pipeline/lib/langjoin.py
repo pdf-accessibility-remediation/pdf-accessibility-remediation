@@ -31,7 +31,7 @@ The rules (`rules`, a set; lib/langcands.RULES):
 """
 import re, statistics, collections, unicodedata
 import pikepdf
-from lib import ocrwords
+from lib import ocrwords, tagfix
 
 GAP, FRAG_GAP = 2.0, 0.15
 OPEN = set('‘“"([{«„‚\'')
@@ -70,16 +70,78 @@ def single_use_forms(pdf):
             x = xs.get('/' + nm.decode('latin-1'))
             if x is None: continue
             uses[x.objgen] += 1
-            if depth == 0: direct.setdefault(pno, {})[x.objgen] = x
+            if depth == 0: direct.setdefault(pno, {})[x.objgen] = (x, x.get('/Resources') or res)
             if depth < 4: walk(raw(x), x.get('/Resources') or res, depth + 1, pno)
     for pno, page in enumerate(pdf.pages, 1):
         walk(raw(page.obj.get('/Contents')), res_of(page), 0, pno)
     out = {}
     for pno, fs in direct.items():
-        keep = [x for og, x in fs.items() if uses[og] == 1 and b'/MCID' in raw(x)]
+        keep = [x for og, (x, xres) in fs.items() if uses[og] == 1 and tagfix.form_has_mcids(x, xres, raw(x))]   # named too (review 06 §2)
         if keep: out[pno] = keep
     _SINGLE.clear(); _SINGLE.update(pdf=pdf, out=out)
     return out
+
+
+# #170 (words whose letters sit in a child tag of the same paragraph): a publisher's export can put one letter of a word
+# (an accented "ô" drawn in another font) in its own Span inside the paragraph: P [MCID "…Ky", Span [MCID "ô"], MCID "nggi…"].
+# Such a child counts as one slot of its parent, so one Span can cover the whole word, when (review 02 M5, review 04 §7):
+# its keys are /Type /S /P /K /Pg /C /ID only; its role-mapped type is Span; nothing names its /ID (a table cell's /Headers)
+# and nothing else refers to it (a /Ref, a bookmark: anything but its parent, the IDTree and the ParentTree); it holds runs
+# only, of letters and marks; and (checked where the place is known) no spoken text on or around its runs, every run of
+# it a whole piece of the place. One rule for the finder (Structure) and apply.py (plan_phrase).
+CHILD_KEYS = {'/Type', '/S', '/P', '/K', '/Pg', '/C', '/ID'}
+
+
+class ChildRule:
+    """letters_child's element checks for one book: why(el) is None when el may be a letters-only child, else why not."""
+    def __init__(self, pdf):
+        self.pdf, self._why, self._ids, self._refd = pdf, {}, None, None
+        st = pdf.Root.get('/StructTreeRoot') if pdf is not None else None
+        rm = (st.get('/RoleMap') if st is not None else None) or {}
+        self.rm = {str(k).lstrip('/'): str(v).lstrip('/') for k, v in rm.items()}
+
+    def mapped(self, t):
+        seen = set()
+        while t in self.rm and t not in seen: seen.add(t); t = self.rm[t]
+        return t
+
+    def _scan(self):
+        """The /ID strings a table cell's /Headers names (in /A, inline or referenced, a dictionary or an array of them), and
+        the elements anything refers to beyond parent, IDTree and ParentTree (lib/strays._referenced), once per book."""
+        ids, cands = set(), set()
+        for o in self.pdf.objects:
+            if not isinstance(o, pikepdf.Dictionary) or '/S' not in o or '/P' not in o: continue
+            a = o.get('/A')
+            for d in (list(a) if isinstance(a, pikepdf.Array) else [a]):
+                if isinstance(d, pikepdf.Dictionary) and isinstance(d.get('/Headers'), pikepdf.Array):
+                    ids |= {bytes(h) for h in d.Headers if isinstance(h, pikepdf.String)}
+            if set(map(str, o.keys())) <= CHILD_KEYS: cands.add(o.objgen)
+        from lib import strays
+        self._ids, self._refd = ids, strays._referenced(self.pdf, cands)
+
+    def why(self, el):
+        og = el.objgen
+        if og in self._why: return self._why[og]
+        w = None
+        extra = sorted(set(map(str, el.keys())) - CHILD_KEYS)
+        if extra: w = 'the child tag carries ' + ', '.join(extra)
+        elif self.mapped(str(el.get('/S', '')).lstrip('/')) != 'Span': w = 'the child tag is not a Span'
+        else:
+            k = el.get('/K'); ks = list(k) if isinstance(k, pikepdf.Array) else ([k] if k is not None else [])
+            if not ks or not all(isinstance(x, int) or (isinstance(x, pikepdf.Dictionary) and str(x.get('/Type')) == '/MCR') for x in ks):
+                w = 'the child tag holds something other than text'
+            else:
+                if self._ids is None: self._scan()
+                if '/ID' in el and bytes(el.ID) in self._ids: w = "a table header names the child tag's ID"
+                elif self._refd.get(og): w = 'something refers to the child tag'
+        self._why[og] = w
+        return w
+
+
+def letters_only(t):
+    """The child's text is letters and marks only (no space, digit or punctuation)."""
+    t = t or ''
+    return bool(t) and all(unicodedata.category(ch)[0] in 'LM' for ch in t)
 
 
 class Structure:
@@ -89,6 +151,8 @@ class Structure:
     asked. status: 'ok', 'unreadable' (no tag tree, or it could not be read) or 'not given' (no PDF)."""
     def __init__(self, pdf):
         self.pdf, self.par, self.status = pdf, {}, 'not given'
+        self.pg_par, self.stm_par, self.streams = {}, {}, {}
+        self._parent, self._el, self.rule = {}, {}, None     # #170: each element's parent and object, and the child rule
         self._kids, self._marks = {}, {}
         if pdf is None: return
         try:
@@ -121,39 +185,84 @@ class Structure:
                                 # on the page; kept apart, and used only where the page's own content has no such MCID
                                 (stm if '/Stm' in kid else self.par).setdefault((kp, int(kid.MCID)), k_)
                         elif t == '/OBJR': seq.append(('objr',))
-                        else: seq.append(('elem',)); stack.append((kid, pg))
+                        else:
+                            seq.append(('elem', key(kid))); stack.append((kid, pg))
+                            self._parent.setdefault(key(kid), k_); self._el[key(kid)] = kid
                     else: seq.append(('other',))
                 self._kids[k_] = (seq, '/ActualText' in el, {(s[1], s[2]): i for i, s in enumerate(seq) if s[0] == 'mcid'})
+            self.pg_par, self.stm_par = dict(self.par), stm     # #166: kept apart, read by the run's stream (use_streams)
             for k_, v in stm.items(): self.par.setdefault(k_, v)
             self.status = 'ok' if self.par else 'unreadable'
+            self.rule = ChildRule(pdf)
         except Exception:
             self.par, self.status = {}, 'unreadable'
 
     @property
     def ok(self): return self.status == 'ok'
 
-    def parent(self, pno, m): return self.par.get((pno, m))
+    def use_streams(self, pno, chars):
+        """#166: which stream draws each run of page pno (lib/plumb_fix's `mcs` on its characters), so a run drawn in a
+        form is owned by the element its /MCR … /Stm names, and a run drawn in the page by its page kid's element (before,
+        a page kid won whatever drew the run: a stray page kid then took a form's run)."""
+        d = {}
+        for c in chars:
+            if c.get('mcid') is not None: d.setdefault(c['mcid'], c.get('mcs'))
+        self.streams[pno] = d
+    def _p(self, pno, m):
+        d = self.streams.get(pno)
+        if d is None or m not in d: return self.par.get((pno, m))
+        return self.pg_par.get((pno, m)) if d[m] is None else self.stm_par.get((pno, m))
+    def child_slot(self, pno, m, run_text=None):
+        """#170: (parent key, (index of the child in the parent's kids, index of the run in the child's)) when run m's owner
+        is a letters-only child (ChildRule, every kid a run on this page, its text letters and marks when run_text is
+        given), else None."""
+        e = self._p(pno, m)
+        O = self._parent.get(e)
+        if e is None or O is None or self.rule is None or not isinstance(e, tuple) or e[0] == 'direct': return None
+        el = self._el.get(e)
+        if el is None or self.rule.why(el): return None
+        seq, _, ix = self._kids.get(e) or ((), False, {})
+        if not seq or any(x[0] != 'mcid' or x[1] != pno for x in seq): return None
+        if run_text is not None and not letters_only(''.join((run_text.get(x[2]) or '') for x in seq).strip()): return None
+        oseq = (self._kids.get(O) or ((),))[0]
+        j = next((n for n, x in enumerate(oseq) if x[0] == 'elem' and len(x) > 1 and x[1] == e), None)
+        return None if j is None else (O, (j, ix.get((pno, m))))
+
+    def slot(self, pno, m, run_text=None):
+        """(owner key, position) of run m for one tag over several runs: the run's own element and its index there, or for a
+        run in a letters-only child (#170) the child's parent and (the child's index, the run's index in the child)."""
+        cs = self.child_slot(pno, m, run_text)
+        if cs is not None: return cs
+        e = self._p(pno, m)
+        ix = (self._kids.get(e) or ((), False, {}))[2]
+        i = ix.get((pno, m))
+        return e, (None if i is None else (i, -1))
+
+    def parent(self, pno, m): return self.slot(pno, m)[0]
 
     def adjacent(self, pno, m1, m2):
         """Runs m1 and m2 of page pno belong to the same element and sit next to each other among its kids (an MCID or an
         MCR each): a title broken at a line end, each line its own run (proposal 20 (b), growth into the adjacent run)."""
-        a = self.par.get((pno, m1))
-        if a is None or a != self.par.get((pno, m2)): return False
+        a = self._p(pno, m1)
+        if a is None or a != self._p(pno, m2): return False
         ix = (self._kids.get(a) or ((), False, {}))[2]
         return (pno, m1) in ix and (pno, m2) in ix and abs(ix[(pno, m1)] - ix[(pno, m2)]) == 1
 
     def _seq(self, og): return self._kids.get(og, (None, True, {}))
 
     def in_order(self, pno, segs, run_text):
-        """apply.py's rule for a place over several runs: one owner, each piece's run after the one before among its kids,
-        and only blank runs of this page between them (run_text: {mcid: text})."""
-        own = {self.par.get((pno, m)) for m, _, _ in segs}
-        if len(own) != 1 or None in own: return False
-        seq, _, ix = self._kids.get(own.pop()) or ((), False, {})
-        at = [ix.get((pno, m)) for m, _, _ in segs]
-        if None in at or any(b <= a for a, b in zip(at, at[1:])): return False
+        """apply.py's rule for a place over several runs: one owner, each piece's run after the one before among its kids (a
+        letters-only child, #170, is one slot of its parent), and only blank runs of this page between them (run_text:
+        {mcid: text})."""
+        sl = [self.slot(pno, m, run_text) for m, _, _ in segs]
+        own = {o for o, _ in sl}
+        if len(own) != 1 or None in own or any(p is None for _, p in sl): return False
+        seq = (self._kids.get(own.pop()) or ((), False, {}))[0]
+        at = [p for _, p in sl]
+        if any(b <= a for a, b in zip(at, at[1:])): return False
         for a, b in zip(at, at[1:]):
-            for k in seq[a + 1:b]:
+            if a[0] == b[0]: continue                       # two runs of one child: next to each other inside it
+            for k in seq[a[0] + 1:b[0]]:
                 if k[0] != 'mcid' or k[1] != pno or (run_text.get(k[2]) or '').strip(): return False
         return True
 
@@ -164,7 +273,8 @@ class Structure:
             out = {}
             try:
                 page = self.pdf.pages[pno - 1]
-                srcs = [(page, page.obj.get('/Resources', {}).get('/Properties', {}) or {})]
+                from lib import strays                 # the page's resources, inherited ones too (review 04 H1)
+                srcs = [(page, (strays._res(page) or {}).get('/Properties', {}) or {})]
                 srcs += [(f, (f.get('/Resources') or {}).get('/Properties', {}) or {}) for f in single_use_forms(self.pdf).get(pno, [])]
                 for obj, props in srcs:
                     if obj is page:
@@ -194,14 +304,14 @@ class Structure:
         """None when one tag may cover runs ma and mb (in that order) on page pno, else the reason: parent, not_adjacent,
         actualtext. run_text: {mcid: text} of the page, so blank runs between may be skipped."""
         if not self.ok: return 'parent'
-        pa, pb = self.par.get((pno, ma)), self.par.get((pno, mb))
+        (pa, sa), (pb, sb) = self.slot(pno, ma, run_text), self.slot(pno, mb, run_text)   # #170: a letters-only child is a slot
         if pa is None or pa != pb: return 'parent'
         seq, el_at, where = self._seq(pa)
         if seq is None: return 'not_adjacent'
-        ia, ib = where.get((pno, ma)), where.get((pno, mb))
-        if ia is None or ib is None or ib < ia: return 'not_adjacent'
-        for s in seq[ia + 1:ib]:
-            if s[0] != 'mcid' or s[1] != pno or (run_text.get(s[2]) or '').strip(): return 'not_adjacent'
+        if sa is None or sb is None or sb < sa: return 'not_adjacent'
+        if sa[0] != sb[0]:
+            for s in seq[sa[0] + 1:sb[0]]:
+                if s[0] != 'mcid' or s[1] != pno or (run_text.get(s[2]) or '').strip(): return 'not_adjacent'
         if el_at: return 'actualtext'
         mk = self.marks(pno)
         if mk is None: return 'actualtext'
@@ -360,6 +470,7 @@ class Reading:
         self.stretch_of = {}                    # pseudo MCID -> 'join' (OCR page, several runs), 'cross' (#161 B) or None
         self.unplaced_keys = {}                 # id(first char of the word) -> reason
         self.words = None
+        self._wid = None                        # id(character) -> the index of its word in self.words (#172's breaks)
         self.break_why = {}                     # pseudo MCID -> why that stretch started
 
     def ends(self, s):
@@ -397,19 +508,19 @@ class Reading:
         `segments`: each maps through its stretch, and the real segments join in reading order. None when a run would
         appear twice (not in order)."""
         pseudo = p.get('segments') or [[p['mcid'], p['first'], p['last']]]
-        real, per = [], []
-        for sm, f, l in pseudo:
+        real, per, stretch_of = [], [], []
+        for si, (sm, f, l) in enumerate(pseudo):
             cs = self.runs.get(sm)
             if cs is None:
                 if len(pseudo) == 1: return p
                 return None
             r = [c for c in cs[f:l + 1] if not c.get('_syn')]
-            real += r; per.append((sm, r))
+            real += r; per.append((sm, r)); stretch_of += [si] * len(r)
         if not real: return None
-        segs = []
-        for c in real:
-            if segs and segs[-1][0] == c['_m']: segs[-1][2] = c['_k']
-            else: segs.append([c['_m'], c['_k'], c['_k']])
+        segs, seg_st, ends = [], [], []         # the stretch each real segment starts in, and its first and last characters (#172)
+        for c, si in zip(real, stretch_of):
+            if segs and segs[-1][0] == c['_m']: segs[-1][2] = c['_k']; ends[-1][1] = c
+            else: segs.append([c['_m'], c['_k'], c['_k']]); seg_st.append(si); ends.append([c, c])
         if len({s[0] for s in segs}) != len(segs): return None
         q = dict(p); q.pop('segments', None)
         m, f, l = segs[0]
@@ -422,6 +533,18 @@ class Reading:
             q['segments'] = segs
             q['text'] = ''.join(c['text'] for s in segs for c in (self.real_runs.get(s[0]) or [])[s[1]:s[2] + 1])
             q['whole'] = False
+            # #172 (review 02 M6): "inside" where one of the reading's words has characters on both sides of the boundary (a
+            # join), else "word" inside one stretch, and between stretches the finder's own break for them
+            if self._wid is None and self.words is not None:
+                self._wid = {id(c): n_ for n_, w in enumerate(self.words) for c in (w.get('chars') or () if isinstance(w, dict) else w)}
+            wid = self._wid or {}
+            pb = p.get('breaks') or []
+            def brk(i):
+                a_, b_ = wid.get(id(ends[i][1])), wid.get(id(ends[i + 1][0]))
+                if a_ is not None and a_ == b_: return 'inside'
+                if seg_st[i] == seg_st[i + 1]: return 'word' if wid else 'inside'
+                return pb[seg_st[i + 1] - 1] if seg_st[i + 1] - 1 < len(pb) else 'inside'
+            q['breaks'] = [brk(i) for i in range(len(segs) - 1)]
         src = set(q.get('source') or [])
         for sm, r in per:                       # a stretch of several runs that the place spans names its reading
             st = self.stretch_of.get(sm)
@@ -557,7 +680,7 @@ def _ocr_page(pno, cs, real_runs, struct):
         if prev_m is not None and m0 != prev_m:
             if onote[k] or prev_note: why = 'note'
             elif k and ln[k] != ln[k - 1]: why = 'line'
-            elif struct is None or not struct.ok or struct.parent(pno, prev_m) != struct.parent(pno, m0): why = 'parent'
+            elif struct is None or not struct.ok or struct.slot(pno, prev_m, run_text)[0] != struct.slot(pno, m0, run_text)[0]: why = 'parent'
             elif k in first_of and k in last_before:
                 a, b = last_before[k], first_of[k]
                 g = b[0]['x0'] - a[-1]['x1']

@@ -23,6 +23,8 @@ The full summary goes to verapdf.json (audit) and the verify JSON (verify); repo
 pdfua_check(summary) is the digest's view, in the shape decide.py reads (it sends the model only the 'model' rules).
 """
 import sys, os, re, json, shutil, subprocess, tempfile, time, hashlib
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from lib import peak  # noqa: F401  #167: this step's peak memory, written at exit when run_api.sh asks (PEAK_FILE)
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 PROFILE = os.path.join(HERE, 'verapdf', 'WCAG-2-2-Machine.xml')

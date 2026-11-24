@@ -66,6 +66,7 @@ vera_before = load('verapdf.json', base=A, default=None)   # veraPDF on the orig
 reply = open(os.path.join(R, 'reply.txt'), encoding='utf-8').read() if os.path.exists(os.path.join(R, 'reply.txt')) else None
 passes = load('passes.json')                          # the figure requests' answers and split (issue #63), when there were any
 timing = load('timing.json', default=None)
+timing_peak = load('timing_peak.json', default=None)       # #167: each step's peak memory in bytes (lib/peak.py, run_api.sh)
 attempts = load('attempts.json', default=[])
 if prev is not None:
     run, val, reply, attempts = prev.get('run') or {}, {'dropped': prev.get('validation_dropped') or []}, prev.get('raw_reply'), prev.get('earlier_attempts') or []
@@ -213,7 +214,7 @@ record = {
                                        'by_language': dict(collections.Counter(x['lang'] for x in log['language_parts'].get('spans') or []))}}
                  if log.get('language_parts') else {})},
     'verify': {k: v for k, v in ver.items() if k != 'verapdf'},
-    'verapdf': {'before': vera_before, 'after': ver.get('verapdf')}, 'timing_seconds': timing, 'raw_reply': reply,
+    'verapdf': {'before': vera_before, 'after': ver.get('verapdf')}, 'timing_seconds': timing, **({'timing_peak_gb': {k: round(v / 2 ** 30, 2) for k, v in timing_peak.items()}} if timing_peak else {}), 'raw_reply': reply,
     **({'raw_reply_passes': passes} if passes else {}), 'environment': log.get('environment'),
     'earlier_attempts': attempts, 'cost_total_usd': round(cost_this + cost_earlier + cost_pages + cost_lang + cost_check, 6),
     **({'language_run': {k: v for k, v in lr_run.items() if k not in ('requests', 'language_parts', 'contexts')}       # the parts are in workorder.language_parts
@@ -482,8 +483,12 @@ checks = [
      (', '.join(f'{pg(x["page"])} (caption inside {x["parent"]})' for x in by_page(stc['captions_not_grouped'])) or 'all grouped') if stc else 'not checked'),
     ('No link whose only text is a URL', ok(stc is not None and not stc['links_url_only']),
      (f'{len(stc["links_url_only"])}: ' + pgs([x['page'] for x in stc['links_url_only']]) if stc['links_url_only'] else 'none') if stc else 'not checked'),
-    ('Tag tree consistent', ok(t.get('parenttree_missing') == 0 and t.get('parenttree_mismatched') == 0),
-     f'{nc(t.get("parenttree_missing"))} missing · {nc(t.get("parenttree_mismatched"))} mismatched'),
+    ('Tag tree consistent', ok(t.get('parenttree_missing') == 0 and t.get('parenttree_mismatched') == 0
+                               and not t.get('kids_not_drawn') and not t.get('runs_named_twice')),
+     f'{nc(t.get("parenttree_missing"))} missing · {nc(t.get("parenttree_mismatched"))} mismatched'     # #168: shown only when found
+     + (f' · {t["kids_not_drawn"]} reference{"s" if t["kids_not_drawn"] != 1 else ""} to text not drawn there ({pgs(t.get("kids_not_drawn_pages") or [])})' if t.get('kids_not_drawn') else '')
+     + (f' · {t["runs_named_twice"]} text run{"s" if t["runs_named_twice"] != 1 else ""} named by two tags ({pgs(t.get("runs_named_twice_pages") or [])})' if t.get('runs_named_twice') else '')
+     + (f' · {t["kids_not_judged"]} reference{"s" if t["kids_not_judged"] != 1 else ""} not checked (a page or form that could not be read)' if t.get('kids_not_judged') else '')),
     ('All marked text reachable from the tag tree', ok(t.get('content_mcids_not_in_tree') == 0), f'{nc(t.get("content_mcids_not_in_tree"))} orphan runs'),
     ('One Document root', ok({k.lstrip('/'): v for k, v in (t.get('root_children') or {}).items()} == {'Document': 1}),
      ', '.join(f'{k.lstrip("/")} {v}' for k, v in (t.get('root_children') or {}).items())),
@@ -1452,7 +1457,7 @@ if not KEEP:
     if rv: RS.keep_first(R, A)
     if os.path.exists(os.path.join(A, 'digest.json')): RS.keep_audit(R, A, wo_ai if rv and wo_ai is not None else wo, INPUT)
     for name in ('request.json', 'response.json', 'reply.txt', 'run.json', 'validation.json', 'workorder.json', 'passes.json',
-                 PDF + '.log.json', PDF + '.verify.json', 'verify.txt', 'error.txt', 'timing.json', 'attempts.json',
+                 PDF + '.log.json', PDF + '.verify.json', 'verify.txt', 'error.txt', 'timing.json', 'timing_peak.json', 'attempts.json',
                  'workorder.ai.json', 'review.json', 'review_items.json', 'review_decisions.json', 'review_stop.json', 'page_reads_run.json',
                  'language_run.json', 'language_estimate.json', _aistatus.NAME, 'language_retry_estimate.json', 'page_reads_retry_estimate.json'):
         p = os.path.join(R, name)

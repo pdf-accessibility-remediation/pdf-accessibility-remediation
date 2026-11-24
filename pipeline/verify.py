@@ -1,7 +1,8 @@
 """Verify work/remediated.pdf against the original. Read-only."""
 import sys, json, re, collections
 import os; sys.path.insert(0, os.path.dirname(os.path.abspath(__file__))); import vera
-from lib import plumb_fix, readorder, fontname, langtag, contentops as CO  # noqa: F401  plumb_fix before pdfplumber reads a page: it patches pdfplumber
+from lib import plumb_fix, readorder, fontname, langtag, strays, tagfix, contentops as CO  # noqa: F401  plumb_fix before pdfplumber reads a page: it patches pdfplumber
+from lib import peak  # noqa: F401  #167: this step's peak memory, written at exit when run_api.sh asks (PEAK_FILE)
 import pikepdf, pdfplumber, pypdfium2 as pdfium
 import fontTools.cffLib, fontTools.ttLib  # noqa: F401  required: a font that can't be read must not pass as OK
 from PIL import ImageChops
@@ -44,6 +45,8 @@ def _no_unicode(t): return t.startswith('(cid:') or t == '\ufffd' or (len(t) == 
 _CM = set()
 _TXT, _POS = collections.defaultdict(list), {}     # per (page, MCID) in the result: its text, and where its first character sits
 _ORD = {}                                          # per (page, MCID): its first character's index in the page's content order (#150)
+_TXS, _POSS = collections.defaultdict(list), {}    # #166: the same per (page, stream, MCID): stream None for the page's content,
+                                                   #   else the form's object number (lib/plumb_fix's `mcs`)
 with pdfplumber.open(A) as pa, pdfplumber.open(B) as pb:
     for i in range(len(pa.pages)):
         PA, PB = pa.pages[i], pb.pages[i]
@@ -69,6 +72,8 @@ with pdfplumber.open(A) as pa, pdfplumber.open(B) as pb:
             if c.get('mcid') is None: continue
             k = (i + 1, c['mcid']); _TXT[k].append(c['text'])
             if k not in _POS: _POS[k] = (c['top'], c['x0'], c['size']); _ORD[k] = n_c
+            ks_ = (i + 1, c.get('mcs'), c['mcid']); _TXS[ks_].append(c['text'])
+            if ks_ not in _POSS: _POSS[ks_] = (c['top'], c['x0'], c['size'])
         _CM.update(content_mcids_page); PA.close(); PB.close()
 out['text_pages_changed'] = tdiff; out['untagged_chars'] = untag; out['artifact_chars'] = art
 if REWRITES: out['ocr_text_rewritten'] = {'pages': rewritten_ok, 'words': sum(len(v) for v in REWRITES.values())}   # the only text changes allowed
@@ -104,17 +109,22 @@ def mapped(s):
     return s
 owner, objr_owner, stale, types, nested_links, seq = {}, {}, 0, collections.Counter(), 0, []
 owner_stm = {}                                     # (form objgen, MCID) → tag, for MCRs that point into a form XObject
+run_seq = []                                       # #166: every run the tree names, (page, stream, MCID), in tree order
 stm_page = {}                                      # (form objgen, MCID) → the page its /MCR … /Stm names (its /Pg, else its tag's page)
 root_kids = [str(k.get('/S')) for k in (st.K if isinstance(st.K, pikepdf.Array) else [st.K])]
 stack = [(k, st, None, False) for k in reversed(list(st.K) if isinstance(st.K, pikepdf.Array) else [st.K])]
 while stack:
     n, par, pg, in_link = stack.pop()
-    if isinstance(n, int): owner[(pg, n)] = par.objgen; continue
+    if isinstance(n, int): owner[(pg, n)] = par.objgen; run_seq.append((pg, None, n)); continue
     if not isinstance(n, pikepdf.Dictionary): continue
     t = str(n.get('/Type'))
     if t == '/MCR':
-        if '/Stm' not in n: owner[(pidx[n.Pg.objgen] if '/Pg' in n else pg, int(n.MCID))] = par.objgen   # /Stm: numbered inside a form XObject
-        else: owner_stm[(n.Stm.objgen, int(n.MCID))] = par.objgen; stm_page[(n.Stm.objgen, int(n.MCID))] = pidx.get(n.Pg.objgen) if '/Pg' in n else pg
+        if '/Stm' not in n:
+            owner[(pidx[n.Pg.objgen] if '/Pg' in n else pg, int(n.MCID))] = par.objgen   # /Stm: numbered inside a form XObject
+            run_seq.append((pidx[n.Pg.objgen] if '/Pg' in n else pg, None, int(n.MCID)))
+        else:
+            owner_stm[(n.Stm.objgen, int(n.MCID))] = par.objgen; stm_page[(n.Stm.objgen, int(n.MCID))] = pidx.get(n.Pg.objgen) if '/Pg' in n else pg
+            run_seq.append((pidx.get(n.Pg.objgen) if '/Pg' in n else pg, n.Stm.objgen[0], int(n.MCID)))   # #166: form runs too
         continue
     if t == '/OBJR':
         if n.Obj.objgen in live: objr_owner[n.Obj.objgen] = par.objgen
@@ -140,12 +150,14 @@ content_mcids = _CM                                # collected in the single pas
 form_mc = set(); page_mc_seen = set()
 if any(isinstance(o, pikepdf.Stream) and o.get('/Subtype') == '/Form' and '/StructParents' in o for o in pdf.objects):
     def _mc(owner_, res, pno, form, depth):
+        owner_res = owner_.get('/Resources') if isinstance(owner_, pikepdf.Stream) else res
         try: ops = pikepdf.parse_content_stream(owner_)
         except Exception: return
         for a, o in ops:
             o = str(o)
-            if o == 'BDC' and len(a) > 1 and isinstance(a[1], pikepdf.Dictionary) and '/MCID' in a[1]:
-                (form_mc.add((form.objgen, pno, int(a[1].MCID))) if form is not None else page_mc_seen.add((pno, int(a[1].MCID))))
+            mm = tagfix.bdc_mcid(a, owner_res) if o == 'BDC' else None        # a named property list too (review 04 H1)
+            if mm is not None:
+                (form_mc.add((form.objgen, pno, mm)) if form is not None else page_mc_seen.add((pno, mm)))
             elif o == 'Do' and depth < 4 and res is not None:
                 x = (res.get('/XObject') or {}).get(a[0])
                 if x is not None and x.get('/Subtype') == '/Form':
@@ -168,6 +180,7 @@ out['tree'] = {'root_children': dict(collections.Counter(root_kids)), 'types': d
                'parenttree_missing': missing, 'parenttree_mismatched': mism,
                'stale_OBJRs': stale, 'annotations_unresolved': len(annot_bad), 'annotations_without_Contents': no_contents,
                'nested_Link_in_Link': nested_links}
+out['tree'].update(strays.counts(pdf))            # #168: kids pointing at no drawn number, and drawn runs two kids name (lib/strays.py)
 lv = [l for l, _ in seq]
 out['headings'] = {'first': seq[0] if seq else None, 'counts': dict(collections.Counter(f'H{l}' for l in lv)),
                    'skipped_levels': [(a, b) for a, b in zip(lv, lv[1:]) if b > a + 1][:5]}
@@ -234,7 +247,7 @@ def _walk(stream, pno, resources, inherited, tr=0, top=False):
     for operands, op in pikepdf.parse_content_stream(stream, CO.FILTER):     # only those operators (#93 C1): the rest never reach Python
         op = str(op)
         if op in ('BDC', 'BMC'):
-            props = operands[1] if len(operands) > 1 else None
+            props = tagfix.bdc_props(operands, resources) if op == 'BDC' else None     # a named property list too (review 04 H1)
             if top and isinstance(props, pikepdf.Dictionary) and '/MCID' in props and '/Lang' in props: _BDC_LANG[(pno, int(props.MCID))] = str(props.Lang)
             elif not top and isinstance(stream, pikepdf.Stream) and isinstance(props, pikepdf.Dictionary) and '/MCID' in props and '/Lang' in props:
                 _BDC_LANG_F[(stream.objgen, int(props.MCID))] = str(props.Lang)
@@ -279,7 +292,7 @@ out['untagged_paths'] = free.get('path', 0)          # a vector path drawn outsi
 # form reached from it at any depth) holds it; that form is drawn once in the whole document, directly from this page, and
 # not inside marked content; an /MCR … /Stm names it, for this page; no page-level reference names it.
 def _run_form():
-    DO = re.compile(rb'/([^\s/\[\]<>(){}%]+)\s+Do\b'); MC = re.compile(rb'/MCID\s+(\d+)')
+    DO = re.compile(rb'/([^\s/\[\]<>(){}%]+)\s+Do\b')
     fb = {}
     def raw(x):
         if x.objgen not in fb:
@@ -314,8 +327,8 @@ def _run_form():
         for x in ins:
             op = str(x.operator)
             if op in ('BDC', 'BMC'):
-                pr = x.operands[1] if op == 'BDC' and len(x.operands) > 1 else None
-                if isinstance(pr, pikepdf.Dictionary) and '/MCID' in pr: pm.add(int(pr.MCID)); stack.append('mc')
+                mm = tagfix.bdc_mcid(x.operands, res) if op == 'BDC' else None       # a named property list too (review 04 H1)
+                if mm is not None: pm.add(mm); stack.append('mc')
                 else: stack.append('art' if x.operands and str(x.operands[0]) == '/Artifact' else 'x')
             elif op == 'EMC':
                 if stack: stack.pop()
@@ -329,10 +342,10 @@ def _run_form():
             for nm in DO.findall(raw(f)):
                 g = forms(f.get('/Resources') or r).get('/' + nm.decode('latin-1'))
                 if g is None or g.objgen in seen: continue
-                seen.add(g.objgen); src.update(set(map(int, MC.findall(raw(g)))))
+                seen.add(g.objgen); src.update(tagfix.form_mcids(g, g.get('/Resources') or f.get('/Resources') or r, raw(g)))   # named too (review 06 §2)
                 if d < 4: nest(g, g.get('/Resources') or r, d + 1)
         for og, (f, _in) in direct.items():
-            ms = set(map(int, MC.findall(raw(f)))); src.update(ms)
+            ms = tagfix.form_mcids(f, f.get('/Resources') or res, raw(f)); src.update(ms)
             for m in ms: where[m] = og
             nest(f, f.get('/Resources') or res, 1)
         per[i] = (pm, direct, src, where)
@@ -367,18 +380,44 @@ def _lang_section():
         k = (sp['page'], sp['mcid']); by_lang[sp['lang']] += 1
         if sp.get('segments'):                     # one Span over several runs (#150, #161; review 02 M2): checked exactly, no walk up
             keys = [(sp['page'], x) for x in sp.get('mcids') or []]
-            ogs = {own_of(kk) for kk in keys}
+            chil = sp.get('children') or []              # #170: letters-only child tags moved in whole, at their place in the Span
+            ogs = {own_of(kk) for kk in keys}            #   (found by place and runs: the saved file numbers its objects anew)
+            if not keys and chil:                        # only children: the Span is the parent of the tag over the first one's run
+                o_ = own_of((sp['page'], chil[0]['mcids'][0]))
+                e0 = pdf.get_object(o_) if o_ else None
+                ogs = {e0.P.objgen} if e0 is not None and isinstance(e0.get('/P'), pikepdf.Dictionary) else {None}
             el = pdf.get_object(next(iter(ogs))) if len(ogs) == 1 and None not in ogs else None
+            elk_ = (list(el.get('/K')) if isinstance(el.get('/K'), pikepdf.Array) else [el.get('/K')]) if el is not None else []
+            ch_el = [(ch, elk_[ch['at']] if 0 <= ch['at'] < len(elk_) and isinstance(elk_[ch['at']], pikepdf.Dictionary)
+                      and '/S' in elk_[ch['at']] else None) for ch in chil]
             par = el.get('/P') if el is not None else None
             kk_ = el.get('/K') if el is not None else None
             # each kid as (stream, MCID): a page MCID, or an /MCR … /Stm into the form that draws the run (#165)
             kid_m = [(None, int(x)) if isinstance(x, int) else ((x.Stm.objgen if '/Stm' in x else None), int(x.MCID))
                      for x in (list(kk_) if isinstance(kk_, pikepdf.Array) else [kk_])
                      if isinstance(x, int) or (isinstance(x, pikepdf.Dictionary) and '/MCID' in x)] if el is not None else []
-            pos_ = [first_at.get(kk) for kk in keys]
-            got = ''.join(t for kk in keys for t in _TXT.get(kk, ()))
+            ch_why = None
+            if ch_el and el is not None:                 # each child: at its place in the Span's /K, its /P the Span, its own runs
+                elk = list(el.get('/K')) if isinstance(el.get('/K'), pikepdf.Array) else [el.get('/K')]
+                for ch, e_ in ch_el:
+                    ek = (list(e_.get('/K')) if isinstance(e_.get('/K'), pikepdf.Array) else [e_.get('/K')]) if e_ is not None else []
+                    em = [int(x) if isinstance(x, int) else int(x.MCID) for x in ek if isinstance(x, int) or (isinstance(x, pikepdf.Dictionary) and '/MCID' in x)]
+                    if e_ is None: ch_why = 'a child tag is not where the place had it'; break
+                    if not (isinstance(e_.get('/P'), pikepdf.Dictionary) and e_.P.objgen == el.objgen) or em != ch['mcids']:
+                        ch_why = 'a child tag holds other runs'; break
+                order = []                               # every run the Span reads, in its order: its own and its children's
+                for x in elk:
+                    if isinstance(x, int) or (isinstance(x, pikepdf.Dictionary) and '/MCID' in x): order.append((sp['page'], int(x) if isinstance(x, int) else int(x.MCID)))
+                    elif isinstance(x, pikepdf.Dictionary):
+                        ch = next((c for c, e_ in ch_el if e_ is not None and e_.objgen == x.objgen), None)
+                        if ch: order += [(sp['page'], m_) for m_ in ch['mcids']]
+                all_keys = order
+            else: all_keys = keys
+            pos_ = [first_at.get(kk) for kk in all_keys]
+            got = ''.join(t for kk in all_keys for t in _TXT.get(kk, ()))
             why = None
             if el is None: why = 'not in the tag tree' if None in ogs else 'its runs sit under different tags'
+            elif ch_why: why = ch_why
             elif str(el.get('/Lang', '')) != sp['lang']: why = f'its tag says {str(el.get("/Lang", "")) or "no language"}'
             elif kid_m != [(run_form.get(kk), kk[1]) for kk in keys]: why = 'its tag holds other runs'
             elif par is None or (sp.get('parent_type') and str(par.get('/S', '')).lstrip('/') != sp['parent_type']) \
@@ -386,8 +425,8 @@ def _lang_section():
                 why = 'its tag is not where the place was'
             elif None in pos_ or pos_ != sorted(pos_): why = 'its runs are not in reading order'
             elif squash(got) != squash(sp['text']): why = 'its marked content holds other text'
-            elif any(marks_lang(kk) and not same_lang(marks_lang(kk), sp['lang']) for kk in keys):
-                why = f'its marked content says {next(marks_lang(kk) for kk in keys if marks_lang(kk))}'
+            elif any(marks_lang(kk) and not same_lang(marks_lang(kk), sp['lang']) for kk in all_keys):
+                why = f'its marked content says {next(marks_lang(kk) for kk in all_keys if marks_lang(kk))}'
             if why: mism.append({'page': sp['page'], 'mcid': sp['mcid'], 'lang': sp['lang'], 'text': sp['text'][:80], 'why': why})
             continue
         og = own_of(k); el = pdf.get_object(og) if og else None
@@ -422,11 +461,11 @@ def _lang_section():
     # under it name another language
     for e in haw_el:
         ks = [tuple(k) for k in e.get('keys') or []]
-        og = owner.get(ks[0]) if ks else None; el = pdf.get_object(og) if og else None
+        og = own_of(ks[0]) if ks else None; el = pdf.get_object(og) if og else None      # a form run too (#166)
         why = None
         if el is None: why = 'not in the tag tree'
         elif str(el.get('/Lang', '')) != 'haw': why = f'its tag says {str(el.get("/Lang", "")) or "no language"}'
-        elif any(k in _BDC_LANG and not same_lang(_BDC_LANG[k], 'haw') for k in ks): why = f'its marked content says {next(_BDC_LANG[k] for k in ks if k in _BDC_LANG)}'
+        elif any(marks_lang(k) and not same_lang(marks_lang(k), 'haw') for k in ks): why = f'its marked content says {next(marks_lang(k) for k in ks if marks_lang(k))}'
         if why: mism.append({'page': e.get('page'), 'mcid': ks[0][1] if ks else None, 'lang': 'haw', 'text': str(e.get('text') or '')[:80], 'why': why})
     return {'spans_written': len(written), 'haw_elements': len(haw_el),
             'not_in_tree': sum(1 for x in mism if x['why'] == 'not in the tag tree'),   # content not tagged: a failed tagging safety check (Patrick, review 10 H1)
@@ -534,6 +573,7 @@ def _empty_pg(n, par):                     # a tag with nothing inside
     return p if p is not None or par is None else _own_pg(par)
 el_type, empty_el, fig_only, cap_loose = {}, [], [], []
 stk = [(k, None) for k in reversed(_kids(st))]
+_SIB = {}
 while stk:
     n, par = stk.pop()
     if not _is_el(n): continue
@@ -544,7 +584,9 @@ while stk:
         fig_only.append({'page': _holder_pg(n), 'tag': str(n.S).lstrip('/'), 'figures': len(els)})
     if s_ == 'Caption':
         pt_ = mapped(str(par.S).lstrip('/')) if par is not None else 'root'
-        sib = [mapped(str(k.S).lstrip('/')) for k in _kids(par) if _is_el(k)] if par is not None else []
+        if par is not None and par.objgen not in _SIB:      # #167: a parent's kid types once, not once per caption
+            _SIB[par.objgen] = [mapped(str(k.S).lstrip('/')) for k in _kids(par) if _is_el(k)]
+        sib = _SIB[par.objgen] if par is not None else []
         if pt_ not in ('Figure', 'Table', 'L', 'TOC', 'Formula') and not any(x in ('Figure', 'Table', 'Formula') for x in sib):
             cap_loose.append({'page': _holder_pg(n), 'parent': pt_})
     for k in reversed(ks): stk.append((k, n))
@@ -574,8 +616,8 @@ dangling, stale = [], 0
 drawn_cache = {}
 def _drawn(i):
     if i not in drawn_cache:
-        drawn_cache[i] = {int(ins.operands[1].MCID) for ins in pikepdf.parse_content_stream(pages[i - 1])
-                          if str(ins.operator) == 'BDC' and len(ins.operands) == 2 and isinstance(ins.operands[1], pikepdf.Dictionary) and '/MCID' in ins.operands[1]}
+        res_ = strays._res(pages[i - 1])                    # the page's resources: a named property list too (review 04 H1)
+        drawn_cache[i] = {m for m in (tagfix.bdc_mcid(ins.operands, res_) for ins in pikepdf.parse_content_stream(pages[i - 1], 'BDC')) if m is not None}
     return drawn_cache[i]
 for key, v in PT.items():
     if isinstance(v, pikepdf.Array):
@@ -624,8 +666,9 @@ def _el_text(n, pg=None, acc=None, d=0):    # a tag's ActualText, else the text 
     if '/ActualText' in n: acc.append(str(n.ActualText)); return acc
     pg = _own_pg(n) or pg
     for k in _kids(n):
-        if isinstance(k, int): acc.extend(_TXT.get((pg, k), ()))
-        elif isinstance(k, pikepdf.Dictionary) and str(k.get('/Type')) == '/MCR' and '/Stm' not in k: acc.extend(_TXT.get((_own_pg(k) or pg, int(k.MCID)), ()))
+        if isinstance(k, int): acc.extend(_TXS.get((pg, None, k), ()))          # #166: each run from its own stream
+        elif isinstance(k, pikepdf.Dictionary) and str(k.get('/Type')) == '/MCR' and '/MCID' in k:
+            acc.extend(_TXS.get((_own_pg(k) or pg, k.Stm.objgen[0] if isinstance(k.get('/Stm'), pikepdf.Stream) else None, int(k.MCID)), ()))
         elif _is_el(k): _el_text(k, pg, acc, d + 1)
     return acc
 def _text(n): return re.sub(r'\s+', ' ', ''.join(_el_text(n))).strip()
@@ -636,6 +679,16 @@ def _mcids(n, pg=None, acc=None, d=0):
         if isinstance(k, int): acc.add((pg, k))
         elif isinstance(k, pikepdf.Dictionary) and str(k.get('/Type')) == '/MCR' and '/MCID' in k: acc.add((_own_pg(k) or pg, int(k.MCID)))
         elif _is_el(k) and d < 60: _mcids(k, pg, acc, d + 1)
+    return acc
+def _runs_s(n, pg=None, acc=None, d=0):
+    """(page, stream, MCID) of every run under n, the stream None for the page's content, else the form's object number."""
+    acc = set() if acc is None else acc
+    pg = _own_pg(n) or pg
+    for k in _kids(n):
+        if isinstance(k, int): acc.add((pg, None, k))
+        elif isinstance(k, pikepdf.Dictionary) and str(k.get('/Type')) == '/MCR' and '/MCID' in k:
+            acc.add((_own_pg(k) or pg, k.Stm.objgen[0] if isinstance(k.get('/Stm'), pikepdf.Stream) else None, int(k.MCID)))
+        elif _is_el(k) and d < 60: _runs_s(k, pg, acc, d + 1)
     return acc
 W = collections.defaultdict(list)
 stk = list(reversed(_kids(st)))
@@ -663,10 +716,10 @@ wc['tables_without_header'] = [{'page': _first_pg(n)} for n in W['Table'] if _ha
 # 1.3.2 reading order: on each page, follow the tagged text in tag-tree order and count jumps back UP the same column.
 #   Notes, figures and captions are skipped: they are placed where they are referred to, not where they are drawn.
 placed = set()
-for n in (x for t in readorder.PLACED_ELSEWHERE for x in W[t]): _mcids(n, acc=placed)
+for n in (x for t in readorder.PLACED_ELSEWHERE for x in W[t]): _runs_s(n, acc=placed)   # by stream (review 04): a form run with a note's number stays
 seq = collections.defaultdict(list)
-for k in owner:                                # filled in tag-tree order in 3
-    if k in _POS and k not in placed and _TXT[k] and ''.join(_TXT[k]).strip(): seq[k[0]].append(_POS[k])
+for r in dict.fromkeys(run_seq):               # tag-tree order (3), page and form runs (#166), each run once
+    if r in _POSS and r not in placed and ''.join(_TXS[r]).strip(): seq[r[0]].append(_POSS[r])
 ro = readorder.page_jumps(seq)
 wc['reading_order'] = {'pages_checked': len(seq), 'flagged': ro, 'flagged_count': len(ro)}
 # 1.3.2 across the book: a section (or Div) read away from its printed place among its siblings (lib/readorder.py),

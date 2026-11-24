@@ -277,6 +277,7 @@ def make(s, setup, code=None):
     read once, here, so the pages always match the code this server runs, even if the files on disk change under it;
     `code` is the fingerprint of that code (config.code_fingerprint), which /api/ping reports."""
     J = s['jobs']
+    jobs.set_roots(s)                                  # book_pages reads PDFs and run folders inside the app's own folders only
     def applog(msg):                                   # a writer's note (a draft not cleared, G3): runs/.app/server.log
         with open(os.path.join(J, 'server.log'), 'a', encoding='utf-8') as f: f.write(f'{datetime.datetime.now().isoformat(timespec="seconds")} {msg}\n')
     RUNS = os.path.realpath(s['runs'])                   # every file the server reads for a request is inside this folder

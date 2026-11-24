@@ -279,6 +279,17 @@ switches once, not mid-title. `LANG_GROW=off` turns it off.
     - **A word broken by a line-end hyphen** is one word form tagged in its two pieces. Growth never steps across the
       hyphen, on any page, so a title's words after it are tagged only where they are candidates of their own
       ("Zhong-" ‖ "guo shi": "Zhongguo" in two tags; "shi" alone on an OCR page, untagged on a publisher page).
+    - **A grown title apply.py refuses is tagged piece by piece** (#172). The finder records, for each title over several
+      runs, where growth joined two words ("word") and where one word crosses runs ("inside": a split word, a dropped
+      letter). A word broken by a line-end hyphen is two places from the start (one per piece), never one place over
+      both runs, so it has no breaks. When apply.py refuses the whole title (its words under different tags, in different content
+      streams, other text between them, or the page would look different), it splits the title at its "word" breaks and
+      tags each piece as it would have without growth: a piece of one run by the single-run rules (which still refuse a
+      piece on a page rewritten from OCR, rotated text, or spoken text of its own), and a word that crosses runs all or
+      nothing. A run a fixed rule tags (kana, hangul) is left to that rule. The record lists each fallback
+      (`language_parts.fallback`: the reason, when, and the pieces).
+    - **A piece whose run holds only punctuation besides it** ("isshu." in its own run) covers that whole run, period and
+      all, as a single run's place does, so no split is needed there.
 - **What is ours, and what is the reader's:**
   - The tags' correctness is the pipeline's: verify checks each one, and the AI's answers are approved by a person. On the
     test books, 3 of 1,819 grown titles took in an English word.
@@ -347,6 +358,15 @@ language; the list gives their pages." The review page shows the same under "Lan
 (N)", read only. The count is in the Language Tags line's details ("Approved (… · 12 words not tagged)"). It is not a
 condition of Ready (Patrick, 2026-11-19). A place the executor refuses late (the page would look different, …) is not
 counted here: it is in "Not placed by the executor".
+
+**A letter in its own child tag is no longer a reason** (#170). A publisher's export may put one letter of a word (an
+accented "ô" drawn in another font) in its own Span inside the paragraph: P [ "… Ky" ‖ Span [ "ô" ] ‖ "nggi …" ]. Such a
+word is now an ordinary candidate, sent to the language step and decided on its row in "Languages", and one Span with
+the language is written over the whole word, the child moved inside. The child must be a Span (after the role map)
+carrying nothing but its class and an ID nothing refers to (no table header names it), hold only letters, have no
+spoken text in or around its marks, and be covered whole by the word; a /Lang in its marks is removed with the
+word's. Other shapes (a word split between a list label and its body, a child holding other text or tags) are still
+listed here. On the test books this moved clans' list from 573 words to 8, and translation's from 13 to 0.
 
 ### Sending, retries and interruptions
 

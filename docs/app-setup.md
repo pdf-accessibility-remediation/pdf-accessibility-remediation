@@ -32,7 +32,7 @@ Settings come from one place, read in this order (later wins):
 | `port` | `8760` | The app's port. The review pages use 8765–8784, as from the terminal |
 | `runs`, `samples`, `uploads` | `../runs`, `../samples`, `../uploads` | The folders, relative to `pipeline/` (or absolute). See [The folders](#the-folders) |
 | `jobs` | `../runs/.app` | The job files, their logs, and the app's own small files |
-| `max_jobs` | `3` | How many single runs go at once. Open review pages do not count until they apply. A batch runs alone |
+| `max_jobs` | `3` | How many single runs go at once. Open review pages do not count until they apply. A batch runs alone, and so does a single run of a book over 1,000 pages |
 | `batch_jobs` | `10` | How many PDFs of a batch are in progress at once (batch_api.sh's `JOBS`), and how many batch estimates go at once. Subject to change once the hardware limits are measured |
 | `max_books_per_batch` | `50` | The most PDFs "New Batch" accepts. batch_api.sh in a terminal has no cap |
 | `upload_max_mb` | `1024` | The largest PDF "Upload a PDF" and **Bring Back an Edited PDF** accept, in MB |
