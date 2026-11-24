@@ -1,4 +1,5 @@
-"""read_pages.py: whole-page AI readings of scanned Hawaiian pages (issue #49). PAID, its own step after decide.py.
+"""read_pages.py: whole-page AI readings of scanned Hawaiian pages (issue #49) and of scanned pages with Chinese,
+Japanese or Korean text (#119). PAID, its own step after decide.py.
 
     python read_pages.py AUDIT_DIR RUN_DIR [--dry-run] [--model ID] [--max-usd N]
 
@@ -7,6 +8,13 @@ page_reads/). Tesseract has no Hawaiian model, so their OCR lost the ʻokina and
 model in its own request, with prompts/page_reading_v1.md: it transcribes the page exactly as printed. The readings are
 added to RUN_DIR/workorder.json as `page_readings` [{page, text}]; apply.py gives each OCR word its reading at its own
 place (ActualText), and the report asks a person who reads Hawaiian to check every page.
+
+CJK pages (#119; the audit's kind cjk: scanned pages whose OCR text holds CJK) are read with their own prompt
+(prompts/page_reading_cjk_v1.md) and their own model, PAGE_READS_CJK_MODEL or --cjk-model (default Gemini 3.8 Flash:
+measured on 27 CJK test pages, 98.5% of the characters read and 0.6% invented, the same on three runs, about $0.004 a
+page; docs/cjk-ocr.md). A reply that refuses instead of reading (Sonnet 5.5 refused one test page as copyrighted, on
+every run) is recorded as finish "refused" and never used. Their readings go into page_readings with kind "cjk";
+apply.py matches them to the OCR's lines (lib/cjkocr.py).
 
     RUN_DIR/page_reads_run.json   model, prompt, the estimate, and each page's reply, usage and cost
 
@@ -24,7 +32,7 @@ The API key comes from OPENROUTER_API_KEY or the nearest .env, as for decide.py.
 """
 import sys, os, re, json, time, base64, hashlib, argparse, urllib.request, urllib.error
 HERE = os.path.dirname(os.path.abspath(__file__)); sys.path.insert(0, HERE)
-from lib import pagereads, costhistory, costs, aisend
+from lib import pagereads, costhistory, costs, aisend, cjkocr
 from lib import peak  # noqa: F401  #167: this step's peak memory, written at exit when run_api.sh asks (PEAK_FILE)
 
 ap = argparse.ArgumentParser()
@@ -35,6 +43,8 @@ ap.add_argument('--max-usd', type=float, default=float(os.environ.get('PAGE_READ
 ap.add_argument('--book-max-usd', type=float, default=float(os.environ.get('BOOK_MAX_USD') or costs.DEFAULT_LIMITS['per_book_usd']),
                 help="the PDF's limit, shared with the work order and the language step (review 06, M2)")
 ap.add_argument('--max-tokens', type=int, default=8000, help='output limit per page (a dense Hawaiian page took 2,300–3,400)')
+ap.add_argument('--cjk-model', default=os.environ.get('PAGE_READS_CJK_MODEL') or 'google/gemini-3.8-flash',
+                help="the model for CJK pages (#119; PAGE_READS_CJK_MODEL), set apart from the work order's")
 ap.add_argument('--outcome', action='store_true', help="record how the step ended in ai_outcome.json (#151; run_api.sh's own calls)")
 ap.add_argument('--estimate-to', help="a dry run's estimate written here instead of page_reads_estimate.json (#151: the retry's estimate)")
 args = ap.parse_args()
@@ -60,13 +70,16 @@ PROMPT_FILE = next((p for p in (os.path.join(HERE, 'prompts', pagereads.PROMPT_N
                     if os.path.isfile(p)), None)
 if not PROMPT_FILE: refuse('error', f'no prompt file {pagereads.PROMPT_NAME} in pipeline/prompts/ or prompts/')
 prompt = open(PROMPT_FILE, encoding='utf-8').read(); prompt_sha = hashlib.sha256(prompt.encode()).hexdigest()[:16]
+CJK_PROMPT_FILE = next((p for p in (os.path.join(HERE, 'prompts', pagereads.CJK_PROMPT_NAME), os.path.join(os.path.dirname(HERE), 'prompts', pagereads.CJK_PROMPT_NAME))
+                        if os.path.isfile(p)), None)
 listing = os.path.join(args.audit_dir, 'page_reads.json')
 pages = (json.load(open(listing, encoding='utf-8')).get('pages') or []) if os.path.exists(listing) else []
 EST_PATH = args.estimate_to or os.path.join(args.run_dir, 'page_reads_estimate.json')
 if not pages:
     if os.path.exists(EST_PATH): os.remove(EST_PATH)          # an earlier estimate of pages this audit no longer lists
     out('not_run')                                            # #151, review 24 L7: nothing to read is never a hold
-    print('page readings: no scanned Hawaiian pages in this PDF, nothing to read'); sys.exit(0)
+    print('page readings: no scanned Hawaiian or CJK pages in this PDF, nothing to read'); sys.exit(0)
+if any(p.get('kind') == 'cjk' for p in pages) and not CJK_PROMPT_FILE: refuse('error', f'no prompt file {pagereads.CJK_PROMPT_NAME} in pipeline/prompts/ or prompts/')
 
 def load_env():
     d = HERE
@@ -89,40 +102,55 @@ def get(url, key=None):
 run_json = os.path.join(args.run_dir, 'run.json')
 model = args.model or ((json.load(open(run_json, encoding='utf-8')).get('model') if os.path.exists(run_json) else None)) \
     or re.search(r"^DEFAULT_MODEL = '([^']+)'", open(os.path.join(HERE, 'decide.py'), encoding='utf-8').read(), re.M).group(1)
+KINDS = {'haw': {'model': model, 'prompt': prompt, 'prompt_sha': prompt_sha, 'file': PROMPT_FILE}}
+if any(p.get('kind') == 'cjk' for p in pages):
+    _cp = open(CJK_PROMPT_FILE, encoding='utf-8').read()
+    KINDS['cjk'] = {'model': args.cjk_model, 'prompt': _cp, 'prompt_sha': hashlib.sha256(_cp.encode()).hexdigest()[:16], 'file': CJK_PROMPT_FILE}
+def kind_of(p): return p.get('kind') if p.get('kind') in KINDS else 'haw'
 try:
-    m = next((x for x in get('https://openrouter.ai/api/v1/models')['data'] if x['id'] == model), None)
+    _list = get('https://openrouter.ai/api/v1/models')['data']
 except (urllib.error.URLError, TimeoutError, KeyError, ValueError) as e: refuse('lookup', f'could not reach OpenRouter to look up the model: {e}')
-if m is None: refuse('lookup', f'refusing: model "{model}" is not on OpenRouter')
-if 'image' not in ((m.get('architecture') or {}).get('input_modalities') or []): refuse('lookup', f'refusing: {model} cannot take images')
-pin, pout = float(m['pricing']['prompt']), float(m['pricing']['completion'])
+for _k in sorted({kind_of(p) for p in pages}):
+    K = KINDS[_k]; m = next((x for x in _list if x['id'] == K['model']), None)
+    if m is None: refuse('lookup', f'refusing: model "{K["model"]}" is not on OpenRouter')
+    if 'image' not in ((m.get('architecture') or {}).get('input_modalities') or []): refuse('lookup', f'refusing: {K["model"]} cannot take images')
+    K.update(m=m, pin=float(m['pricing']['prompt']), pout=float(m['pricing']['completion']))
+_first = KINDS['haw'] if 'm' in KINDS['haw'] else KINDS['cjk']
+model, m, pin, pout = _first['model'], _first['m'], _first['pin'], _first['pout']     # the step's main model (Hawaiian pages', else CJK pages')
 
 out_path = os.path.join(args.run_dir, 'page_reads_run.json')
 done = json.load(open(out_path, encoding='utf-8')) if os.path.exists(out_path) else {}
 from PIL import Image
 todo, reused = [], []
 for p in pages:
+    K = KINDS[kind_of(p)]
     img = os.path.join(args.audit_dir, p['image']); raw = open(img, 'rb').read(); sha = hashlib.sha256(raw).hexdigest()[:16]
     prev = next((x for x in done.get('pages') or [] if x.get('page') == p['page']), None)
-    if prev and prev.get('text') and prev.get('finish') == 'stop' and (prev.get('model'), prev.get('prompt_sha256'), prev.get('image_sha256')) == (model, prompt_sha, sha):
+    if prev and prev.get('text') and prev.get('finish') == 'stop' and (prev.get('model'), prev.get('prompt_sha256'), prev.get('image_sha256')) == (K['model'], K['prompt_sha'], sha):
         reused.append(prev); continue
     w, h = Image.open(img).size
-    t_in = (len(prompt) / CHARS_PER_TOKEN + w * h / 750) * INPUT_MARGIN
-    todo.append({**p, 'raw': raw, 'image_sha256': sha, 'input_est': round(t_in / INPUT_MARGIN), 'worst': t_in * pin + args.max_tokens * pout})
+    t_in = (len(K['prompt']) / CHARS_PER_TOKEN + w * h / 750) * INPUT_MARGIN
+    todo.append({**p, 'kind': kind_of(p), 'raw': raw, 'image_sha256': sha, 'input_est': round(t_in / INPUT_MARGIN), 'worst': t_in * K['pin'] + args.max_tokens * K['pout']})
 worst = sum(t['worst'] for t in todo)
 est = {'pages': len(pages), 'to_read': len(todo), 'reused': len(reused), 'worst_case_usd': round(worst, 4),
        'per_page_worst_usd': round(max((t['worst'] for t in todo), default=0), 4),
-       'cap_usd': args.max_usd, 'price_per_million': [round(pin * 1e6, 4), round(pout * 1e6, 4)]}
+       'cap_usd': args.max_usd, 'price_per_million': [round(pin * 1e6, 4), round(pout * 1e6, 4)],
+       **({'models': {k: K['model'] for k, K in KINDS.items() if 'm' in K}, 'cjk_pages': sum(1 for p in pages if kind_of(p) == 'cjk'),
+           'cjk_to_read': sum(1 for t in todo if t['kind'] == 'cjk')} if 'cjk' in KINDS else {})}
 if todo:                                           # the expected cost (#65): learned from past page readings, kind "page"; shown only
-    try: est['expected'] = costhistory.expected([{'kind': 'page', 'input_est': t['input_est'], 'max_tokens': args.max_tokens} for t in todo], model, pin, pout, worst,
+    try: est['expected'] = costhistory.expected([{'kind': 'page', 'input_est': t['input_est'], 'max_tokens': args.max_tokens} for t in todo], model, pin, pout, worst,  # the main model's history
                                                 cut_off=any(x.get('finish') == 'length' for x in done.get('pages') or []))
     except Exception as ex: est['expected'] = {'none': 'error'}; print(f'note: the expected cost could not be worked out ({type(ex).__name__})')
 _kept = {}
 if args.dry_run:                                   # one over its own cap is marked refused: never counted toward the PDF (review 08, H1)
-    _new = {'schema': 'page-reads-estimate/1', 'model': model, 'prompt_sha256': prompt_sha, **est, 'images': {str(t['page']): t['image_sha256'] for t in todo}}
+    _new = {'schema': 'page-reads-estimate/1', 'model': model, 'prompt_sha256': _first['prompt_sha'], **est, 'images': {str(t['page']): t['image_sha256'] for t in todo}}
     _kept = {} if worst > args.max_usd else costs.kept_refusal(args.run_dir, 'page_reads', _new)   # decide.py's "left out" survives this dry run
     json.dump({**_new, **({'refused': {'why': 'cap', 'words': f'The page readings could cost up to ${worst:.2f}, more than their limit of ${args.max_usd:.2f}.'}} if worst > args.max_usd else _kept)},
               open(EST_PATH, 'w', encoding='utf-8'), indent=1)
-print(f'page readings: {len(pages)} Hawaiian page{"s" if len(pages) != 1 else ""} ({len(reused)} already read) · {model}')
+_nc = sum(1 for p in pages if kind_of(p) == 'cjk'); _nh = len(pages) - _nc
+print('page readings: ' + ' and '.join(x for x in (f'{_nh} Hawaiian page{"s" if _nh != 1 else ""} · {KINDS["haw"]["model"]}' if _nh else '',
+                                                    f'{_nc} CJK page{"s" if _nc != 1 else ""} · {KINDS["cjk"]["model"]}' if _nc else '') if x)
+      + f' ({len(reused)} already read)')
 if todo: print('page readings: ' + costhistory.terminal_line(est['expected']))
 print(f'page readings: Max Estimated Cost: ${worst:.2f} · Limit: ${args.max_usd:.2f}')
 if worst > args.max_usd:
@@ -144,15 +172,18 @@ _kept_ids = {id(x) for x in reused}
 _stopped = list(done.get('stopped_in_flight') or []) + aisend.stopped(done.get('in_flight') or [], 'in flight when the step stopped; any charge is not known') \
     + [{'page': x.get('page'), 'worst_usd': x['worst_usd'], 'stopped': False, 'note': 'no reply in time in an earlier attempt; any charge is not known'}
        for x in done.get('pages') or [] if isinstance(x, dict) and x.get('worst_usd') and id(x) not in _kept_ids]
-rec = {'schema': 'page-reads/1', 'model': model, 'prompt_file': os.path.basename(PROMPT_FILE), 'prompt_sha256': prompt_sha, 'estimate': est,
+rec = {'schema': 'page-reads/1', 'model': model, 'prompt_file': os.path.basename(_first['file']), 'prompt_sha256': _first['prompt_sha'], 'estimate': est,
+       **({'models': {k: {'model': K['model'], 'prompt_file': os.path.basename(K['file']), 'prompt_sha256': K['prompt_sha']} for k, K in KINDS.items() if 'm' in K}} if 'cjk' in KINDS else {}),
        'pages': sorted(reused, key=lambda x: x['page']), 'cost_usd': round(max(done.get('cost_usd') or 0, sum(x.get('cost_usd') or 0 for x in done.get('pages') or [])), 6),
        **({'stopped_in_flight': _stopped} if _stopped else {})}
 if args.dry_run: print('dry run: nothing sent'); sys.exit(0)
 out('started'); STATE['started'] = True              # #151: from here a crash, a kill or Ctrl-C leaves the step unfinished
 # the doubled room after a cut-off (L5 of review 02): twice --max-tokens, up to the model's output limit; none when that
 # gives no more room
-MAX_OUT = (m.get('top_provider') or {}).get('max_completion_tokens') or m.get('context_length') or args.max_tokens
-DOUBLED = min(2 * args.max_tokens, int(MAX_OUT))
+for K in KINDS.values():
+    if 'm' in K:
+        K['max_out'] = (K['m'].get('top_provider') or {}).get('max_completion_tokens') or K['m'].get('context_length') or args.max_tokens
+        K['doubled'] = min(2 * args.max_tokens, int(K['max_out']))
 if not todo: print('page readings: every page was read before, no cost')
 else:
     key = os.environ.get('OPENROUTER_API_KEY') or refuse('error', 'no OPENROUTER_API_KEY: put it in .env or export it')
@@ -168,10 +199,12 @@ else:
     http = aisend.openrouter(key, 600); say = aisend.locked(print); fin = [0]
     def flying(d, page): return next((e for e in d.setdefault('in_flight', []) if e['page'] == page), None)
     def read(t):
-        page, k_ = t['page'], str(t['page'])
-        body = {'model': model, 'max_tokens': args.max_tokens, 'temperature': 0, 'usage': {'include': True}, 'provider': {'data_collection': 'deny'},
+        page, k_ = t['page'], str(t['page']); K = KINDS[t['kind']]
+        MAX_OUT, DOUBLED, pout_ = K['max_out'], K['doubled'], K['pout']
+        body = {'model': K['model'], 'max_tokens': args.max_tokens, 'temperature': 0, 'usage': {'include': True}, 'provider': {'data_collection': 'deny'},
                 'messages': [{'role': 'user', 'content': [{'type': 'image_url', 'image_url': {'url': 'data:image/png;base64,' + base64.b64encode(t['raw']).decode()}},
-                                                          {'type': 'text', 'text': prompt}]}]}
+                                                          {'type': 'text', 'text': K['prompt']}]}]}
+        if t['kind'] == 'cjk' and 'reasoning' in (K['m'].get('supported_parameters') or []): body['reasoning'] = {'effort': 'low'}   # as measured (#119)
         R_.change(lambda d: d.setdefault('in_flight', []).append({'page': page, 'worst_usd': round(t['worst'], 4)}))
         def on_retry(k, known, w, cut_off=False):
             def f(d):
@@ -183,7 +216,7 @@ else:
         f_ = r['final']; doubled = None
         if f_.get('finish') == 'length':
             charged = sum(1 for c in calls if c.get('cost') or c.get('worst_usd'))
-            w2 = t['worst'] - args.max_tokens * pout + DOUBLED * pout
+            w2 = t['worst'] - args.max_tokens * pout_ + DOUBLED * pout_
             why = (f'this page has already been charged twice' if charged >= 2 else
                    f'the model gives no more than {MAX_OUT:,} output tokens' if DOUBLED <= args.max_tokens else None)
             if why is None:
@@ -199,7 +232,7 @@ else:
                 doubled = {'max_tokens': DOUBLED, 'cost_usd': r2['cost_usd'], 'outcome': 'done' if f_.get('finish') == 'stop' else 'failed'}
         budget.release(k_)
         x = {'page': page, 'label': t.get('label'), 'text': f_.get('text') or '', 'finish': f_.get('finish'),
-             'model': model, 'prompt_sha256': prompt_sha, 'image_sha256': t['image_sha256'], 'input_tokens': f_.get('input_tokens'),
+             'model': K['model'], 'prompt_sha256': K['prompt_sha'], 'image_sha256': t['image_sha256'], 'input_tokens': f_.get('input_tokens'),
              'output_tokens': f_.get('output_tokens'), 'cost_usd': known, 'seconds': round(sum(c.get('seconds') or 0 for c in calls), 1),
              'sent_at': calls[0].get('sent_at'), 'finished_at': calls[-1].get('finished_at')}
         if unknown: x['worst_usd'] = unknown                       # a call with no reply in time: its charge is not known
@@ -207,6 +240,10 @@ else:
             x['calls'] = [{k: c.get(k) for k in ('attempt', 'seconds', 'sent_at', 'finished_at', 'cost', 'finish', 'error', 'why', 'worst_usd', 'doubled') if c.get(k) is not None} for c in calls]
         if doubled: x['cut_off_retry'] = doubled
         if 'error' in f_: x['error'] = f_['error']
+        if t['kind'] == 'cjk':
+            x['kind'] = 'cjk'
+            if x['finish'] == 'stop' and cjkocr.refused(x['text'], '字' * int(t.get('cjk') or 1)):   # #119: a refusal is never a reading
+                x['finish'] = 'refused'; say(f'  page {page}: the model refused to read it: not used')
         def store(d):                              # one finished entry per page, in page order; it leaves in_flight
             d['in_flight'] = [e for e in d.get('in_flight') or [] if e['page'] != page]
             if not d['in_flight']: d.pop('in_flight')
@@ -220,7 +257,7 @@ else:
             + ('' if x['finish'] == 'stop' or 'error' in x else f' · cut off ({x["finish"]}): not used') + f' ({fin[0]} of {len(todo)} done)')
         if x['finish'] == 'stop' and x['input_tokens'] and x['output_tokens']:   # the expected cost's history (#65); a cut-off page teaches nothing
             try:
-                costhistory.append({'kind': 'page', 'model': model, 'prompt': os.path.basename(PROMPT_FILE), 'input_est': t['input_est'], 'input_billed': x['input_tokens'], 'output': x['output_tokens'],
+                costhistory.append({'kind': 'page', 'model': x['model'], 'prompt': os.path.basename(KINDS[t['kind']]['file']), 'input_est': t['input_est'], 'input_billed': x['input_tokens'], 'output': x['output_tokens'],
                                     'images': 1, 'forms': 0, 'date': started, 'book': costhistory.book_id(args.run_dir, digest), 'pass': str(t['page']), 'attempt': len(x.get('calls') or [1])})
             except Exception: pass                 # a paid run is never stopped by the history
     def on_stop(started_):                         # an interruption: nothing queued starts; what was in flight counts at its worst case
@@ -232,7 +269,8 @@ json.dump(rec, open(out_path, 'w', encoding='utf-8'), ensure_ascii=False, indent
 wo_path = os.path.join(args.run_dir, 'workorder.json')
 if os.path.exists(wo_path):
     wo = json.load(open(wo_path, encoding='utf-8'))
-    wo['page_readings'] = [{'page': x['page'], 'text': x['text']} for x in rec['pages'] if x.get('finish') == 'stop' and (x.get('text') or '').strip()]
+    wo['page_readings'] = [{'page': x['page'], 'text': x['text'], **({'kind': 'cjk'} if x.get('kind') == 'cjk' else {})}
+                           for x in rec['pages'] if x.get('finish') == 'stop' and (x.get('text') or '').strip()]
     if not wo['page_readings']: del wo['page_readings']
     json.dump(wo, open(wo_path, 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
 out('done')

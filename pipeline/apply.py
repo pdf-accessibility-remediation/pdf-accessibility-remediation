@@ -3341,11 +3341,12 @@ def _log_rewrites():
     """log['ocr_text_rewritten']: {page: [[old, new], …]}, what verify.py allows to differ in the page text."""
     num = {p.obj.objgen: n for n, p in enumerate(pages, 1)}
     log['ocr_text_rewritten'] = {str(num[k]): v for k, v in sorted(_REWRITES.items(), key=lambda kv: num[kv[0]]) if v}
-def _write_fixes(page, conts, wrap, state):
+def _write_fixes(page, conts, wrap, state, spans=False):
     """wrap: {container key: {instruction index: printed spelling}}. An operator of an invisible OCR layer (render mode 3)
     in a font _ocr_font_map can rewrite gets the printed spelling as its own text, at the same width (Tz around it):
     every reader then has it (Acrobat's Read Out Loud and selection skip a word whose ActualText span sits inside its
     marked content in this layer, issue #49). Any other operator is wrapped in /Span <</ActualText (…)>> BDC … EMC.
+    spans: every operator is wrapped, none rewritten (#119 4b: a person's approved draft is spoken text only).
     -> (operators rewritten, operators wrapped)."""
     n_rw = n_sp = 0
     for ckey, w in wrap.items():
@@ -3353,7 +3354,7 @@ def _write_fixes(page, conts, wrap, state):
         for i, ins in enumerate(ins_list):
             if i not in w: out.append(ins); continue
             f, tr, tz = state.get((ckey, i), (None, 0, 100.0))
-            m = _ocr_font_map(f) if tr == 3 and str(ins.operator) == 'Tj' else None
+            m = _ocr_font_map(f) if tr == 3 and str(ins.operator) == 'Tj' and not spans else None
             old = bytes(ins.operands[0]) if m else b''
             new = _encode(m, w[i]) if m and len(old) % 2 == 0 and old else None
             if new:
@@ -3405,6 +3406,103 @@ def haw_elements(pnos, readings=None):
                                     'keys': [[p, m] for p, m in own]})          # verify.py finds the element again by its marked content
     if out['tagged']: ok('Hawaiian lines on page-read pages tagged haw (whole element)', out['tagged'])
 
+def _ocr_lines(cand, conts):
+    """The page's OCR text operators grouped into lines: OCRmyPDF writes each line as its own text object (BT … ET), so a
+    line is the candidates between one BT and the next, in drawing order. -> [[candidate index, …], …]."""
+    import bisect
+    bts = {ck: [i for i, x in enumerate(ins) if str(x.operator) == 'BT'] for ck, (_, ins) in conts.items()}
+    lines = collections.OrderedDict()
+    for ci, (ckey, idx, _t) in enumerate(cand):
+        lines.setdefault((ckey, bisect.bisect_right(bts.get(ckey) or [], idx) - 1), []).append(ci)
+    return list(lines.values())
+
+def _line_sizes(lines, cand, conts):
+    """The font size each OCR line is drawn at (OCRmyPDF sets it from Tesseract's line height): the last Tf before the
+    line's first word, within its text object. None where none is found."""
+    out = []
+    for L in lines:
+        ckey, idx, _t = cand[L[0]]; ins = conts[ckey][1]; size = None
+        for i in range(idx, -1, -1):
+            op = str(ins[i].operator)
+            if op == 'Tf' and len(ins[i].operands) > 1:
+                try: size = float(ins[i].operands[1])
+                except (TypeError, ValueError): size = None
+                break
+            if op == 'BT': break
+        out.append(size)
+    return out
+
+# #119 4b: draft pages a person who reads the language approved on the OCR approval ("I read …", review/ocr.py
+# cjk_drafts); review/sessions.py reapply() passes them from the run's OCR verdict
+CJK_CHECKED = {int(x) for x in os.environ.get('APPLY_CJK_CHECKED', '').split(',') if x.strip().isdigit()}
+
+def cjk_checked_draft(it, page, cand, conts, lines, st):
+    """#119 4b: a draft page (too few lines matched) whose reading a person who reads the language approved on the OCR
+    approval (CJK_CHECKED). Attached as spoken text, never as a replacement for the OCR text: the reading's lines are
+    spread over the OCR's lines in order, as evenly as their counts allow; each OCR line's first word is wrapped in an
+    ActualText span carrying its share, and the line's other words in spans of a single space, so a screen reader reads
+    the approved text in order near where it is printed. The OCR text, its fonts and the page image stay as they were."""
+    rl = [x.strip() for x in it['text'].split('\n') if x.strip()]
+    share_of = collections.defaultdict(list)
+    for i, x in enumerate(rl): share_of[min(len(lines) - 1, i * len(lines) // len(rl))].append(x)
+    wrap = collections.defaultdict(dict); changes = []
+    for li, L in enumerate(lines):
+        new = ' '.join(share_of.get(li) or [])
+        for k, ci in enumerate(L):
+            ckey, idx, t = cand[ci]
+            nw = new if k == 0 else ''
+            if nw == t.strip(): continue
+            wrap[ckey][idx] = (nw + ' ') if nw else ' '
+            changes.append([t.strip(), nw])
+    n_rw, n_sp = _write_fixes(page, conts, wrap, st, spans=True) if wrap else (0, 0)
+    if changes: ok('CJK page readings: a reading approved by a person attached as spoken text', len(changes))
+    return {'checked_draft': True, 'changed': len(changes), 'operators': n_rw + n_sp, 'rewritten': n_rw, 'spans': n_sp, 'changes': changes[:200]}
+
+def cjk_page_reading(it, page):
+    """#119: a CJK page's AI reading (read_pages.py, kind cjk) matched to the page's OCR lines (lib/cjkocr.align_page:
+    order kept, each pair similar enough); each matched line's reading is split over the line's OCR words by character
+    alignment (cjkocr.split_line) and written into each word's hidden text (_write_fixes: rewritten in place, else an
+    ActualText span). A word the reading has no characters for keeps a single space. A page where too few lines match
+    (cjkocr.MATCH_MIN: a map, a newspaper, lines the OCR never found) is left as it was: its reading is a draft for a
+    person who reads the language. The page image never changes."""
+    from lib import cjkocr
+    st = {}; cand, conts = _page_text_ops(page, state=st)
+    lines = _ocr_lines(cand, conts)
+    texts = [''.join(cand[ci][2] for ci in L) for L in lines]
+    read, unused, share = cjkocr.align_page(texts, it['text'])
+    r = {'page': it['page'], 'kind': 'cjk', 'lines': len(lines), 'matched': len(read), 'share': round(share, 3), 'unused_lines': len(unused)}
+    if lines and share < cjkocr.MATCH_MIN and it['page'] in CJK_CHECKED:
+        return {**r, **cjk_checked_draft(it, page, cand, conts, lines, st)}
+    if not lines or share < cjkocr.MATCH_MIN:
+        return {**r, 'draft': True, 'changed': 0, 'operators': 0, 'rewritten': 0, 'spans': 0, 'changes': []}
+    wrap = collections.defaultdict(dict); changes, n_chars = [], 0
+    for li, reading in read.items():
+        L = lines[li]; words = [cand[ci][2] for ci in L]
+        cores = [w.strip() for w in words]
+        new = cjkocr.split_line(cores, reading)
+        # each word keeps its own trailing space: dropping it where the reading has none (two OCR boxes of one printed word)
+        # made pdfium drop characters whose box overlaps the next word's (measured on a real OCRmyPDF layer, 2026-11-22)
+        for ci, w, core, nw in zip(L, words, cores, new):
+            if nw == core: continue
+            ckey, idx, _t = cand[ci]
+            wrap[ckey][idx] = (nw + (' ' if w.endswith(' ') else '')) or ' '
+            changes.append([core, nw]); n_chars += cjkocr.lev(core, nw)
+    # furigana the OCR read as its own line (much smaller type, mostly kana) and the reading left out: blanked, so a screen
+    # reader doesn't read the word twice (今日きょう). Only on a page whose reading was attached; logged like every rewrite.
+    sizes = _line_sizes(lines, cand, conts); known = sorted(x for x in sizes if x)
+    med = known[len(known) // 2] if known else None; ruby = 0
+    for li, L in enumerate(lines):
+        if li in read or not med or not sizes[li]: continue
+        if cjkocr.is_ruby(texts[li], sizes[li], med):
+            ruby += 1
+            for ci in L:
+                ckey, idx, t = cand[ci]
+                if t.strip(): wrap[ckey][idx] = ' '; changes.append([t.strip(), ''])
+    n_rw, n_sp = _write_fixes(page, conts, wrap, st) if wrap else (0, 0)
+    if changes: ok('CJK page readings: printed text written into the OCR text', len(changes))
+    return {**r, 'changed': len(changes), 'chars_changed': n_chars, 'furigana_lines': ruby, 'operators': n_rw + n_sp, 'rewritten': n_rw, 'spans': n_sp,
+            'changes': changes[:200]}
+
 def op_page_readings(spec):
     """Each item is a whole-page AI reading of a scanned page (read_pages.py, issue #49): {page, text}. The page's OCR
     words (_page_text_ops) are paired with the reading's words in order (lib/pagereads.py); an OCR word whose reading
@@ -3416,6 +3514,7 @@ def op_page_readings(spec):
     res, read_as = [], {}
     for it in items:
         page = pages[it['page'] - 1]
+        if it.get('kind') == 'cjk': res.append(cjk_page_reading(it, page)); continue
         st = {}; cand, conts = _page_text_ops(page, state=st)
         words = []                                       # (candidate index, token match, core) for every word of the page's OCR text
         for ci, (_, _, text) in enumerate(cand):
@@ -3443,11 +3542,23 @@ def op_page_readings(spec):
         read_as[it['page']] = {words[wi][2]: r for wi, r in changes.items()}
         if n['changed']: ok('page readings: printed spelling written into the OCR text', n['changed'])
     log['page_readings'] = res
-    haw_elements({r['page'] for r in res}, read_as)
-    if res:
-        log['deferred'].append({'what': f'{len(res)} pages read by the AI (page readings)',
+    haw_elements({r['page'] for r in res if r.get('kind') != 'cjk'}, read_as)
+    haw_ = [r for r in res if r.get('kind') != 'cjk']
+    cjk_ = [r for r in res if r.get('kind') == 'cjk' and not r.get('draft')]
+    drafts = [r for r in res if r.get('kind') == 'cjk' and r.get('draft')]
+    if haw_:
+        log['deferred'].append({'what': f'{len(haw_)} pages read by the AI (page readings)',
                                 'why': 'AI text is a draft: a person who reads Hawaiian checks each page against the scan before the book ships',
-                                'pages': [r['page'] for r in res]})
+                                'pages': [r['page'] for r in haw_]})
+    if cjk_:
+        log['deferred'].append({'what': f'{len(cjk_)} CJK pages read by the AI (page readings, #119)',
+                                'why': 'AI text is a draft: a person who reads the language checks each page against the scan before the book ships',
+                                'pages': [r['page'] for r in cjk_]})
+    if drafts:
+        log['deferred'].append({'what': f'CJK OCR: needs a person ({len(drafts)} pages)',
+                                'why': "the AI's reading of these pages did not match the OCR's lines (a map, a newspaper, lines the OCR missed): "
+                                       'it is kept as a draft, not attached; a person who reads the language checks the page against the scan',
+                                'pages': [r['page'] for r in drafts]})
 
 # ================================================================== always: an invisible OCR text layer whose font defines no glyphs
 OCR_FONT_NAMES = {'HiddenHorzOCR', 'HiddenVertOCR', 'GlyphLessFont'}

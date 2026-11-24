@@ -73,8 +73,8 @@ def test_an_estimate_job_gets_the_apps_language_and_page_limits():
                               'the limit per PDF must be at least $68. The app administrator can raise it.'),
     ('per_batch', 279.11, 250, 0, 'This batch could cost up to $279.11, more than the limit of $250.00 per batch. To run the whole batch, '
                                   'the limit per batch must be at least $280. The app administrator can raise it.'),
-    ('page_reads', 25.0, 24.5, 0, 'The AI reading of Hawaiian pages could cost up to $25.00, more than the limit of $24.50 for the AI reading of Hawaiian pages. '
-                                  'To include it, the limit for the AI reading of Hawaiian pages must be at least $25. The app administrator can raise it.'),
+    ('page_reads', 25.0, 24.5, 0, 'The AI reading of scanned pages could cost up to $25.00, more than the limit of $24.50 for the AI reading of scanned pages. '
+                                  'To include it, the limit for the AI reading of scanned pages must be at least $25. The app administrator can raise it.'),
     ('per_call', 2.001, 2, 0, 'One AI request could cost up to $2.01, more than the limit of $2.00 per AI request. To send it, '
                               'the limit per AI request must be at least $3. The app administrator can raise it.'),
     ('per_batch', 2600, 2500, 0, 'This batch could cost up to $2600.00, more than the limit of $2500.00 per batch. To run the whole batch, '

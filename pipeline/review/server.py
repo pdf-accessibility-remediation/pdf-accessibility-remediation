@@ -306,6 +306,7 @@ def serve(R, date, port=8765, open_browser=True, files=None, return_to=None, run
             if path in ('/', '/index.html'):
                 warmed.wait(WARM_WAIT)
                 oc = ocr_section()
+                core.hand_edit_ai(R, data)            # an AI check made while the page was closed (#100): its answers are the cards' defaults
                 light = {**data, 'items': [it for it in data['items'] if it.get('kind') != core.LANG_KIND],   # #118: the language rows come
                          'languages': {**core.language_summary(data['items']), 'held_back': None if ocr_only else core.held_back_info(R, run_dir),
                                        'unplaced': None if ocr_only else core.unplaced_info(R, run_dir)}}   # by /languages.json; #159, #161
@@ -372,6 +373,7 @@ def serve(R, date, port=8765, open_browser=True, files=None, return_to=None, run
                 if not ocr_section(): return self.send(400, {'error': 'This book has no OCR text to review.'})
                 fields = {k: body.get(k) for k in ('verdict', 'reviewer', 'reason', 'pages', 'to')}
                 fields['reads'] = [str(x) for x in body.get('reads') or []] if isinstance(body.get('reads'), list) else []
+                fields['cjk_drafts'] = [x for x in body.get('cjk_drafts') or [] if isinstance(x, int) and not isinstance(x, bool)][:500] if isinstance(body.get('cjk_drafts'), list) else []
                 with write_lock:
                     if finishing.is_set() or done.is_set(): return self.send(409, {'error': 'The page is finishing: record the verdict from the run page.'})
                     try: v, _ = O.record(run_dir, fields, via='page', held=lock_held, session=None if ocr_only else sid,   # today's date

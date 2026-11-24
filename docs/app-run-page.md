@@ -85,6 +85,15 @@ The full pipeline with a new AI call is not offered here, because a job cannot a
 
 A run made from an edited copy says which run it came from, with a link.
 
+### Draft with the AI
+
+An edited copy that waits for its review can ask the AI for a first draft (see [Asking the AI to check the edit](hand-edits.md#asking-the-ai-to-check-the-edit)). **Draft with the AI** on its run page works in two steps:
+
+1. **Get an Estimate** is free. It shows the **Max Estimated Cost**, usually a few cents, and how many figures and changed pages would be sent.
+2. **Draft with the AI** sends the one request, with the cost shown on the button. It is refused when the estimate changed since it was shown, or when it is over the limits or the credit.
+
+The drafts appear on the review page's cards as suggestions. Nothing is applied without the review. Once the check has run, the card shows what it did and what it cost.
+
 The dashboard has its own notes for these links, for a reader who opens `review.html` as a file. The run page hides them, because the panel already shows the same list with its buttons (see [Editing the PDF by hand](hand-edits.md#seeing-the-link-in-reviewhtml-and-summaryhtml)).
 
 ### While a review page is open
@@ -218,6 +227,7 @@ How:
 - **`POST /api/run/<run>/remove-older-pdfs`** is "Clean Up Space" (`{by, chosen: [{id, sha256}]}`: the versions selected, each with the hash shown; refused when none is selected or one changed), through `review/prune.py` in the app's process.
 - **`POST /api/run/<run>/upload`** takes the edited PDF's own bytes (`Content-Type: application/pdf`, `X-Pdfrem-Upload: 1` as "Upload a PDF" sends, its name percent-encoded in `X-File-Name`, at most `upload_max_mb`; it must start with `%PDF-`). It is streamed into `uploads/.edited/`, and answers `{file, sha256, size}`. An upload that stops partway leaves nothing.
 - **`POST /api/run/<run>/bring-back`** is **Bring Back an Edited PDF** (`{file, by, note}`: a file name from `uploads/.edited/`'s own listing, never a path; or `{resume: label}`, **Start** for an edited copy never run), queued as a job. It answers 409 with the reason before anything runs.
+- **`POST /api/run/<run>/ai-estimate`** and **`POST /api/run/<run>/ai-check`** (`{fingerprint}`) are **Get an Estimate** and **Draft with the AI** for an edited copy waiting for its review: a free `handedit_check.py --dry-run` job, then a `spend` job of its own through `webapp/spend.py` (`authorize_handedit_check`), bound to the estimate shown. Both answer 409 with the reason for any other run.
 - **`/run/<run>/checks`** is the Accessibility Evaluation page ([The accessibility evaluation](evaluation.md)). `/run/<run>/checks/` (with a slash) redirects to it, so the page's return after "Record" (relative to its own address) never lands elsewhere. `GET /api/run/<run>/checks` is its data, and `POST /api/run/<run>/checks/draft` and `/checks/record` its saves (JSON from the app's own pages only, as every POST).
 - **`POST /api/run/<run>/ai-retry`** is "Ask the AI Again" (`{fingerprint}` of the estimate shown), queued as a paid job of kind `ai-retry` after the Spend check (`spend.authorize(kind='retry')`): `AI_RETRY=1 AUTO=1 bash run_api.sh` in the run's folder, with the settings `review_stop.json` kept and the part's limit bound to the cost shown. **`POST /api/run/<run>/ai-retry-estimate`** is "Get a New Estimate" (a free job of kind `ai-retry-estimate`), and **`POST /api/run/<run>/review-without`** (`{by}`) is "Review Without the Missing Suggestions" (`lib/aistatus.py` `set_override`). All three answer only for a run waiting for its review (#151).
 - Every POST's `Content-Length` must be digits and at most 65,536 bytes, checked before reading (411 or 413 otherwise).

@@ -563,6 +563,23 @@ function dlMarked(sel) {                                          // the line un
 
 // A run stopped for its first review (REVIEW=1): "Open the Review Page"; "Finish Review" then applies at once (D3: run_api.sh's
 // second call); once applied, the page offers its first result (it never reloads by itself)
+// the AI's check of a hand edit (#100, docs/hand-edits.md): drafts of the new figures' alt text and a reading of the changed text, as
+// suggestions the review page shows; a free estimate first, then its own Spend. Never sent on its own.
+function aiCheckBlock(s) {
+  const c = s.ai_check; if (!c) return '';
+  let h = '<h3>' + esc(tc('Draft with the AI')) + '</h3>';
+  const again = !c.done || c.done.retry;                         // a check that gave no draft may be asked for again
+  if (c.done) h += '<p>' + esc(c.done.outcome === 'done' ? 'Done: ' : 'It did not give a draft: ') + esc(c.done.words) + (c.done.cost_usd ? ' ($' + Number(c.done.cost_usd).toFixed(3) + ')' : '') +
+    (c.done.outcome === 'done' ? '. The review page shows each suggestion on its card.' : '. You can ask again.') + '</p>';
+  if (!c.done) h += '<p>One small AI request can draft alt text for the figures the edit touched and say how each changed page reads. The answers are suggestions: you approve or change each one in the review.</p>';
+  const e = c.estimate;
+  if (e && again) h += '<p>' + esc(tc('Max Estimated Cost')) + ': $' + Number(e.ceiling_usd).toFixed(2) + ' (' + esc((e.figures || 0) + ' figure' + (e.figures === 1 ? '' : 's') + ', ' + (e.text_pages || 0) + ' changed page' + (e.text_pages === 1 ? '' : 's')) + ')' +
+    (e.note ? ' ' + esc(e.note) : '') + '</p>' + (e.blocked ? '<p class="pp-note">' + esc(e.blocked) + '</p>' : '');
+  h += '<div class="pp-row">';
+  if (again) h += '<button type="button" id="pp-ai-est" data-act="ai-estimate">' + esc(tc(e ? 'Get a New Estimate' : 'Get an Estimate')) + '</button>';
+  if (e && again && !e.blocked) h += '<button type="button" class="pp-primary" id="pp-ai-spend" data-act="ai-check" data-fp="' + esc(e.fingerprint) + '">' + esc(tc('Draft with the AI (up to $' + Number(e.ceiling_usd).toFixed(2) + ')')) + '</button>';
+  return h + '</div>';
+}
 function waitingBlock(s) {
   const w = s.waiting, active = (s.jobs || []).filter(j => j.status === 'queued' || j.status === 'running');
   if (!w) return '<p><b>Result Ready:</b> ' + (s.current && s.current.id === 'ai' ? 'The AI\'s decisions are applied (without a review).' : 'Session 1 is applied.') +
@@ -575,7 +592,7 @@ function waitingBlock(s) {
     '<p>A job for this run is ' + (active[0].status === 'running' ? 'running' : 'waiting') + ': ' + esc(active[0].title) + '.</p>';
   if (!w.reviewed && s.held) return heldBlock(s.held);           // #151: some AI suggestions are missing: no review yet
   if (!w.reviewed) return '<p>The AI\'s decisions are waiting for your review. Nothing has been applied yet.</p>' +
-    '<div class="pp-row"><button type="button" class="pp-primary" id="pp-review" data-act="review">Open the Review Page</button></div>';
+    '<div class="pp-row"><button type="button" class="pp-primary" id="pp-review" data-act="review">Open the Review Page</button></div>' + aiCheckBlock(s);
   const who = 'Review finished (' + esc(w.reviewer || 'reviewer not recorded') + ', ' + esc(fmtDay(w.date)) + '). ';
   if (w.auto && w.auto.state === 'starting')                     // D3: "Finish Review" starts the apply; the dispatcher makes it within a second
     return '<p><span class="pp-spin" aria-hidden="true"></span>' + who + 'Applying the reviewed decisions.</p>';
@@ -639,9 +656,13 @@ const NONE_WHY = { too_few: 'not enough past runs to calculate it', cut_off: "an
 function noneWhy(x) { return x && NONE_WHY[x.none] ? ' (' + NONE_WHY[x.none] + ')' : ''; }
 function including(e) {                                         // the parts of the ceiling beyond the first request, in one list (round 24)
   const parts = [e.figures && e.figures.requests ? usd(e.figures.ceiling_usd) + ' for the extra alt-text request' + (e.figures.requests === 1 ? '' : 's') : '',   // #63
-    e.page_reads ? usd(e.page_reads.ceiling_usd) + ' for ' + esc(e.page_reads.pages) + ' Hawaiian page' + (e.page_reads.pages === 1 ? '' : 's') + ' to be read by the AI' : '',   // #49
+    e.page_reads ? usd(e.page_reads.ceiling_usd) + ' for ' + esc(e.page_reads.pages) + pageKind(e.page_reads) + ' page' + (e.page_reads.pages === 1 ? '' : 's') + ' to be read by the AI' : '',   // #49, #119
     e.language ? usd(e.language.ceiling_usd) + ' for the language tags' : ''].filter(Boolean);   // #118
   return parts.length ? ', including ' + (parts.length > 1 ? parts.slice(0, -1).join(', ') + ' and ' + parts[parts.length - 1] : parts[0]) : '';
+}
+function pageKind(p) {                                          // #119: Hawaiian pages, CJK pages, or both
+  const c = Number(p.cjk || 0);
+  return !c ? ' Hawaiian' : c >= p.pages ? ' Chinese, Japanese or Korean' : ' Hawaiian, Chinese, Japanese or Korean';
 }
 function costLines(e) {                                          // #65 (costs in dollars and an expected cost): the figure people read first, then the ceiling
   const x = e.expected;                                          // no key (an estimate made before #65): no line; {none}: "Not Available Yet"
@@ -820,6 +841,14 @@ box.addEventListener('click', async e => {
       msg('Removed ' + r.removed + ' PDF' + (r.removed === 1 ? '' : 's') + ' (' + (r.bytes / 1e6).toFixed(1) + ' MB freed). ' + (r.removed === 1 ? 'Its record and decisions are' : 'Their records and decisions are') + ' kept in "Session History".', true, true);
       return poll(true);
     } catch (e) { return msg('The app is not running. ' + START, false, true); }
+  }
+  if (act === 'ai-estimate' || act === 'ai-check') {              // the AI check of a hand edit: a free estimate, then its own Spend
+    b.disabled = true;
+    try {
+      const [c, r] = await api(API + '/' + act, act === 'ai-check' ? { fingerprint: b.dataset.fp } : {});
+      if (c !== 202) { b.disabled = false; return msg(r.error || 'The app refused this.', false, true); }
+      await poll(true); const hd = $('jh-' + r.job.id); if (hd) hd.focus(); return;
+    } catch (e) { b.disabled = false; return msg('The app is not running. ' + START, false, true); }
   }
   if (act === 'bring-start') {                                   // an edited copy brought back but never run: run its review stop
     try {

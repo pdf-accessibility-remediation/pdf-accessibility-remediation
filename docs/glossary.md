@@ -25,6 +25,8 @@ These are the words the other pages use without explaining them each time. Each 
 
 **Expected Cost and Max Estimated Cost.** Before an AI request, the pipeline shows what it usually costs (Expected Cost, from past requests of the same kind) and the most it could cost (Max Estimated Cost, which the dollar limits are checked against). See [What a run may cost](options.md#what-a-run-may-cost).
 
+**AI check of a hand edit.** One small, optional AI request after a PDF edited by hand comes back: it drafts alt text for the figures the edit touched and says whether each changed page reads as a correction or as damage. Every answer is a suggestion a reviewer approves or changes. See [Asking the AI to check the edit](hand-edits.md#asking-the-ai-to-check-the-edit).
+
 **Hand edit.** A change made to the PDF itself in Acrobat, then brought back into the pipeline as a new run. See [Editing the PDF by hand](hand-edits.md).
 
 **Intake.** The first step for an untagged PDF (`intake.py`): OCR where pages have no text, then automatic tagging. Local tools only, no AI request. See [Intake](intake.md).

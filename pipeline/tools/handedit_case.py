@@ -1,6 +1,6 @@
 """handedit_case.py: a real book edited by hand and brought back for review (handedit.py import, #62). No model, no cost.
 
-    python3 tools/handedit_case.py [--book hawaii3] [--out DIR]
+    python3 tools/handedit_case.py [--book hawaii3] [--out DIR] [--ai-check]
 
 The unit tests bring back a one-page PDF; this brings back a real book's remediated result, so apply.py's automatic steps
 (off-page text, the list rule, tab order, font maps, figure order) run a second time on a file that already holds them.
@@ -16,6 +16,9 @@ Checks, PASS or FAIL each:
   - the link descriptions are the parent's (apply.py redoes them on every run, from the carried `sections` and `links`);
   - apply.py failed nothing, and the new alt text is in the result while the other figures kept theirs;
   - what apply.py changed again on an already-remediated file (its `applied` counts), printed for a person to read.
+--ai-check (#100) adds the AI's check of the hand edit with a saved reply, written here from the figure's own id, so it costs nothing
+(handedit_check.py --reply): its draft must be the card's default, marked as the AI's; the person approves it as it is, and
+review.md says so ("drafted by the AI, approved by …"); record.json holds the check and the run's total cost stays $0.
 The runs go to DIR, relative to the folder the tool is run in (default: a temporary folder, kept when a check fails). veraPDF is off. Exit 1 on any FAIL.
 """
 import sys, os, json, shutil, argparse, subprocess, tempfile, hashlib
@@ -68,7 +71,7 @@ def swap_one(src, dst):
     return f['page'], f['alt']
 
 def main():
-    ap = argparse.ArgumentParser(); ap.add_argument('--book', default='hawaii3'); ap.add_argument('--out')
+    ap = argparse.ArgumentParser(); ap.add_argument('--book', default='hawaii3'); ap.add_argument('--out'); ap.add_argument('--ai-check', action='store_true')
     a = ap.parse_args()
     reply = os.path.join(PIPE, 'tests', 'baseline', a.book, 'reply.txt')
     if not os.path.exists(reply): sys.exit(f'no saved reply for {a.book} in tests/baseline/')
@@ -95,7 +98,20 @@ def main():
     gap = next((g for g in core.gaps(wo, digest) if g['id'] == 'figures_without_alt'), None)
     new_bare = [o for o in (gap or {}).get('objs', []) if (next((f for f in digest['figures'] if f['obj'] == o), {}) or {}).get('page') == page]
     check(len(new_bare) == 1, f'the review gap names the figure on PDF {page} ({len((gap or {}).get("objs", []))} figures without alt in all)')
-    if new_bare:
+    AI_ALT = 'A solid green rectangle (drafted by the AI in the test)'
+    if new_bare and a.ai_check:
+        rp = os.path.join(out, 'ai_reply.txt')
+        open(rp, 'w', encoding='utf-8').write('```json\n' + json.dumps({'alt': [{'obj': new_bare[0], 'alt': AI_ALT}], 'deferrals': [{'what': 'Cover description', 'why': 'the picture may sit in another object', 'pages': [page]}]}) + '\n```\n')
+        run([sys.executable, 'handedit_check.py', C, '--reply', rp])
+        items = json.load(open(os.path.join(C, 'review_items.json'), encoding='utf-8'))
+        card = next((x for x in items['addable']['alt'] if x['target'] == new_bare[0]), {})
+        check(card.get('default') == AI_ALT and (card.get('context') or {}).get('suggested_by_ai'), 'the AI\'s draft is the card\'s default, marked as suggested by the AI')
+        check(not any(x.get('alt') for x in wo.get('alt') or []), 'nothing is in the work order before a person adds it')
+        check([d['what'] for d in items['hand_edit'].get('ai_deferrals') or []] == ['Cover description'], 'what the AI left to a person is in the review page\'s data')
+        refused = core.add_entries(wo, [{'kind': 'alt', 'target': new_bare[0], 'value': card.get('default')}], items['addable'], 'handedit_case')
+        check(not refused and (wo.get('alt') or [{}])[0].get('ai_draft') == 'approved', 'the person adds the draft as it is: marked approved')
+        json.dump(wo, open(wo_p, 'w', encoding='utf-8'), indent=1)
+    elif new_bare:
         wo['alt'] = [{'obj': new_bare[0], 'alt': 'A solid green rectangle (test image)', 'why': 'handedit_case'}]
         json.dump(wo, open(wo_p, 'w', encoding='utf-8'), indent=1)
     run([sys.executable, 'review_workorder.py', C, '--reviewer', 'handedit_case', '--note', 'handedit_case: only the new figure'])
@@ -120,7 +136,14 @@ def main():
     check(len(la) == len(lb) and not diff, f'link descriptions are the parent\'s ({len(diff)} of {len(la)} differ'
           + (f', e.g. "{diff[0][0]}" → "{diff[0][1]}"' if diff else '') + ')')
     after = handedit.figures(os.path.join(C, rec['document']['output'])); was = handedit.figures(res)
-    check(any(f['alt'] == 'A solid green rectangle (test image)' for f in after), 'the new alt text is in the result')
+    want = AI_ALT if a.ai_check else 'A solid green rectangle (test image)'
+    check(any(f['alt'] == want for f in after), 'the new alt text is in the result')
+    if a.ai_check:
+        md = open(os.path.join(C, 'review.md'), encoding='utf-8').read()
+        check('The AI left this to a person: **Cover description**' in md, 'review.md lists what the AI left to a person')
+        check('drafted by the AI, approved by handedit_case' in md, 'review.md says the alt text was drafted by the AI and approved by the reviewer')
+        ck = h.get('ai_check') or {}
+        check(ck.get('outcome') == 'done' and rec.get('cost_total_usd') == 0 and 'None' not in md, 'record.json holds the check (answered, $0) and review.md prints no None')
     lost = sum(1 for f in was if f['alt']) - sum(1 for f in after if f['alt'])
     check(lost <= 0, f'no other figure lost its alt text ({sum(1 for f in after if f["alt"])} with alt after, {sum(1 for f in was if f["alt"])} before)')
     print('\nWhat apply.py did again on the already-remediated file (read this):')

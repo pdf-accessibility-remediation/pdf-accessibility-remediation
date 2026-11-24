@@ -47,6 +47,10 @@ def check(wo, digest, not_sent, words_sent, order=None):
     dropped = []
     def drop(where, item, why): dropped.append({'where': where, 'item': item, 'why': why})
     def page_ok(p): return isinstance(p, int) and 1 <= p <= N
+    BACKWARDS = 'the first page is after the last'      # #59: each number in range, and the range in order
+    def range_why(ps, bad='bad page range'):
+        if not (isinstance(ps, list) and len(ps) == 2 and all(page_ok(p) for p in ps)): return bad
+        return BACKWARDS if ps[0] > ps[1] else None
     for k in list(wo):
         if k not in KNOWN and k not in META: drop(k, wo.pop(k), 'unknown key')
     def keep(key, items, test):
@@ -64,10 +68,10 @@ def check(wo, digest, not_sent, words_sent, order=None):
             try: re.compile(r.get('regex', '.*'))
             except Exception: return 'bad regex'
             if r.get('band', 'any') not in ('top', 'bottom', 'any'): return 'band must be top, bottom or any'
-            return None if all(page_ok(p) for p in r.get('pages', [])) and len(r.get('pages', [])) == 2 else 'bad page range'
+            return range_why(r.get('pages', []))
         a['text_rules'] = keep('artifacts.text_rules', a.get('text_rules'), rule_ok)
         def untagged_ok(r):
-            if not (len(r.get('pages', [])) == 2 and all(page_ok(p) for p in r['pages'])): return 'bad page range'
+            if range_why(r.get('pages', [])): return range_why(r.get('pages', []))
             if r.get('regex'):
                 try: re.compile(r['regex'])
                 except Exception: return 'bad regex'
@@ -81,11 +85,15 @@ def check(wo, digest, not_sent, words_sent, order=None):
     for key in ('actual_text', 'retype', 'alt'):
         if key in wo:
             wo[key] = keep(key, wo[key], lambda it: None if it.get('obj') in objs else 'unknown obj')
+    if 'actual_text' in wo:                     # #59: empty spoken text reads the passage as silence
+        wo['actual_text'] = keep('actual_text', wo['actual_text'], lambda it: None if isinstance(it.get('text'), str) and it['text'].strip() else 'empty spoken text')
     if 'retype' in wo: wo['retype'] = keep('retype', wo['retype'], lambda it: None if it.get('type') in ALLOWED else 'type not allowed')
     if 'alt' in wo:
         figs = {f['obj'] for f in digest['figures']}
         wo['alt'] = keep('alt', wo['alt'], lambda it: None if it.get('obj') in figs and str(it.get('alt', '')).strip() else 'not a figure or empty alt')
         wo['alt'] = keep('alt', wo['alt'], lambda it: 'its image was not sent (over --max-images), so the alt was written unseen' if it.get('obj') in not_sent else None)
+        deco = {it.get('obj') for it in (wo.get('artifacts') or {}).get('elements') or [] if isinstance(it, dict)}   # #59
+        wo['alt'] = keep('alt', wo['alt'], lambda it: 'the same order marks this figure as decoration' if it.get('obj') in deco else None)
     if 'deferrals' in wo:                       # optional "pages": PDF page integers; anything else is dropped, the deferral kept
         for d_ in wo['deferrals'] if isinstance(wo['deferrals'], list) else []:
             if isinstance(d_, dict) and 'pages' in d_:
@@ -115,12 +123,13 @@ def check(wo, digest, not_sent, words_sent, order=None):
             if why: drop('ocr_words', it, why); continue
             out.append({'id': i, 'text': words[i]['text'], 'reads': reads, 'count': words[i]['count']})
         if out: wo['ocr_words'] = out
-    if 'page_readings' in wo:                   # whole-page readings of scanned Hawaiian pages (read_pages.py): [{page, text}]
+    if 'page_readings' in wo:                   # whole-page readings of scanned pages (read_pages.py): [{page, text, kind?}], kind cjk for #119
         seen_p = set()
         def page_reading(it):
             if not isinstance(it, dict) or not isinstance(it.get('page'), int) or isinstance(it.get('page'), bool) or not 1 <= it['page'] <= N: return 'bad page'
             if not isinstance(it.get('text'), str) or not it['text'].strip(): return 'empty'
             if it['page'] in seen_p: return 'the same page twice'
+            if it.get('kind', 'haw') not in ('haw', 'cjk'): return 'kind is haw (Hawaiian) or cjk (Chinese, Japanese, Korean: #119)'
             seen_p.add(it['page']); it['text'] = unicodedata.normalize('NFC', it['text'])
         wo['page_readings'] = keep('page_readings', wo['page_readings'] if isinstance(wo['page_readings'], list) else [], page_reading)
         if not wo['page_readings']: del wo['page_readings']
@@ -148,6 +157,9 @@ def check(wo, digest, not_sent, words_sent, order=None):
         tag = langtag.norm(wo['document']['lang'])
         if tag: wo['document']['lang'] = tag
         else: drop('document.lang', wo['document'].pop('lang'), 'not a BCP 47 language tag')
+    if isinstance(wo.get('document'), dict) and 'title' in wo['document']:    # #59: an empty /Title fails WCAG 2.4.2 and PDF/UA
+        t = wo['document']['title']
+        if not isinstance(t, str) or not t.strip(): drop('document.title', wo['document'].pop('title'), 'empty title')
     if 'keep_lists' in wo:
         rule_objs = {l['obj'] for l in digest.get('lists') or [] if l.get('flattened_by_rule')}
         wo['keep_lists'] = keep('keep_lists', wo['keep_lists'], lambda it: None if isinstance(it, dict) and it.get('obj') in rule_objs
@@ -161,11 +173,11 @@ def check(wo, digest, not_sent, words_sent, order=None):
     if 'toc' in wo:
         t_ = wo['toc']; bad_ = [x for x in t_.get('item_styles') or [] if x not in styles]
         if bad_: drop('toc', bad_, 'unknown styles'); t_['item_styles'] = [x for x in t_['item_styles'] if x in styles]
-        if t_.get('pages') and not (len(t_['pages']) == 2 and all(page_ok(p) for p in t_['pages'])): drop('toc', {'pages': t_.pop('pages')}, 'bad page range')
+        if t_.get('pages') and range_why(t_['pages']): drop('toc', {'pages': t_['pages']}, range_why(t_.pop('pages')))
         if not t_.get('item_styles') and not (t_.get('item_prefix') and any(s_.startswith(t_['item_prefix']) for s_ in styles)):
             drop('toc', wo.pop('toc'), 'no such style')
     if 'adopt_orphans' in wo:
-        wo['adopt_orphans'] = keep('adopt_orphans', wo['adopt_orphans'], lambda r: None if len(r.get('pages', [])) == 2 and all(page_ok(p) for p in r['pages']) else 'bad page range')
+        wo['adopt_orphans'] = keep('adopt_orphans', wo['adopt_orphans'], lambda r: range_why(r.get('pages', [])))
     if 'lists' in wo: wo['lists'] = keep('lists', wo['lists'], lambda r: None if r.get('first_style') in styles else 'unknown style')
     if 'notes' in wo:
         bad = [s_ for s_ in wo['notes'].get('styles', []) if s_ not in styles]
@@ -173,7 +185,7 @@ def check(wo, digest, not_sent, words_sent, order=None):
     if 'sections' in wo:
         sec = wo['sections']
         for k in ('notes_pages',):
-            if k in sec and not (len(sec[k]) == 2 and all(page_ok(p) for p in sec[k])): drop('sections', {k: sec.pop(k)}, 'bad page range')
+            if k in sec and range_why(sec[k]): drop('sections', {k: sec[k]}, range_why(sec.pop(k)))
         if 'toc_pages' in sec: sec['toc_pages'] = [p for p in sec['toc_pages'] if page_ok(p)]
         if 'index_from' in sec and not page_ok(sec['index_from']): drop('sections', {'index_from': sec.pop('index_from')}, 'bad page')
     if 'move_section' in wo:                         # one move (v8) or a list (v9): each checked, the shape kept
@@ -183,6 +195,8 @@ def check(wo, digest, not_sent, words_sent, order=None):
         for m in [ms] if isinstance(ms, dict) else ms if isinstance(ms, list) else [ms]:
             if not (isinstance(m, dict) and len(m.get('pages') or []) == 2 and all(page_ok(p) for p in m['pages']) and page_ok(m.get('before_page'))):
                 drop('move_section', m, 'bad pages')
+            elif m['pages'][0] > m['pages'][1]: drop('move_section', m, BACKWARDS)
+            elif m['pages'][0] <= m['before_page'] <= m['pages'][1]: drop('move_section', m, 'it lands inside its own pages')
             elif away is not None and not any(m['pages'][0] <= f <= m['pages'][1] or f == m['before_page'] for f, _ in away):
                 drop('move_section', m, 'the audit finds no section read out of place in these pages or where it lands')
             elif len(kept) == readorder.MAX_MOVES: drop('move_section', m, f'more than {readorder.MAX_MOVES} section moves')

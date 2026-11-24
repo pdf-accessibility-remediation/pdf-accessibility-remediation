@@ -266,6 +266,12 @@ The executor's own sentences, rejections and deferral reasons use the same form;
 - **`source.sha256` must match the input file,** or `apply.py` refuses to run.
 - **Each operation checks its target first.** One that doesn't fit is **rejected and logged**, never half-applied.
 - **Targets are whitelisted.** Work-order text is only ever data: never executed, never written into page content.
+- **Values worse than doing nothing are dropped** by the check (`lib/workorder_check.py`), from the AI's order and on the review page's card alike (#59):
+  - an empty `document.title` ("empty title"): an empty /Title fails WCAG 2.4.2 and PDF/UA;
+  - `actual_text` with empty text ("empty spoken text"): the passage would read as silence;
+  - a page range whose first page is after its last ("the first page is after the last"), in `move_section`, `artifacts.text_rules`, `artifacts.untagged`, `adopt_orphans`, `toc.pages` and `sections.notes_pages`;
+  - a `move_section` whose `before_page` is inside its own pages ("it lands inside its own pages");
+  - `alt` for a figure the same order marks as decoration in `artifacts.elements` ("the same order marks this figure as decoration").
 
 ### Figure requests
 

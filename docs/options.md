@@ -35,9 +35,10 @@ To apply a reviewed work order, rerun the same label without `REVIEW=1`.
 | `MAX_USD=3` | The limit on what one AI request could cost, in dollars (default 2). Claude models only |
 | `BOOK_MAX_USD=60` | The limit on what all of a PDF's requests could cost together (default 50). Claude models only (see [The limit per PDF](#the-limit-per-pdf)) |
 | `BATCH_MAX_USD=300` | Batches only: the limit on what the batch has already spent plus what it could still cost (default 250) |
-| `PAGE_READS=off` | No page readings: scanned Hawaiian pages are not read whole by the AI (see [Page readings](#page-readings)) |
+| `PAGE_READS=off` | No page readings: scanned Hawaiian pages, and scanned pages with Chinese, Japanese or Korean text, are not read whole by the AI (see [Page readings](#page-readings)) |
 | `PAGE_READS=all` | Page readings for every scanned page with text, not only mostly Hawaiian ones |
 | `PAGE_READS_MAX_USD=30` | The limit on what the page readings together could cost, in dollars (default 25) |
+| `PAGE_READS_CJK_MODEL=google/gemini-4-carbon` | The model that reads scanned Chinese, Japanese and Korean pages (default `google/gemini-3.8-flash`; see [CJK OCR](cjk-ocr.md)) |
 | `LANG_TAGS=off` | No language step: words and passages in other languages are not sent to the AI (see [Language tags](#language-tags)) |
 | `LANGUAGE_MODEL=…` | The model the language step uses (default: Sonnet 5.5, whatever the work order uses). Google's Gemini 3.8 Flash, 4 Hydrogen, 4 Argon and 4 Neon were scored against it on the language test set (#142): see [Scoring another model](languages.md#scoring-another-model) |
 | `LANGUAGE_MAX_USD=30` | The limit on what the language step could cost, in dollars (default 25) |
@@ -94,6 +95,8 @@ what it left out under "Max Estimated Cost".
 
 `handedit.py import` sets it for a PDF edited by hand and brought back for review (see [Editing the PDF by hand](hand-edits.md)).
 
+`handedit.py import … --ai-check` and `handedit_check.py` ask the AI to check a PDF edited by hand: one small request, with the usual y/N question, `MAX_USD` and `BOOK_MAX_USD`, and `ESTIMATE=1` for the estimate only (see [Asking the AI to check the edit](hand-edits.md#asking-the-ai-to-check-the-edit)). The model is `--model` or `MODEL=`, else the default of the work order; an `auto:` choice is refused.
+
 ### The trial run at the review stop
 
 At the review stop, the pipeline runs `apply.py` once as a trial. It works out which figures the executor moves, and whether it makes the AI's section move. It takes about as long as the apply step: about 2 minutes for a 250-page PDF.
@@ -102,7 +105,7 @@ At the review stop, the pipeline runs `apply.py` once as a trial. It works out w
 
 ### Page readings
 
-By default (`PAGE_READS=1`), the scanned pages the audit finds mostly Hawaiian are read whole by the AI (`read_pages.py`). They have their own estimate and question; `AUTO=1` skips the question. A PDF with no such pages costs nothing. If the readings are refused (over their limit or your credit), the step is skipped and the PDF goes on without them.
+By default (`PAGE_READS=1`), the scanned pages the audit finds mostly Hawaiian, and those whose OCR text holds Chinese, Japanese or Korean (#119, [CJK OCR](cjk-ocr.md)), are read whole by the AI (`read_pages.py`). They have their own estimate and question; `AUTO=1` skips the question. A PDF with no such pages costs nothing. If the readings are refused (over their limit or your credit), the step is skipped and the PDF goes on without them.
 
 No pages are read:
 - with a saved reply from elsewhere (`REPLY=…` of another run, or a batch's `FROM=`)

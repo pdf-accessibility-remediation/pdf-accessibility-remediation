@@ -368,7 +368,7 @@ if [[ -n $MERGED && -f $R/page_reads_run.json ]]; then   # #95: the merged path 
   # decide.py does on a retry of its own reply (no cost, no network)
   python3 -c 'import json,sys
 run = json.load(open(sys.argv[1])); wo = json.load(open(sys.argv[2]))
-pages = [{"page": x["page"], "text": x["text"]} for x in run.get("pages") or [] if x.get("finish") == "stop" and (x.get("text") or "").strip()]
+pages = [{"page": x["page"], "text": x["text"], **({"kind": "cjk"} if x.get("kind") == "cjk" else {})} for x in run.get("pages") or [] if x.get("finish") == "stop" and (x.get("text") or "").strip()]
 if pages: wo["page_readings"] = pages; json.dump(wo, open(sys.argv[2], "w", encoding="utf-8"), ensure_ascii=False, indent=1)' "$R/page_reads_run.json" "$R/workorder.json" \
     || echo "page readings: the pages read before could not be put back (see above)"
 fi

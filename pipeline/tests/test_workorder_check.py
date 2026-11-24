@@ -186,3 +186,40 @@ def test_table_row_readings_are_checked():
     dropped = wc.check(wo, digest_, set(), set())
     assert [it['obj'] for it in wo['tables']] == [20]
     assert whys(dropped, 'tables') == ['title_rows and note_rows must be whole numbers 0-3'] * 2 + ['group_rows and repeat_rows must list row numbers in the table'] * 3 + ['no header rows or columns']
+
+# #59: values that make a worse PDF than doing nothing
+def test_an_empty_title_is_refused_and_a_real_one_kept():
+    for t in ('', '   ', None):
+        wo = {'document': {'title': t, 'lang': 'en'}}
+        assert whys(check(wo), 'document.title') == ['empty title'] and wo['document'] == {'lang': 'en'}
+    wo = {'document': {'title': 'A Title'}}
+    assert check(wo) == [] and wo['document']['title'] == 'A Title'
+
+def test_empty_spoken_text_is_refused():
+    wo = {'actual_text': [{'obj': 1, 'text': ' '}, {'obj': 1}, {'obj': 1, 'text': 'one'}]}
+    assert whys(check(wo), 'actual_text') == ['empty spoken text'] * 2 and wo['actual_text'] == [{'obj': 1, 'text': 'one'}]
+
+@pytest.mark.parametrize('wo, where', [
+    ({'artifacts': {'text_rules': [{'regex': 'x', 'pages': [5, 3]}]}}, 'artifacts.text_rules'),
+    ({'artifacts': {'untagged': [{'regex': 'x', 'pages': [5, 3]}]}}, 'artifacts.untagged'),
+    ({'adopt_orphans': [{'pages': [9, 2]}]}, 'adopt_orphans'),
+    ({'toc': {'item_styles': ['Body'], 'pages': [4, 1]}}, 'toc'),
+    ({'sections': {'notes_pages': [8, 7]}}, 'sections'),
+    ({'move_section': {'pages': [6, 4], 'before_page': 2}}, 'move_section')])
+def test_a_page_range_running_backwards_is_refused(wo, where):
+    assert 'the first page is after the last' in whys(check(wo), where)
+
+def test_page_ranges_in_order_are_kept():
+    wo = {'artifacts': {'text_rules': [{'regex': 'x', 'pages': [3, 3]}]}, 'adopt_orphans': [{'pages': [2, 9]}], 'sections': {'notes_pages': [7, 8]},
+          'toc': {'item_styles': ['Body'], 'pages': [1, 4]}}
+    assert check(wo) == [] and wo['toc']['pages'] == [1, 4] and wo['sections']['notes_pages'] == [7, 8]
+
+@pytest.mark.parametrize('before', [4, 5, 6])
+def test_a_section_moved_before_itself_is_refused(before):
+    wo = {'move_section': {'pages': [4, 6], 'before_page': before}}
+    assert whys(check(wo), 'move_section') == ['it lands inside its own pages'] and 'move_section' not in wo
+
+def test_alt_for_a_figure_the_same_order_hides_is_refused():
+    wo = {'artifacts': {'elements': [{'obj': 2}]}, 'alt': [{'obj': 2, 'alt': 'A map'}, {'obj': 3, 'alt': 'A chart'}]}
+    assert whys(check(wo), 'alt') == ['the same order marks this figure as decoration'] and wo['alt'] == [{'obj': 3, 'alt': 'A chart'}]
+    assert wo['artifacts']['elements'] == [{'obj': 2}]

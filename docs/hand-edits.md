@@ -71,7 +71,7 @@ Acrobat can change pages you never touched:
 
 | `--to` | What runs | Cost |
 |---|---|---|
-| `review` (the default) | Intake (skipped for a tagged file), audit, **no AI call** (`DECIDE=none`: the work order starts empty, and no pages are read with the AI either, `PAGE_READS=off`), the review page, then apply, verify and report | $0 |
+| `review` (the default) | Intake (skipped for a tagged file), audit, **no AI call** (`DECIDE=none`: the work order starts empty, and no pages are read with the AI either, `PAGE_READS=off`), the review page, then apply, verify and report. `--ai-check` adds one small request that drafts what the edit touched (see [Asking the AI to check the edit](#asking-the-ai-to-check-the-edit)) | $0 (a few cents with the AI check) |
 | `pipeline` | The whole pipeline on the edited file, with a new AI call (`run_api.sh` asks y/N first; `ESTIMATE=1` and `REPLY=` work as usual) | a normal run |
 
 **Review is the usual choice.** The remediated result already holds the earlier run's fixes, so the review needs only what the edit changed.
@@ -109,11 +109,30 @@ New images that no figure holds are listed too, so you can decide whether each i
   - **Read the same:** only space characters went. The page still reads the same with spaces taken from the gaps between words, as the pipeline reads it. `review.md` says so in one line.
   - **Reads differently:** `review.md` marks the pages as a CHECK, and the summary at the top of the review page's Edited by Hand section names them. Compare them with the earlier run and with the print.
 
+## Asking the AI to check the edit
+
+By default nothing about an edit goes to the AI, so a reviewer writes the alt text for every new image and reads every page whose text changed. You can ask the AI for a first draft of both, with one small request.
+
+It sees only what the import found: the figures that hold a new image, the figures that lost their tag, and the pages whose text reads differently, each with its old and new wording and a picture of the page. It never sees the rest of the PDF. An old alt text goes in as context only, and the AI describes the new image.
+
+**It only suggests.** Each draft appears on its card under **Edited by Hand**, marked "Suggested by the AI". You add it as it is, change it first, or write your own. A new image the AI takes for decoration gets a note instead of alt text. Anything the AI could not decide is listed in the summary and in `review.md` as left to you.
+
+For a page whose text changed, the summary says whether the AI reads the change as a correction or as damage, and why. Nothing is applied until the review is finished, and `review.md` says which alt texts were "drafted by the AI, approved by" the reviewer.
+
+**How to ask:**
+- **In the terminal:** add `--ai-check` to `handedit.py import … --to review`. It shows an estimate, usually a few cents, and asks y/N. `MAX_USD` and `BOOK_MAX_USD` apply, and `ESTIMATE=1` shows the estimate and sends nothing.
+- **In the app:** the run page of an edited copy that waits for its review has **Draft with the AI**. Select **Get an Estimate**, then **Draft with the AI** with the cost shown. Nothing is sent before that button.
+- **Later, for a copy already waiting:** `python3 handedit_check.py <run folder>`, with `--dry-run` for the estimate only.
+
+The answer is saved with the run, so asking again for the same edit costs nothing. A different model, set of figures or set of pages asks the AI again. A request that fails or comes back unreadable is sent once more, as the other AI steps' requests are.
+
+Every charge counts toward the PDF's limit, an earlier check's included. A reply that was cut off is paid for but not used: the run page then offers **Get a New Estimate** to ask again. A figure whose image can't be found is not sent: the check says so, and its alt text is written by hand.
+
 ## What a review of an edited PDF shows
 
 The edited PDF already holds every decision of the run it came from: alt text, heading levels, decoration and the rest. The AI isn't asked again, and those decisions aren't shown as cards again. Approving them a second time would apply them twice, for example moving a section that is already in place, or hiding text a rule already hid. So the review page shows:
 
-- **Edited by Hand:** the figures the edit touched (above).
+- **Edited by Hand:** the figures the edit touched (above), each with the AI's draft when you asked for one.
 - **A "Still to Review" list** at the top of Edited by Hand, kept up to date as you work. It shows the figures still without alt text, the cards under Check First not yet reviewed (by group), and any other decision not yet reviewed, each with a link. When nothing is left, it says to select **Finish Review**.
 - **The decisions carried from the earlier run** (which pages are contents, notes and index, and fixes to contents link text) get no card: there is nothing to decide. They keep the contents links' descriptions, which `apply.py` writes again on every run. The summary names them ("Carried from the earlier run, no action needed: contents pages (PDF 6–11)"), and they are applied as written.
 - **What today's audit finds anywhere in the PDF.** These are not things the first run missed. Anything it fixed is in the file and doesn't come back. What comes back:
@@ -165,6 +184,8 @@ The original is checked against `record.json` (`document.sha256`). The run's ear
 | `<new run>/_handedit/<edited file>` | A copy of the file you edited: the new run's source (`record.json` `document.sha256`). Your own file is never written to |
 | `<new run>/_handedit/input.pdf` | Only when a figure's alt text was removed: what the run worked on (`document.pipeline_input`). `run_api.sh` uses it when the source PDF is in the run's `_handedit/` folder, comparing the two folders with links resolved. A relative `RUN_DIR` is made absolute first, so it is the same folder however it is written (#144) |
 | `<new run>/_handedit/hand_edit.json`, and `record.json` `hand_edit` | The edit's record (see below) |
+| `<new run>/_handedit/ai_check.json` | The AI's check of the edit, when it was asked (#100): model, instructions, a fingerprint of what was sent, the reply, the answers cut to what was sent (`kept`), what was dropped, and what it cost (read it with `hecheck.total()`). Reused at no cost when the fingerprint matches |
+| `<new run>/_handedit/ai_check_estimate.json` | The check's estimate (`handedit_check.py --dry-run`): what the app's Spend shows |
 | `<parent run>/hand_edits.json` | `exports` (who, when, which file, its sha256, where it went) and `children` (each run made from an edit: its folder, who, the note, the edited sha256). The only record `handedit.py` writes in the parent run |
 | `<parent run>/review.html`, and its batch's `summary.html` | Drawn again from `hand_edits.json` (`report_html.refresh_page`): after the import, when `run_api.sh` stops for review, and by the copy's `report.py` on its first finish (not on a re-apply). `webapp/trash.py` calls it for every run linked to one it moves. A previous version (`reviews/versions/`) is never drawn again |
 | `review.md` and `review.html` | The "Edited by hand" section, and the wording of a run with no AI call (see below). `review.html` also carries the parent and copy notes; `review.md` doesn't change |
@@ -188,7 +209,14 @@ The original is checked against `record.json` (`document.sha256`). The run's ear
 
 **Low-resolution figures** (#97): `lib/lowres.py` divides each image's stored pixel size (pdfplumber's `srcsize`) by its drawn size in inches, short side with short side, and takes a figure's lowest image of at least 72 pt on its long side, rounded to a whole ppi (an image made at 150 ppi can measure 149.9). Left out: scanned PDFs (`is_scan`), whole-page crops (`image_is_whole_page`) and page scans intake kept as figures (`kept_by_picture_test`, #128). Figures under `LOW_PPI` (150) go into the digest as `low_resolution: [{obj, page, ppi}]`, with `low_resolution_rule`, both only when a figure is flagged: a PDF with none keeps a digest byte-identical to its earlier audits, so its older runs still pin. `decide.py` removes both before sending, so the AI never sees them and its request is unchanged. `report.py` writes the CHECK row only when the list has entries (up to 20 figures named), and `review/core.py` puts `low_ppi` on the card of each listed figure.
 
-**A run with no AI call** (`--to review`):
+**The AI check** (#100: `handedit_check.py`, built on `lib/hecheck.py` and the pieces of `lib/figpasses.py`):
+- It sends the figures that have a card (`core.hand_edit_targets`, so the cards and the request always agree), each with its crop and its old alt text as context, and, for each page whose text reads differently, the old and new text around the change (at most 4,000 characters each, at most 12 pages) with an image of the page. The instructions are `prompts/handedit_check_v1.md`. Alt text the parent's result already carries goes in as style examples.
+- The reply is cut to what was sent (`figpasses.scope`, then the text verdicts), and an empty alt text is dropped. Answers are never work-order decisions: `core.hand_edit_ai` puts each into its card's default and marks it `suggested_by_ai` (a deferral goes to `he['ai_deferrals']`, information only), and `review_items.json` is updated after the check.
+- An alt text added as the AI drafted it carries `ai_draft: approved` (or `changed`) in the work order, which `report.py` turns into the wording above. The `why` stays "added by … in review".
+- The record: `hand_edit.ai_check` (model, instructions, date, cost, what was sent, `kept`), `ai_call.cost_usd` and `ai_call.hand_edit_check`, and `cost_total_usd`. The run is still `no_model`: the work order was a person's, so "AI Cost" reads "$0.02 (the AI's check of a hand edit; no AI request for the decisions)".
+- The limits are the usual ones: `MAX_USD` for the request and `BOOK_MAX_USD` for the PDF, with the credit. The request goes through `lib/aisend.py`, so it has the one retry rule. `lib/hecheck.py` `total()` is what it has cost: `cost_usd`, plus a charge that is not known at its worst case (`worst_usd`), plus an earlier check's (`earlier_cost_usd`). In the app only a `spend` job sends it (`webapp/spend.py` `authorize_handedit_check`, the routes `ai-estimate` and `ai-check`), bound to the estimate shown.
+
+**A run with no AI call** (`--to review`, no AI check):
 - The run line says "no AI call", the AI cost is $0, and the sections say "in this run" instead of "by the AI".
 - The Overview says "Decisions (no AI call)", and a review "started from an empty work order (no AI call)".
 - On the run page and the review page, "the AI's decisions" becomes "the beginning" (**Start Over from the Beginning**).

@@ -42,7 +42,7 @@ PLAIN = {'apply': 'applying the decisions',   # also a run with no review (revie
          'reuse saved reply': 'reading the saved reply',
          # every other stage label run_api.sh and review/sessions.py write (Patrick's dakine test, 2026-11-14)
          'OCR language check': 'checking the OCR language', 'veraPDF on the original': 'checking the original with veraPDF',
-         'no AI call': 'no AI request (a person decides)', 'page readings via OpenRouter': 'sending to the AI: Hawaiian page readings',
+         'no AI call': 'no AI request (a person decides)', 'page readings via OpenRouter': 'sending to the AI: page readings',
          'language tags via OpenRouter': 'sending to the AI: language tags', 'review': 'preparing the review page',
          "the previous attempt's reply was complete but could not be read": 'reading the saved reply again',
          'the work order was reviewed by a person': 'starting from the reviewed decisions',
